@@ -1,0 +1,18 @@
+diff -up freerdp-v0.9.1-sp/include/freerdp/rdpset.h.rdpset freerdp-v0.9.1-sp/include/freerdp/rdpset.h
+--- freerdp-v0.9.1-sp/include/freerdp/rdpset.h.rdpset	2013-08-22 08:49:02.451774154 +0200
++++ freerdp-v0.9.1-sp/include/freerdp/rdpset.h	2013-08-22 08:49:43.271774731 +0200
+@@ -47,10 +47,10 @@ struct rdp_set
+ {
+ 	int width;
+ 	int height;
+-	char hostname[16];
+-	char server[64];
+-	char domain[16];
+-	char password[64];
++	char hostname[256];
++	char server[256];
++	char domain[256];
++	char password[256];
+ 	char shell[256];
+ 	char directory[256];
+ 	char username[256];

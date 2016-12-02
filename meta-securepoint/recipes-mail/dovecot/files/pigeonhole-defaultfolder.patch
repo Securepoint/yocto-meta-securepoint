@@ -1,0 +1,45 @@
+diff --git a/src/lib-sieve/plugins/environment/ext-environment-common.c b/src/lib-sieve/plugins/environment/ext-environment-common.c
+--- a/src/lib-sieve/plugins/environment/ext-environment-common.c
++++ b/src/lib-sieve/plugins/environment/ext-environment-common.c
+@@ -24,7 +24,8 @@ static const struct sieve_environment_item *core_env_items[] = {
+ 	&location_env_item,
+ 	&phase_env_item,
+ 	&name_env_item,
+-	&version_env_item
++	&version_env_item,
++	&defaultfolder_env_item
+ };
+ 
+ static unsigned int core_env_items_count = N_ELEMENTS(core_env_items);
+@@ -233,7 +234,19 @@ const struct sieve_environment_item version_env_item = {
+ 	.value = PIGEONHOLE_VERSION,
+ };
+ 
++/* "defaultfolder":
++ * the default folder where mail is stored when no rule matches
++ */
++static const char *envit_defaultfolder_get_value
++(struct sieve_instance *svinst,
++         const struct sieve_script_env *senv)
++{
++            return senv->default_mailbox;
++}
+ 
+-
++const struct sieve_environment_item defaultfolder_env_item = {
++            .name = "defaultfolder",
++            .get_value = envit_defaultfolder_get_value,
++};
+ 
+ 
+diff --git a/src/lib-sieve/plugins/environment/ext-environment-common.h b/src/lib-sieve/plugins/environment/ext-environment-common.h
+--- a/src/lib-sieve/plugins/environment/ext-environment-common.h
++++ b/src/lib-sieve/plugins/environment/ext-environment-common.h
+@@ -38,6 +38,7 @@ extern const struct sieve_environment_item location_env_item;
+ extern const struct sieve_environment_item phase_env_item;
+ extern const struct sieve_environment_item name_env_item;
+ extern const struct sieve_environment_item version_env_item;
++extern const struct sieve_environment_item defaultfolder_env_item;
+ 
+ /*
+  * Initialization

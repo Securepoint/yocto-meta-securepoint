@@ -1,0 +1,33 @@
+
+DEPENDS += " postgresql"
+
+QT_WEBKIT = "-webkit"
+QT_QT3SUPPORT = "-no-qt3support"
+QT_XML = "-no-xmlpatterns"
+QT_DBUS = "-no-qdbus"
+QT_PHONON = "-no-phonon"
+QT_SQL_DRIVER_FLAGS = "-no-sql-ibase \
+-no-sql-mysql \
+-sql-psql \
+-qt-sql-psql \
+-no-sql-odbc \
+-plugin-sql-sqlite \
+-system-sqlite \
+-qt-sql-sqlite \
+"
+QT_DISTRO_FLAGS = "-no-multimedia \
+-no-audio-backend \
+-no-mouse-qvfb \
+-no-mouse-tslib \
+-no-accessibility \
+-no-cups  \
+-no-xmlpatterns  \
+-nomake demos \
+-nomake examples \
+-nomake tools \
+"
+
+
+#do_install() {
+#	oe_runmake PREFIX=/usr DESTDIR=${D} install
+#}

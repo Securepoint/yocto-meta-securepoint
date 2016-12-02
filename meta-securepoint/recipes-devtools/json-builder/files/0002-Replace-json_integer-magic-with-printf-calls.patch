@@ -1,0 +1,92 @@
+From 305b9c5be668371b76cdf4cca6d8b0cf416762a9 Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Fri, 20 Nov 2015 09:51:58 +0100
+Subject: [PATCH 2/2] Replace json_integer magic with printf calls
+
+This fixes printing negative integers on 64bit machines.
+---
+ json-builder.c | 47 ++---------------------------------------------
+ 1 file changed, 2 insertions(+), 45 deletions(-)
+
+diff --git a/json-builder.c b/json-builder.c
+index ad2603f..9b8d861 100644
+--- a/json-builder.c
++++ b/json-builder.c
+@@ -553,7 +553,6 @@ size_t json_measure_ex (json_value * value, json_serialize_opts opts)
+ 
+    while (value)
+    {
+-      json_int_t integer;
+       json_object_entry * entry;
+ 
+       switch (value->type)
+@@ -643,22 +642,7 @@ size_t json_measure_ex (json_value * value, json_serialize_opts opts)
+ 
+          case json_integer:
+ 
+-            integer = value->u.integer;
+-
+-            if (integer < 0)
+-            {
+-               total += 1;  /* `-` */
+-               integer = - integer;
+-            }
+-
+-            ++ total;  /* first digit */
+-
+-            while (integer >= 10)
+-            {
+-               ++ total;  /* another digit */
+-               integer /= 10;
+-            }
+-
++            total += snprintf (NULL, 0, "%" PRIi64, value->u.integer);
+             break;
+ 
+          case json_double:
+@@ -728,7 +712,6 @@ void json_serialize (json_char * buf, json_value * value)
+ 
+ void json_serialize_ex (json_char * buf, json_value * value, json_serialize_opts opts)
+ {
+-   json_int_t integer, orig_integer;
+    json_object_entry * entry;
+    json_char * ptr, * dot;
+    int indent = 0;
+@@ -846,33 +829,7 @@ void json_serialize_ex (json_char * buf, json_value * value, json_serialize_opts
+ 
+          case json_integer:
+ 
+-            integer = value->u.integer;
+-
+-            if (integer < 0)
+-            {
+-               *buf ++ = '-';
+-               integer = - integer;
+-            }
+-
+-            orig_integer = integer;
+-
+-            ++ buf;
+-
+-            while (integer >= 10)
+-            {
+-               ++ buf;
+-               integer /= 10;
+-            }
+-
+-            integer = orig_integer;
+-            ptr = buf;
+-
+-            do
+-            {
+-               *-- ptr = "0123456789"[integer % 10];
+-
+-            } while ((integer /= 10) > 0);
+-
++            buf += sprintf (buf, "%" PRIi64, value->u.integer);
+             break;
+ 
+          case json_double:
+-- 
+2.4.3
+

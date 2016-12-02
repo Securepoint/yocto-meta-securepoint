@@ -1,0 +1,12 @@
+diff -up clamav-0.99.2/libclamav/c++/configure.ac.subdir-objets clamav-0.99.2/libclamav/c++/configure.ac
+--- clamav-0.99.2/libclamav/c++/configure.ac.subdir-objets	2016-08-04 11:00:43.731020729 +0200
++++ clamav-0.99.2/libclamav/c++/configure.ac	2016-08-04 11:01:34.613431738 +0200
+@@ -19,7 +19,7 @@ AC_CONFIG_AUX_DIR([config])
+ AC_CONFIG_MACRO_DIR([m4])
+ AC_CONFIG_HEADER([clamavcxx-config.h])
+ AC_CANONICAL_TARGET
+-AM_INIT_AUTOMAKE([1.9 -Wall -Wportability foreign no-define color-tests tar-pax])
++AM_INIT_AUTOMAKE([1.9 -Wall -Wportability foreign no-define color-tests tar-pax subdir-objects])
+ AM_SILENT_RULES([yes])
+ 
+ cxxset=${CXXFLAGS+set}

@@ -1,0 +1,19 @@
+diff -up libharu-RELEASE_2_3_0/CMakeLists.txt.install libharu-RELEASE_2_3_0/CMakeLists.txt
+--- libharu-RELEASE_2_3_0/CMakeLists.txt.install	2013-10-30 14:11:59.000000000 +0100
++++ libharu-RELEASE_2_3_0/CMakeLists.txt	2013-11-14 11:12:54.718298755 +0100
+@@ -207,12 +207,12 @@ set(
+ )
+ 
+ # install header files
+-install(FILES ${haru_HDRS} DESTINATION include)
++install(FILES ${haru_HDRS} DESTINATION include/hpdf)
+ 
+ # install various files
+-install(FILES README CHANGES INSTALL DESTINATION .)
++install(FILES README CHANGES INSTALL DESTINATION share/doc/libharu-${LIBHPDF_VERSION})
+ if(NOT DEVPAK)
+-  install(DIRECTORY if DESTINATION .)
++  install(DIRECTORY if DESTINATION share/doc/libharu-${LIBHPDF_VERSION})
+ endif(NOT DEVPAK)
+ if(DEVPAK)
+   install(FILES ${CMAKE_BINARY_DIR}/libharu.DevPackage DESTINATION .)

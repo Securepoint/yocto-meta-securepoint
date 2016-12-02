@@ -1,0 +1,71 @@
+diff -up kernel-source/tools/hv/hv_kvp_daemon.c.orig kernel-source/tools/hv/hv_kvp_daemon.c
+--- kernel-source/tools/hv/hv_kvp_daemon.c.orig	2016-05-30 11:09:39.541893707 +0200
++++ kernel-source/tools/hv/hv_kvp_daemon.c	2016-05-30 12:30:00.280640628 +0200
+@@ -1367,7 +1367,7 @@ setval_error:
+ }
+ 
+ 
+-static void
++static int
+ kvp_get_domain_name(char *buffer, int length)
+ {
+ 	struct addrinfo	hints, *info ;
+@@ -1379,14 +1379,20 @@ kvp_get_domain_name(char *buffer, int le
+ 	hints.ai_socktype = SOCK_STREAM;
+ 	hints.ai_flags = AI_CANONNAME;
+ 
+-	error = getaddrinfo(buffer, NULL, &hints, &info);
+-	if (error != 0) {
+-		snprintf(buffer, length, "getaddrinfo failed: 0x%x %s",
+-			error, gai_strerror(error));
+-		return;
++	if (0 != (error = getaddrinfo(buffer, NULL, &hints, &info))) {
++		if (EAI_SYSTEM == error) {
++			snprintf(buffer, length, "getaddrinfo failed: 0x%x %s",
++				error, strerror(errno));
++		} else {
++			snprintf(buffer, length, "getaddrinfo failed: 0x%x %s",
++				error, gai_strerror(error));
++		}
++		syslog(LOG_ERR, "%s", buffer);
++	} else {
++		snprintf(buffer, length, "%s", info->ai_canonname);
++		freeaddrinfo(info);
+ 	}
+-	snprintf(buffer, length, "%s", info->ai_canonname);
+-	freeaddrinfo(info);
++	return error;
+ }
+ 
+ static int
+@@ -1429,7 +1435,7 @@ int main(void)
+ 	char	*p;
+ 	char	*key_value;
+ 	char	*key_name;
+-	int	op;
++	int	op, domainname_ok;
+ 	int	pool;
+ 	char	*if_name;
+ 	struct hv_kvp_ipaddr_value *kvp_ip_val;
+@@ -1453,7 +1459,7 @@ int main(void)
+ 	 * Cache Fully Qualified Domain Name because getaddrinfo takes an
+ 	 * unpredictable amount of time to finish.
+ 	 */
+-	kvp_get_domain_name(full_domain_name, sizeof(full_domain_name));
++	domainname_ok = kvp_get_domain_name(full_domain_name, sizeof(full_domain_name));
+ 
+ 	if (kvp_file_init()) {
+ 		syslog(LOG_ERR, "Failed to initialize the pools");
+@@ -1672,6 +1678,12 @@ int main(void)
+ 
+ 		switch (hv_msg->body.kvp_enum_data.index) {
+ 		case FullyQualifiedDomainName:
++			if (0 == domainname_ok) {
++				/* */
++			} else if (0 != (domainname_ok = kvp_get_domain_name(full_domain_name, sizeof(full_domain_name)))) {
++				hv_msg->error = HV_S_CONT;
++				break;
++			}
+ 			strcpy(key_value, full_domain_name);
+ 			strcpy(key_name, "FullyQualifiedDomainName");
+ 			break;

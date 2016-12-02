@@ -1,0 +1,12 @@
+diff -up clamav-0.99/clamd/session.c.fdpassing clamav-0.99/clamd/session.c
+--- clamav-0.99/clamd/session.c.fdpassing	2016-03-18 23:51:28.264823986 +0100
++++ clamav-0.99/clamd/session.c	2016-03-18 23:51:42.841918514 +0100
+@@ -64,7 +64,7 @@
+ #include "session.h"
+ #include "thrmgr.h"
+ 
+-#ifndef HAVE_FDPASSING
++#ifndef HAVE_FD_PASSING
+ #define FEATURE_FDPASSING 0
+ #else
+ #define FEATURE_FDPASSING 1

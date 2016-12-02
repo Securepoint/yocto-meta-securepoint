@@ -1,0 +1,13 @@
+diff -up siproxd-0.8.1/src/dejitter.c.includes siproxd-0.8.1/src/dejitter.c
+--- siproxd-0.8.1/src/dejitter.c.includes	2011-05-28 17:47:15.000000000 +0200
++++ siproxd-0.8.1/src/dejitter.c	2014-09-05 15:10:12.023382827 +0200
+@@ -21,7 +21,8 @@
+ #include "config.h"
+ 
+ #include <errno.h>
+-
++#include <string.h>
++#include <sys/time.h>
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <netinet/in.h>

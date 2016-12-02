@@ -1,0 +1,68 @@
+------------------------------------------------------------
+revno: 13849
+revision-id: squid3@treenet.co.nz-20150628100416-wgn9mbagafa1qi09
+parent: squid3@treenet.co.nz-20150622035334-0n36es7k9d3i63b4
+author: Paulo Matias <matias@ufscar.br>
+committer: Amos Jeffries <squid3@treenet.co.nz>
+branch nick: 3.5
+timestamp: Sun 2015-06-28 03:04:16 -0700
+message:
+  TLS: Disable client-initiated renegotiation
+  
+  Hardening against CVE-2009-3555 mitigating a DoS attack which
+  might be possible with some builds of the OpenSSL library.
+------------------------------------------------------------
+# Bazaar merge directive format 2 (Bazaar 0.90)
+# revision_id: squid3@treenet.co.nz-20150628100416-wgn9mbagafa1qi09
+# target_branch: http://bzr.squid-cache.org/bzr/squid3/3.5
+# testament_sha1: a7df8160853ccd265e6bc78ffa68d34903953a2e
+# timestamp: 2015-06-28 10:15:43 +0000
+# source_branch: http://bzr.squid-cache.org/bzr/squid3/3.5
+# base_revision_id: squid3@treenet.co.nz-20150622035334-\
+#   0n36es7k9d3i63b4
+# 
+# Begin patch
+=== modified file 'src/ssl/support.cc'
+--- src/ssl/support.cc	2015-06-05 23:41:22 +0000
++++ src/ssl/support.cc	2015-06-28 10:04:16 +0000
+@@ -838,12 +838,28 @@
+     return dh;
+ }
+ 
++#if defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
++static void
++ssl_info_cb(const SSL *ssl, int where, int ret)
++{
++    (void)ret;
++    if ((where & SSL_CB_HANDSHAKE_DONE) != 0) {
++        // disable renegotiation (CVE-2009-3555)
++        ssl->s3->flags |= SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS;
++    }
++}
++#endif
++
+ static bool
+ configureSslContext(SSL_CTX *sslContext, AnyP::PortCfg &port)
+ {
+     int ssl_error;
+     SSL_CTX_set_options(sslContext, port.sslOptions);
+ 
++#if defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
++    SSL_CTX_set_info_callback(sslContext, ssl_info_cb);
++#endif
++
+     if (port.sslContextSessionId)
+         SSL_CTX_set_session_id_context(sslContext, (const unsigned char *)port.sslContextSessionId, strlen(port.sslContextSessionId));
+ 
+@@ -1186,6 +1202,10 @@
+ 
+     SSL_CTX_set_options(sslContext, Ssl::parse_options(options));
+ 
++#if defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
++    SSL_CTX_set_info_callback(sslContext, ssl_info_cb);
++#endif
++
+     if (cipher) {
+         debugs(83, 5, "Using chiper suite " << cipher << ".");
+ 
+

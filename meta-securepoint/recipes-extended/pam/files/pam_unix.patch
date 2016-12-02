@@ -1,0 +1,11 @@
+diff -up Linux-PAM-1.1.6/modules/pam_unix/pam_unix_passwd.c~ Linux-PAM-1.1.6/modules/pam_unix/pam_unix_passwd.c
+--- Linux-PAM-1.1.6/modules/pam_unix/pam_unix_passwd.c~	2012-08-15 13:08:43.000000000 +0200
++++ Linux-PAM-1.1.6/modules/pam_unix/pam_unix_passwd.c	2015-08-05 13:22:18.852095636 +0200
+@@ -54,6 +54,7 @@
+ #include <ctype.h>
+ #include <sys/time.h>
+ #include <sys/stat.h>
++#include <sys/resource.h>
+ 
+ #include <signal.h>
+ #include <errno.h>

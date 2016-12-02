@@ -1,0 +1,12 @@
+#!/bin/sh
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+HWRAND="/sys/class/misc/hw_random/rng_available"
+exec 2>&1
+
+if [ -r $HWRAND ] &&
+   [ "x$(cat $HWRAND)" != "x" ]
+then
+  ARGS="--entropy_file=/dev/hwrng --additional_source=HAVEGE"
+fi
+exec csprngd --foreground --write_statistics=0 ${ARGS}
+

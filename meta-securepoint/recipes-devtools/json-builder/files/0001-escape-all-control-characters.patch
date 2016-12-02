@@ -1,0 +1,56 @@
+From 3e4eedb264fcc87bf4e64e6165ab4be65ab4e0fe Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Thu, 5 Nov 2015 10:33:10 +0100
+Subject: [PATCH] escape all control characters
+
+---
+ json-builder.c | 24 ++++++++++++------------
+ 1 file changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/json-builder.c b/json-builder.c
+index 949977a..ad2603f 100644
+--- a/json-builder.c
++++ b/json-builder.c
+@@ -467,13 +467,12 @@ static size_t measure_string (unsigned int length,
+ 
+       switch (c)
+       {
++      case 0 ... 0x1f:
++         measured_length += 6;
++         break;
++
+       case '"':
+       case '\\':
+-      case '\b':
+-      case '\f':
+-      case '\n':
+-      case '\r':
+-      case '\t':
+ 
+          measured_length += 2;
+          break;
+@@ -506,13 +505,14 @@ static size_t serialize_string (json_char * buf,
+ 
+       switch (c)
+       {
+-      case '"':   PRINT_ESCAPED ('\"');  continue;
+-      case '\\':  PRINT_ESCAPED ('\\');  continue;
+-      case '\b':  PRINT_ESCAPED ('b');   continue;
+-      case '\f':  PRINT_ESCAPED ('f');   continue;
+-      case '\n':  PRINT_ESCAPED ('n');   continue;
+-      case '\r':  PRINT_ESCAPED ('r');   continue;
+-      case '\t':  PRINT_ESCAPED ('t');   continue;
++      case 0 ... 0x1f:
++         buf += sprintf(buf, "\\u%04x", c);
++         continue;
++
++      case '"':
++      case '\\':
++         PRINT_ESCAPED (c);
++         continue;
+ 
+       default:
+ 
+-- 
+2.4.3
+

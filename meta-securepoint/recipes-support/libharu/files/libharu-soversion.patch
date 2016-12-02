@@ -1,0 +1,24 @@
+diff -up libharu-RELEASE_2_3_0/CMakeLists.txt.soversion libharu-RELEASE_2_3_0/CMakeLists.txt
+--- libharu-RELEASE_2_3_0/CMakeLists.txt.soversion	2013-11-14 11:31:06.629394652 +0100
++++ libharu-RELEASE_2_3_0/CMakeLists.txt	2013-11-14 11:31:24.340558282 +0100
+@@ -25,7 +25,7 @@ endif(MSVC)
+ 
+ # information about libharu
+ set(LIBHPDF_MAJOR 2)
+-set(LIBHPDF_MINOR 2)
++set(LIBHPDF_MINOR 3)
+ set(LIBHPDF_PATCH 0)
+ set(LIBHPDF_VERSION ${LIBHPDF_MAJOR}.${LIBHPDF_MINOR}.${LIBHPDF_PATCH})
+ set(LIBHPDF_DESCRIPTION "libHaru is a free, cross platform, open source library for generating PDF files.")
+diff -up libharu-RELEASE_2_3_0/src/CMakeLists.txt.soversion libharu-RELEASE_2_3_0/src/CMakeLists.txt
+--- libharu-RELEASE_2_3_0/src/CMakeLists.txt.soversion	2013-11-14 11:28:44.900085605 +0100
++++ libharu-RELEASE_2_3_0/src/CMakeLists.txt	2013-11-14 11:33:59.151989023 +0100
+@@ -91,6 +91,8 @@ if(LIBHPDF_SHARED)
+   if(WIN32 AND NOT CYGWIN)
+   	set_target_properties(${LIBHPDF_NAME} PROPERTIES DEFINE_SYMBOL HPDF_DLL_MAKE)
+   endif(WIN32 AND NOT CYGWIN)
++  set_target_properties(${LIBHPDF_NAME} PROPERTIES SOVERSION ${LIBHPDF_MAJOR}
++    VERSION ${LIBHPDF_MAJOR}.${LIBHPDF_MINOR}.${LIBHPDF_PATCH})
+   install(
+     TARGETS ${LIBHPDF_NAME}
+     ARCHIVE DESTINATION lib

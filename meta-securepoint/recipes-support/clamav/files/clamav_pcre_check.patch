@@ -1,0 +1,16 @@
+diff -up clamav-0.99/configure.ac.pcre_check clamav-0.99/configure.ac
+--- clamav-0.99/configure.ac.pcre_check	2015-12-03 03:49:44.075421123 +0100
++++ clamav-0.99/configure.ac	2015-12-03 03:55:55.148184422 +0100
+@@ -239,10 +239,10 @@ CL_MSG_STATUS([unrar       ],[$want_unra
+ if test "x$LIBJSON_HOME" != "x"; then
+     CL_MSG_STATUS([libjson     ],[$LIBJSON_HOME],[$have_json])
+ fi
+-if test "x$PCRE_HOME" = "x"; then
++if test "x$PCRE_LIBS" = "x"; then
+     CL_MSG_STATUS([pcre        ],[no],[$have_pcre])
+ else
+-    CL_MSG_STATUS([pcre        ],[$PCRE_HOME],[$have_pcre])
++    CL_MSG_STATUS([pcre        ],[$have_pcre],[$have_pcre])
+ fi
+ if test "x$XML_LIBS" = "x"; then 
+     CL_MSG_STATUS([libxml2     ],[no],[])

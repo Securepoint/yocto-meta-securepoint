@@ -1,0 +1,34 @@
+diff -up kernel-source/drivers/net/ethernet/intel/e1000e/82571.c.quad_copper kernel-source/drivers/net/ethernet/intel/e1000e/82571.c
+--- kernel-source/drivers/net/ethernet/intel/e1000e/82571.c.quad_copper	2016-08-12 15:05:07.216536585 +0200
++++ kernel-source/drivers/net/ethernet/intel/e1000e/82571.c	2016-08-12 15:05:41.503793473 +0200
+@@ -353,6 +353,7 @@ static s32 e1000_get_variants_82571(stru
+ 	case E1000_DEV_ID_82571EB_QUAD_COPPER:
+ 	case E1000_DEV_ID_82571EB_QUAD_FIBER:
+ 	case E1000_DEV_ID_82571EB_QUAD_COPPER_LP:
++        case E1000_DEV_ID_82571EB_QUAD_COPPER_AT:
+ 	case E1000_DEV_ID_82571PT_QUAD_COPPER:
+ 		adapter->flags |= FLAG_IS_QUAD_PORT;
+ 		/* mark the first port */
+diff -up kernel-source/drivers/net/ethernet/intel/e1000e/hw.h.quad_copper kernel-source/drivers/net/ethernet/intel/e1000e/hw.h
+--- kernel-source/drivers/net/ethernet/intel/e1000e/hw.h.quad_copper	2016-08-12 15:03:56.676008753 +0200
++++ kernel-source/drivers/net/ethernet/intel/e1000e/hw.h	2016-08-12 15:04:23.479209202 +0200
+@@ -34,6 +34,7 @@ struct e1000_hw;
+ #define E1000_DEV_ID_82571PT_QUAD_COPPER	0x10D5
+ #define E1000_DEV_ID_82571EB_QUAD_FIBER		0x10A5
+ #define E1000_DEV_ID_82571EB_QUAD_COPPER_LP	0x10BC
++#define E1000_DEV_ID_82571EB_QUAD_COPPER_AT     0x10A0
+ #define E1000_DEV_ID_82571EB_SERDES_DUAL	0x10D9
+ #define E1000_DEV_ID_82571EB_SERDES_QUAD	0x10DA
+ #define E1000_DEV_ID_82572EI_COPPER		0x107D
+diff -up kernel-source/drivers/net/ethernet/intel/e1000e/netdev.c.quad_copper kernel-source/drivers/net/ethernet/intel/e1000e/netdev.c
+--- kernel-source/drivers/net/ethernet/intel/e1000e/netdev.c.quad_copper	2016-08-12 15:06:18.166068399 +0200
++++ kernel-source/drivers/net/ethernet/intel/e1000e/netdev.c	2016-08-12 15:07:45.967727785 +0200
+@@ -7390,6 +7390,8 @@ static const struct pci_device_id e1000_
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82571EB_QUAD_COPPER), board_82571 },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82571EB_QUAD_COPPER_LP),
+ 	  board_82571 },
++        { PCI_VDEVICE(INTEL, E1000_DEV_ID_82571EB_QUAD_COPPER_AT),
++          board_82571 },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82571EB_QUAD_FIBER), board_82571 },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82571EB_SERDES), board_82571 },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_82571EB_SERDES_DUAL), board_82571 },

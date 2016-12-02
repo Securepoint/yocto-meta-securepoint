@@ -1,0 +1,53 @@
+diff --git a/ntpd.c b/ntpd.c
+index 66b236e..7737261 100644
+--- a/ntpd.c
++++ b/ntpd.c
+@@ -73,7 +73,7 @@ usage(void)
+ {
+ 	extern char *__progname;
+ 
+-	fprintf(stderr, "usage: %s [-dSs] [-f file]\n", __progname);
++	fprintf(stderr, "usage: %s [-dSsq] [-f file]\n", __progname);
+ 	exit(1);
+ }
+ 
+@@ -100,7 +100,7 @@ main(int argc, char *argv[])
+ 	log_init(1);		/* log to stderr until daemonized */
+ 	res_init();		/* XXX */
+ 
+-	while ((ch = getopt(argc, argv, "df:sS")) != -1) {
++	while ((ch = getopt(argc, argv, "df:sSq")) != -1) {
+ 		switch (ch) {
+ 		case 'd':
+ 			conf.debug = 1;
+@@ -111,6 +111,9 @@ main(int argc, char *argv[])
+ 		case 's':
+ 			conf.settime = 1;
+ 			break;
++		case 'q':
++			conf.setandquit = 1;
++			break;
+ 		case 'S':
+ 			conf.settime = 0;
+ 			break;
+@@ -291,6 +294,8 @@ dispatch_imsg(struct ntpd_conf *conf)
+ 			log_init(conf->debug);
+ 			memcpy(&d, imsg.data, sizeof(d));
+ 			ntpd_settime(d);
++			if (conf->setandquit)
++                fatalx("time set. will quit as requested.");
+ 			/* daemonize now */
+ 			if (!conf->debug)
+ 				if (daemon(1, 0))
+diff --git a/ntpd.h b/ntpd.h
+index e501ce0..c9ad419 100644
+--- a/ntpd.h
++++ b/ntpd.h
+@@ -130,6 +130,7 @@ struct ntpd_conf {
+ 	struct ntp_status			status;
+ 	u_int8_t				listen_all;
+ 	u_int8_t				settime;
++	u_int8_t				setandquit;
+ 	u_int8_t				debug;
+ 	u_int32_t				scale;
+ };

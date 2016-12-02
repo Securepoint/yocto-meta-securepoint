@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/spawn-fcgi -f /usr/sbin/fcgiwrap -s /tmp/spcgi.sock -P /tmp/spcgi.pid -u nobody -g nobody -n

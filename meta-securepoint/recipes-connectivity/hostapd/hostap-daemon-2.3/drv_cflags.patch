@@ -1,0 +1,24 @@
+diff -up hostapd-2.3/src/drivers/drivers.mak.make hostapd-2.3/src/drivers/drivers.mak
+--- hostapd-2.3/src/drivers/drivers.mak.make	2014-12-23 15:51:57.821579052 +0100
++++ hostapd-2.3/src/drivers/drivers.mak	2014-12-23 15:52:10.413691261 +0100
+@@ -35,7 +35,7 @@ NEED_RFKILL=y
+ ifdef CONFIG_LIBNL32
+   DRV_LIBS += -lnl-3
+   DRV_LIBS += -lnl-genl-3
+-  DRV_CFLAGS += -DCONFIG_LIBNL20 -I/usr/include/libnl3
++  DRV_CFLAGS += -DCONFIG_LIBNL20
+ ifdef CONFIG_LIBNL3_ROUTE
+   DRV_LIBS += -lnl-route-3
+   DRV_CFLAGS += -DCONFIG_LIBNL3_ROUTE
+diff -up hostapd-2.3/src/drivers/drivers.mk.make hostapd-2.3/src/drivers/drivers.mk
+--- hostapd-2.3/src/drivers/drivers.mk.make	2014-12-23 15:51:12.932179042 +0100
++++ hostapd-2.3/src/drivers/drivers.mk	2014-12-23 15:51:28.857320951 +0100
+@@ -30,7 +30,7 @@ NEED_RFKILL=y
+ ifdef CONFIG_LIBNL32
+   DRV_LIBS += -lnl-3
+   DRV_LIBS += -lnl-genl-3
+-  DRV_CFLAGS += -DCONFIG_LIBNL20 -I/usr/include/libnl3
++  DRV_CFLAGS += -DCONFIG_LIBNL20
+ ifdef CONFIG_LIBNL3_ROUTE
+   DRV_LIBS += -lnl-route-3
+   DRV_CFLAGS += -DCONFIG_LIBNL3_ROUTE

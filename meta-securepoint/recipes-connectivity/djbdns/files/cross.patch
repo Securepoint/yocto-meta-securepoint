@@ -1,0 +1,22 @@
+--- djbdns-1.05/Makefile	2013-12-09 11:36:43.041576234 +0100
++++ djbdns-1.05/Makefile.orig	2013-12-09 11:22:59.618873993 +0100
+@@ -31,7 +31,7 @@
+ 
+ auto_home.c: \
+ auto-str conf-home
+-	./auto-str auto_home `head -1 conf-home` > auto_home.c
++	#./auto-str auto_home `head -1 conf-home` > auto_home.c
+ 
+ auto_home.o: \
+ compile auto_home.c
+@@ -511,8 +511,8 @@
+ hasshsgr.h: \
+ choose compile load tryshsgr.c hasshsgr.h1 hasshsgr.h2 chkshsgr \
+ warn-shsgr
+-	./chkshsgr || ( cat warn-shsgr; exit 1 )
+-	./choose clr tryshsgr hasshsgr.h1 hasshsgr.h2 > hasshsgr.h
++	#./chkshsgr || ( cat warn-shsgr; exit 1 )
++	cat hasshsgr.h2 > hasshsgr.h
+ 
+ hier.o: \
+ compile hier.c auto_home.h

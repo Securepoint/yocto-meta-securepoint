@@ -1,0 +1,22 @@
+diff --git a/modules/afsql/afsql.c b/modules/afsql/afsql.c
+index dcdbab7..653561f 100644
+--- a/modules/afsql/afsql.c
++++ b/modules/afsql/afsql.c
+@@ -922,6 +922,7 @@ afsql_dd_insert_db(AFSqlDestDriver *self)
+   GString *insert_command = NULL;
+   LogMessage *msg;
+   gboolean success = TRUE;
++  gboolean silence = FALSE;
+   LogPathOptions path_options = LOG_PATH_OPTIONS_INIT;
+ 
+   if (!afsql_dd_ensure_initialized_connection(self))
+@@ -949,7 +950,8 @@ afsql_dd_insert_db(AFSqlDestDriver *self)
+     }
+ 
+   insert_command = afsql_dd_build_insert_command(self, msg, table);
+-  success = afsql_dd_run_query(self, insert_command->str, FALSE, NULL);
++  silence = self->failed_message_counter < self->num_retries ? TRUE : FALSE;
++  success = afsql_dd_run_query(self, insert_command->str, silence, NULL);
+ 
+   if (success && self->flush_lines_queued != -1)
+     {

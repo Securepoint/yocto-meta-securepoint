@@ -1,0 +1,28 @@
+--- ./src/lda/main.c.orig	2014-10-14 12:40:06.988265624 +0200
++++ ./src/lda/main.c	2014-10-14 15:32:11.414226530 +0200
+@@ -26,6 +26,7 @@
+ #include "mail-send.h"
+ #include "mbox-from.h"
+ #include "lda-settings.h"
++#include "imap-utf7.h"
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -343,6 +344,16 @@ int main(int argc, char *argv[])
+ 			   Ignore -m "". This allows doing -m ${extension}
+ 			   in Postfix to handle user+mailbox */
+ 			if (*optarg != '\0') T_BEGIN {
++				string_t *boxnametmp = NULL;
++				if (strstr(optarg, "&")){
++				  boxnametmp = t_str_new(128);
++				  if (!imap_utf7_to_utf8(optarg, boxnametmp)){
++			          	//i_debug(" utf7decoded %s to %s ", optarg, str_c(boxnametmp));
++				  	optarg = strdup(str_c(boxnametmp));
++				  }
++				  str_free(&boxnametmp);
++				}
++
+ 				if (!uni_utf8_str_is_valid(optarg)) {
+ 					i_fatal("Mailbox name not UTF-8: %s",
+ 						optarg);
+

@@ -1,0 +1,23 @@
+#!/bin/sh
+
+if grep -q hv_vmbus /proc/modules
+then
+  for each in kvp vss
+  do
+    if [[ -f /usr/bin/hv_${each}_daemon ]]
+    then
+      mkdir -p /etc/sv/hv-${each}-daemon
+      echo -en "#!/bin/sh\nexec /usr/bin/hv_${each}_daemon -n\n" > /etc/sv/hv-${each}-daemon/run
+      chmod 0555 /etc/sv/hv-${each}-daemon/run
+      ln -sf /etc/sv/hv-${each}-daemon /var/service
+    fi
+  done
+  if [[ -f /usr/bin/hv_fcopy_daemon ]]
+  then
+      mkdir -p /etc/sv/hv-fcopy-daemon
+      echo -en "#!/bin/sh\nif [ -e /dev/vmbus/hv_fcopy ];then\n exec /usr/bin/hv_fcopy_daemon\n\
+else\n touch down\n sv stop hv_fcopy_daemon\nfi" > /etc/sv/hv-fcopy-daemon/run
+      chmod 0555 /etc/sv/hv-fcopy-daemon/run
+      ln -sf /etc/sv/hv-fcopy-daemon /var/service
+  fi
+fi

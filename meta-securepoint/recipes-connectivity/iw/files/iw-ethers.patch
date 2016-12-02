@@ -1,0 +1,30 @@
+diff --git a/station.c b/station.c
+index 2b2eef8..9f73075 100644
+--- a/station.c
++++ b/station.c
+@@ -8,6 +8,8 @@
+ #include <netlink/msg.h>
+ #include <netlink/attr.h>
+ 
++#include <netinet/ether.h>
++
+ #include "nl80211.h"
+ #include "iw.h"
+ 
+@@ -124,6 +126,7 @@ static int print_sta_handler(struct nl_msg *msg, void *arg)
+ 	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
+ 	struct nlattr *sinfo[NL80211_STA_INFO_MAX + 1];
+ 	char mac_addr[20], state_name[10], dev[20];
++	char hostname[255];
+ 	struct nl80211_sta_flag_update *sta_flags;
+ 	static struct nla_policy stats_policy[NL80211_STA_INFO_MAX + 1] = {
+ 		[NL80211_STA_INFO_INACTIVE_TIME] = { .type = NLA_U32 },
+@@ -174,6 +177,8 @@ static int print_sta_handler(struct nl_msg *msg, void *arg)
+ 	if_indextoname(nla_get_u32(tb[NL80211_ATTR_IFINDEX]), dev);
+ 	printf("Station %s (on %s)", mac_addr, dev);
+ 
++	if (0 == ether_ntohost(hostname, nla_data(tb[NL80211_ATTR_MAC])))
++		printf("\n\thostname:\t%s", hostname);
+ 	if (sinfo[NL80211_STA_INFO_INACTIVE_TIME])
+ 		printf("\n\tinactive time:\t%u ms",
+ 			nla_get_u32(sinfo[NL80211_STA_INFO_INACTIVE_TIME]));

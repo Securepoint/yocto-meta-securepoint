@@ -1,0 +1,20 @@
+diff -up squid-3.5.15/configure.ac.cross squid-3.5.15/configure.ac
+--- squid-3.5.15/configure.ac.cross	2016-03-14 21:06:01.787753654 +0100
++++ squid-3.5.15/configure.ac	2016-03-14 21:10:25.526054421 +0100
+@@ -1360,11 +1360,11 @@ if test "x$with_openssl" = "xyes"; then
+     SSLLIB="$LIBOPENSSL_PATH $LIBOPENSSL_LIBS $SSLLIB"
+     AC_DEFINE(USE_OPENSSL,1,[OpenSSL support is available])
+ 
+-    # check for other specific broken implementations
+-    SQUID_CHECK_OPENSSL_GETCERTIFICATE_WORKS
+-    SQUID_CHECK_OPENSSL_CONST_SSL_METHOD
+-    SQUID_CHECK_OPENSSL_TXTDB
+-    SQUID_CHECK_OPENSSL_HELLO_OVERWRITE_HACK
++dnl    # check for other specific broken implementations
++dnl    SQUID_CHECK_OPENSSL_GETCERTIFICATE_WORKS
++dnl    SQUID_CHECK_OPENSSL_CONST_SSL_METHOD
++dnl    SQUID_CHECK_OPENSSL_TXTDB
++dnl    SQUID_CHECK_OPENSSL_HELLO_OVERWRITE_HACK
+   fi
+   if test "x$SSLLIB" = "x"; then
+     AC_MSG_ERROR([Required OpenSSL library not found])

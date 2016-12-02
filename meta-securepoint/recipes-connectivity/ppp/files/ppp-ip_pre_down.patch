@@ -1,0 +1,25 @@
+diff -up ppp-2.4.4/pppd/ipcp.c.ip_pre_down ppp-2.4.4/pppd/ipcp.c
+--- ppp-2.4.4/pppd/ipcp.c.ip_pre_down	2009-08-24 16:58:29.000000000 +0200
++++ ppp-2.4.4/pppd/ipcp.c	2009-08-24 17:25:07.000000000 +0200
+@@ -1870,6 +1870,10 @@ ipcp_down(f)
+      * before the interface is marked down. */
+     /* XXX more correct: we must get the stats before running the notifiers,
+      * at least for the radius plugin */
++
++    /* call IPPREDOWN before removing the interface */
++    ipcp_script(_PATH_IPPREDOWN, 1);
++    
+     update_link_stats(f->unit);
+     notify(ip_down_notifier, 0);
+     if (ip_down_hook)
+diff -up ppp-2.4.4/pppd/pathnames.h.ip_pre_down ppp-2.4.4/pppd/pathnames.h
+--- ppp-2.4.4/pppd/pathnames.h.ip_pre_down	2009-08-24 17:27:19.000000000 +0200
++++ ppp-2.4.4/pppd/pathnames.h	2009-08-24 17:28:01.000000000 +0200
+@@ -25,6 +25,7 @@
+ #define _PATH_IPUP	 _ROOT_PATH "/etc/ppp/ip-up"
+ #define _PATH_IPDOWN	 _ROOT_PATH "/etc/ppp/ip-down"
+ #define _PATH_IPPREUP	 _ROOT_PATH "/etc/ppp/ip-pre-up"
++#define _PATH_IPPREDOWN	 _ROOT_PATH "/etc/ppp/ip-pre-down"
+ #define _PATH_AUTHUP	 _ROOT_PATH "/etc/ppp/auth-up"
+ #define _PATH_AUTHDOWN	 _ROOT_PATH "/etc/ppp/auth-down"
+ #define _PATH_TTYOPT	 _ROOT_PATH "/etc/ppp/options."

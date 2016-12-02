@@ -1,0 +1,4 @@
+#!/bin/sh
+# make sure dbus service is up and running
+svwaitup -s 3 /var/service/dbus || exit 1
+exec /usr/sbin/ModemManager --log-file=/dev/null

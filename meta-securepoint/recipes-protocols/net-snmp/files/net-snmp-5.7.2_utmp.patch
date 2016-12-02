@@ -1,0 +1,49 @@
+diff -up net-snmp-5.7.2/agent/mibgroup/host/hr_system.c.utmp net-snmp-5.7.2/agent/mibgroup/host/hr_system.c
+--- net-snmp-5.7.2/agent/mibgroup/host/hr_system.c.utmp	2014-02-14 12:52:08.992263659 +0100
++++ net-snmp-5.7.2/agent/mibgroup/host/hr_system.c	2014-02-14 12:53:25.422836892 +0100
+@@ -35,11 +35,7 @@
+ #include "sys/proc.h"
+ #endif
+ #ifndef mingw32
+-#if HAVE_UTMPX_H
+-#include <utmpx.h>
+-#else
+ #include <utmp.h>
+-#endif
+ #endif /* mingw32 */
+ #include <signal.h>
+ #include <errno.h>
+@@ -84,7 +80,7 @@ netsnmp_feature_require(date_n_time)
+ #define UTMP_FILE _PATH_UTMP
+ #endif
+ 
+-#if defined(UTMP_FILE) && !HAVE_UTMPX_H
++#if defined(UTMP_FILE)
+ void            setutent(void);
+ void            endutent(void);
+ struct utmp    *getutent(void);
+@@ -648,15 +644,7 @@ count_users(void)
+ {
+     int             total = 0;
+ #ifndef WIN32
+-#if HAVE_UTMPX_H
+-#define setutent setutxent
+-#define pututline pututxline
+-#define getutent getutxent
+-#define endutent endutxent
+-    struct utmpx   *utmp_p;
+-#else
+     struct utmp    *utmp_p;
+-#endif
+ 
+     setutent();
+     while ((utmp_p = getutent()) != NULL) {
+@@ -695,7 +683,7 @@ count_users(void)
+     return total;
+ }
+ 
+-#if defined(UTMP_FILE) && !HAVE_UTMPX_H
++#if defined(UTMP_FILE)
+ 
+ static FILE    *utmp_file;
+ static struct utmp utmp_rec;

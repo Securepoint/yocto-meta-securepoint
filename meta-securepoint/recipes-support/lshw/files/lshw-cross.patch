@@ -1,0 +1,33 @@
+diff -up lshw-B.02.17/src/Makefile.cross lshw-B.02.17/src/Makefile
+--- lshw-B.02.17/src/Makefile.cross	2014-03-05 16:07:16.100421938 +0100
++++ lshw-B.02.17/src/Makefile	2014-03-05 16:09:48.573932292 +0100
+@@ -25,9 +25,9 @@ CXXFLAGS=-g -Wall -g $(INCLUDES) $(DEFIN
+ ifeq ($(SQLITE), 1)
+ 	CXXFLAGS+= -DSQLITE $(shell pkg-config --cflags sqlite3)
+ endif
+-LDFLAGS=-L./core/ -g
++LOCAL_LDFLAGS=-L./core/ -g
+ ifneq ($(shell $(LD) --help 2| grep -- --as-needed), )
+-	LDFLAGS+= -Wl,--as-needed
++	LOCAL_LDFLAGS+= -Wl,--as-needed
+ endif
+ LDSTATIC=-static
+ LIBS=-llshw -lresolv
+@@ -51,7 +51,7 @@ core:
+ 	+make -C core all
+ 
+ $(PACKAGENAME): core $(PACKAGENAME).o
+-	$(CXX) $(LDFLAGS) -o $@ $(PACKAGENAME).o $(LIBS)
++	$(CXX) $(LOCAL_LDFLAGS) -o $@ $(PACKAGENAME).o $(LIBS)
+ 
+ .PHONY: po
+ po:
+@@ -69,7 +69,7 @@ nologo:
+ static: $(PACKAGENAME)-static
+ 
+ $(PACKAGENAME)-static: core core/lib$(PACKAGENAME).a $(PACKAGENAME).o
+-	$(CXX) $(LDSTATIC) $(LDFLAGS) -o $@ $(PACKAGENAME).o $(LIBS)
++	$(CXX) $(LDSTATIC) $(LOCAL_LDFLAGS) -o $@ $(PACKAGENAME).o $(LIBS)
+ 	$(STRIP) $@
+ 
+ .PHONY: compressed

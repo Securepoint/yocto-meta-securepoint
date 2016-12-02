@@ -1,0 +1,28 @@
+diff -up clamav-0.99.2/configure.ac~ clamav-0.99.2/configure.ac
+--- clamav-0.99.2/configure.ac~	2016-08-04 14:35:42.542654535 +0200
++++ clamav-0.99.2/configure.ac	2016-08-04 14:47:07.213419347 +0200
+@@ -122,7 +122,7 @@ m4_include([m4/reorganization/code_check
+ m4_include([m4/reorganization/code_checks/features.m4])
+ m4_include([m4/reorganization/clamdtop.m4])
+ m4_include([m4/reorganization/distcheck.m4])
+-m4_include([m4/reorganization/llvm.m4])
++dnl m4_include([m4/reorganization/llvm.m4])
+ m4_include([m4/reorganization/sha_collect.m4])
+ m4_include([m4/reorganization/yara.m4])
+ m4_include([m4/reorganization/libfreshclam.m4])
+diff -up clamav-0.99.2/libclamav/c++/configure.ac~ clamav-0.99.2/libclamav/c++/configure.ac
+--- clamav-0.99.2/libclamav/c++/configure.ac~	2016-08-04 14:35:42.766656423 +0200
++++ clamav-0.99.2/libclamav/c++/configure.ac	2016-08-04 14:42:19.376997820 +0200
+@@ -59,9 +59,9 @@ fi
+ 
+ AC_SUBST([LLVM_VERSION], [$llvmver_int])
+ 
+-AC_ARG_ENABLE([llvm],AC_HELP_STRING([-enable-llvm],
+-				    [Enable 'llvm' JIT/verifier support @<:@default=auto@:>@]),
+-				    [enable_llvm=$enableval], [enable_llvm="auto"])
++dnl AC_ARG_ENABLE([llvm],AC_HELP_STRING([-enable-llvm],
++dnl 				    [Enable 'llvm' JIT/verifier support @<:@default=auto@:>@]),
++dnl 				    [enable_llvm=$enableval], [enable_llvm="auto"])
+ 
+ AC_ARG_ENABLE(optimized, AC_HELP_STRING([-enable-optimized],
+ 	      [Compile with optimizations enabled (default is YES)]),

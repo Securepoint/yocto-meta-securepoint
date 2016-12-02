@@ -1,0 +1,8 @@
+#!/bin/sh
+
+PATH=/bin:/usr/bin
+MSG="Hands up! System is going down ... now"
+
+# echo 'disabled.' ; exit
+touch /etc/runit/stopit /etc/runit/reboot
+chmod 100 /etc/runit/stopit /etc/runit/reboot && echo "$MSG" | wall -t 5 2>/dev/null

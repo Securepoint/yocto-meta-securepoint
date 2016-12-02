@@ -1,0 +1,4 @@
+#!/bin/sh
+exec 2>&1
+[ -d /run/ntp ] || mkdir /run/ntp
+exec /usr/sbin/ntpd -s -d

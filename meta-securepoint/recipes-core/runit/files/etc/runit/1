@@ -1,0 +1,20 @@
+#!/bin/sh
+# system one time tasks
+
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+mount -n -t tmpfs tmpfs /mnt
+for x in /etc/runit/1.d/*; do
+	[ -x $x ] && echo "=== executing $x ===" >> /mnt/boot.log && $x start 2>&1 | tee -a /mnt/boot.log
+done
+mv /mnt/boot.log /var/log
+umount /mnt
+
+# write ET mark for btee
+echo -ne '\004'
+
+touch /etc/runit/stopit
+touch /etc/runit/reboot
+chmod 0 /etc/runit/stopit
+chmod 0 /etc/runit/reboot
+

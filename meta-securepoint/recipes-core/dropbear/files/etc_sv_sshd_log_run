@@ -1,0 +1,2 @@
+#!/bin/sh
+exec logger -t "sshd" -p "daemon.info"

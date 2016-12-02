@@ -1,0 +1,1 @@
+[ -d /sys/bus/cpu/devices/cpu1 ] || touch /var/service/irqbalance/down

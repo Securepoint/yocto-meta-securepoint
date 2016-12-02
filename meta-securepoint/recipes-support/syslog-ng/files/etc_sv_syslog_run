@@ -1,0 +1,14 @@
+#!/bin/sh
+DATABASE=/data/syslog/messages.db
+mkdir -p /run/syslog-ng /data/syslog
+
+sqlite3 $DATABASE 'SELECT id FROM messages WHERE -1 = 0' 2>/dev/null
+if [ $? -ne 0 ]; then
+  test -f $DATABASE && mv $DATABASE $DATABASE.bad 2>/dev/null
+  sqlite3 $DATABASE < /etc/syslog-ng/messages.sql
+elif [ "wal" != `sqlite3 $DATABASE 'PRAGMA journal_mode'` ]; then
+  test -f $DATABASE && mv $DATABASE $DATABASE.old 2>/dev/null
+  sqlite3 $DATABASE < /etc/syslog-ng/messages.sql
+fi
+
+exec /usr/sbin/syslog-ng -F

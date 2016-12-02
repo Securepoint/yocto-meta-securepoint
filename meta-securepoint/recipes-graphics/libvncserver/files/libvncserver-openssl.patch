@@ -1,0 +1,112 @@
+diff -up LibVNCServer-0.9.9/libvncserver/rfbssl_openssl.c.openssl LibVNCServer-0.9.9/libvncserver/rfbssl_openssl.c
+--- LibVNCServer-0.9.9/libvncserver/rfbssl_openssl.c.openssl	2014-09-02 13:18:06.628537251 +0200
++++ LibVNCServer-0.9.9/libvncserver/rfbssl_openssl.c	2014-09-02 13:19:19.985189346 +0200
+@@ -26,6 +26,9 @@
+ #include <openssl/err.h>
+ 
+ struct rfbssl_ctx {
++    char peekbuf[2048];
++    int peeklen;
++    int peekstart;
+     SSL_CTX *ssl_ctx;
+     SSL     *ssl;
+ };
+@@ -95,34 +98,87 @@ int rfbssl_write(rfbClientPtr cl, const
+     return ret;
+ }
+ 
+-int rfbssl_peek(rfbClientPtr cl, char *buf, int bufsize)
++static int rfbssl_do_read(rfbClientPtr cl, char *buf, int bufsize)
+ {
+-    int ret;
+     struct rfbssl_ctx *ctx = (struct rfbssl_ctx *)cl->sslctx;
++    int ret, e, count = 0;
+ 
+-    while ((ret = SSL_peek(ctx->ssl, buf, bufsize)) <= 0) {
+-	if (SSL_get_error(ctx->ssl, ret) != SSL_ERROR_WANT_READ)
++    while ((ret = SSL_read(ctx->ssl, buf, bufsize)) <= 0) {
++	e = SSL_get_error(ctx->ssl, ret);
++	if (e != SSL_ERROR_WANT_READ || count == 100) {
+ 	    break;
++	}
++	count++;
+     }
+-    return ret;
++    return ret < 0 ? -1 : ret;
+ }
+ 
+-int rfbssl_read(rfbClientPtr cl, char *buf, int bufsize)
++static void rfbssl_gc_peekbuf(struct rfbssl_ctx *ctx, int bufsize)
+ {
+-    int ret;
++    if (ctx->peekstart) {
++	int spaceleft = sizeof(ctx->peekbuf) - ctx->peeklen - ctx->peekstart;
++	if (spaceleft < bufsize) {
++	    memmove(ctx->peekbuf, ctx->peekbuf + ctx->peekstart, ctx->peeklen);
++	    ctx->peekstart = 0;
++	}
++    }
++}
++
++static int __rfbssl_read(rfbClientPtr cl, char *buf, int bufsize, int peek)
++{
++    int ret = 0, count = 0;
+     struct rfbssl_ctx *ctx = (struct rfbssl_ctx *)cl->sslctx;
+ 
+-    while ((ret = SSL_read(ctx->ssl, buf, bufsize)) <= 0) {
+-	if (SSL_get_error(ctx->ssl, ret) != SSL_ERROR_WANT_READ)
+-	    break;
++    rfbssl_gc_peekbuf(ctx, bufsize);
++    if (ctx->peeklen) {
++	/* If we have any peek data, simply return that. */
++	ret = bufsize < ctx->peeklen ? bufsize : ctx->peeklen;
++	memcpy (buf, ctx->peekbuf + ctx->peekstart, ret);
++	if (!peek) {
++	    ctx->peeklen -= ret;
++	    if (ctx->peeklen != 0)
++		ctx->peekstart += ret;
++	    else
++		ctx->peekstart = 0;
++	}
++    }
++
++    while (ret < bufsize) {
++	int n;
++	/* read the remaining data */
++	if ((n = rfbssl_do_read(cl, buf + ret, bufsize - ret)) <= 0) {
++	    /* rfbErr("rfbssl_%s: %s error\n", __func__, peek ? "peek" : "read"); */
++	    return ret ? ret : n;;
++	}
++	if (peek) {
++	    memcpy(ctx->peekbuf + ctx->peekstart + ctx->peeklen, buf + ret, n);
++	    ctx->peeklen += n;
++	}
++
++	ret += n;
+     }
+     return ret;
+ }
+ 
++int rfbssl_read(rfbClientPtr cl, char *buf, int bufsize)
++{
++    return __rfbssl_read(cl, buf, bufsize, 0);
++}
++
++int rfbssl_peek(rfbClientPtr cl, char *buf, int bufsize)
++{
++    return __rfbssl_read(cl, buf, bufsize, 1);
++}
++
+ int rfbssl_pending(rfbClientPtr cl)
+ {
+     struct rfbssl_ctx *ctx = (struct rfbssl_ctx *)cl->sslctx;
+-    return SSL_pending(ctx->ssl);
++    int ret = ctx->peeklen;
++
++    if (ret <= 0)
++	ret = SSL_pending(ctx->ssl);
++
++    return ret;
+ }
+ 
+ void rfbssl_destroy(rfbClientPtr cl)

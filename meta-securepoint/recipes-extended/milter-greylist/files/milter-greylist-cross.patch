@@ -1,0 +1,109 @@
+diff -up milter-greylist-4.4/configure.ac.cross milter-greylist-4.4/configure.ac
+--- milter-greylist-4.4/configure.ac.cross	2012-10-11 06:22:20.000000000 +0200
++++ milter-greylist-4.4/configure.ac	2013-12-18 16:23:33.413237189 +0100
+@@ -632,105 +632,6 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
+ 	    [missing socklen_t definition]) socklen=yes])
+ AC_MSG_RESULT([$socklen])
+ 
+-# GNU pth-2.0.0 has a bug with rwlock. 
+-AC_MSG_CHECKING([for broken rwlock in libpthread])
+-brokenpth=yes
+-AC_RUN_IFELSE([AC_LANG_PROGRAM([
+-		#if STDC_HEADERS
+-		# include <stdlib.h>
+-		#else
+-		# ifdef __cplusplus
+-		extern "C" void exit (int);
+-		# else
+-		void exit (int);
+-		# endif
+-		#endif
+-
+-		#if HAVE_SYS_TIME_H
+-		# include <sys/time.h>
+-		#else
+-		struct timeval {
+-			long tv_sec;
+-			long tv_usec;
+-		};
+-		#endif
+-
+-		#if HAVE_SYS_TYPES_H
+-		# include <sys/types.h>
+-		#else 
+-		#endif
+-
+-		#if HAVE_UNISTD_H
+-		# include <unistd.h>
+-		#else
+-		# ifdef __cplusplus
+-		extern "C" unsigned int exit (unsigned int);
+-		extern "C" int 
+-		    select(int, void *, void *, void *, struct timeval *);
+-		# else
+-		unsigned int exit (unsigned int);
+-		int select(int, void *, void *, void *, struct timeval *);
+-		# endif
+-		#endif
+-
+-		#include <pthread.h>
+-		pthread_rwlock_t lock;
+-  
+-		#ifdef __cplusplus
+-		extern "C" void testfunc (void *);
+-		extern "C" void yield(void);
+-		#else
+-		void testfunc();
+-		void yeild(void);
+-		#endif
+-
+-		/*
+-		 * On some Linux flavors, using sleep(3) instead
+-		 * of select causes an infinite hang.
+-		 */
+-		void yield (void)
+-		{
+-			struct timeval tv;
+-
+-			tv.tv_sec = 1;
+-			tv.tv_usec = 0;
+-			if (select(0, NULL, NULL, NULL, &tv) != 0)
+-				exit(EXIT_FAILURE);
+-			return;
+-		}
+-
+-		#ifdef __cplusplus
+-		void testfunc (void *dontcare)
+-		#else
+-		void testfunc (dontcare) void *dontcare;
+-		#endif
+-		{
+-			if (pthread_rwlock_rdlock(&lock) != 0)
+-				exit(EXIT_FAILURE);
+-			yield();
+-			if (pthread_rwlock_unlock(&lock) != 0)
+-				exit(EXIT_FAILURE);
+-			return;
+-		}
+-	],[
+-		pthread_t tid;
+-
+-		if (pthread_rwlock_init(&lock, NULL) != 0)
+-			exit(EXIT_FAILURE);
+-		if (pthread_create(&tid, NULL, (void *)testfunc, NULL) != 0)
+-			exit(EXIT_FAILURE);
+-		if (pthread_rwlock_rdlock(&lock) != 0)
+-			exit(EXIT_FAILURE);
+-		yield();
+-		if (pthread_rwlock_unlock(&lock) != 0)
+-			exit(EXIT_FAILURE);
+-		if (pthread_join(tid, NULL) != 0)
+-			exit(EXIT_FAILURE);
+-		return 0;
+-	])], [brokenpth=no], 
+-	AC_DEFINE([HAVE_BROKEN_RWLOCK], [], [broken rwlock in libpthread]))
+-AC_MSG_RESULT([$brokenpth])
+-
+ # Check is DNS resolver is re-entrant
+ AC_ARG_WITH(thread-safe-resolver,
+ 	[  --with-thread-safe-resolver   Resolver is thread-safe],

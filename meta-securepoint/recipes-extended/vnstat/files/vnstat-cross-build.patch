@@ -1,0 +1,30 @@
+diff -up vnstat-1.15/Makefile.am.orig vnstat-1.15/Makefile.am
+--- vnstat-1.15/Makefile.am.orig	2016-06-21 11:35:35.302119579 +0200
++++ vnstat-1.15/Makefile.am	2016-06-21 11:45:27.646051508 +0200
+@@ -94,9 +94,8 @@ release: distcheck
+ 	ls -l $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz
+ 
+ install-data-hook:
+-	$(DESTDIR)$(bindir)/vnstat$(EXEEXT) --showconfig >vnstat.conf && \
+-	  $(MKDIR_P) $(DESTDIR)$(sysconfdir) && \
+-	  mv -f vnstat.conf $(DESTDIR)$(sysconfdir)/vnstat.conf
++	$(MKDIR_P) $(DESTDIR)$(sysconfdir) && \
++		cp -f $(srcdir)/cfg/vnstat.conf $(DESTDIR)$(sysconfdir)/vnstat.conf
+ 	@echo
+ 	@echo "============================================================================"
+ 	@echo "  Note: No service file has been installed for starting the daemon"
+diff -up vnstat-1.15/Makefile.in.orig vnstat-1.15/Makefile.in
+--- vnstat-1.15/Makefile.in.orig	2016-06-21 11:45:47.022212845 +0200
++++ vnstat-1.15/Makefile.in	2016-06-21 11:46:22.812510840 +0200
+@@ -1961,9 +1961,8 @@ release: distcheck
+ 	ls -l $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz
+ 
+ install-data-hook:
+-	$(DESTDIR)$(bindir)/vnstat$(EXEEXT) --showconfig >vnstat.conf && \
+-	  $(MKDIR_P) $(DESTDIR)$(sysconfdir) && \
+-	  mv -f vnstat.conf $(DESTDIR)$(sysconfdir)/vnstat.conf
++	$(MKDIR_P) $(DESTDIR)$(sysconfdir) && \
++		cp -f $(srcdir)/cfg/vnstat.conf $(DESTDIR)$(sysconfdir)/vnstat.conf
+ 	@echo
+ 	@echo "============================================================================"
+ 	@echo "  Note: No service file has been installed for starting the daemon"

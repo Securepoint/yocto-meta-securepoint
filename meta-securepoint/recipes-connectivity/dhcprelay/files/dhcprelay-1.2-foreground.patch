@@ -1,0 +1,42 @@
+diff -up dhcprelay-1.2/dhcprelay.c.foreground dhcprelay-1.2/dhcprelay.c
+--- dhcprelay-1.2/dhcprelay.c.foreground	2011-01-11 13:46:12.985241996 +0100
++++ dhcprelay-1.2/dhcprelay.c	2011-01-11 13:53:32.135116637 +0100
+@@ -53,6 +53,7 @@ struct request {
+ struct request *requests=NULL;
+ 
+ int DEBUG=0;
++int FOREGROUND=0;
+ 
+ int bootpc_port=0;
+ int bootps_port=0;
+@@ -74,13 +75,18 @@ char *wait=".oOo";
+ int main(int argc,char **argv) {
+     int waitcounter=0;
+ 
+-    while (argc>1 && strcmp(argv[1],"-d")==0) {
+-	DEBUG++;
++    while (argc>1) {
++        if (strcmp(argv[1],"-d")==0) {
++	    DEBUG++;
++	} else if (strcmp(argv[1],"-f")!=0) {
++	    break;
++	}
++	FOREGROUND++;
+ 	argv++;
+ 	argc--;
+     }
+ 
+-    if (DEBUG==0) {
++    if (FOREGROUND==0) {
+ 	pid_t p;
+ 	if (fork()) {
+ 	    sleep(3);
+@@ -114,7 +120,7 @@ int main(int argc,char **argv) {
+ 
+     if (argc==1) {
+ 	printf(
+-	    "Usage: %s [-d] <interface[:ipaddress]> <dhcpserver>\n"
++	    "Usage: %s [-d|-f] <interface[:ipaddress]> <dhcpserver>\n"
+ 	    "Example: %s fxp0 10.192.0.1\n"
+ 	    "Example: %s fxp0:192.168.1.1 10.192.0.1\n",
+ 	    argv[0],argv[0],argv[0]

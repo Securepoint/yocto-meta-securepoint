@@ -1,0 +1,142 @@
+diff -up ppp-2.4.5/pppd/chap_ms.c.ms_chaphashed ppp-2.4.5/pppd/chap_ms.c
+--- ppp-2.4.5/pppd/chap_ms.c.ms_chaphashed	2010-11-12 17:23:52.920057366 +0100
++++ ppp-2.4.5/pppd/chap_ms.c	2010-11-12 17:26:32.465932576 +0100
+@@ -115,6 +115,7 @@ static void	Set_Start_Key __P((u_char *,
+ static void	SetMasterKeys __P((char *, int, u_char[24], int));
+ #endif
+ 
++bool	ms_chaphashed = 0;    	/* Use LanMan password instead of NT */
+ #ifdef MSLANMAN
+ bool	ms_lanman = 0;    	/* Use LanMan password instead of NT */
+ 			  	/* Has meaning only with MS-CHAP challenges */
+@@ -142,6 +143,8 @@ static char *mschap2_peer_challenge = NU
+  * Command-line options.
+  */
+ static option_t chapms_option_list[] = {
++	{ "mschaphashed", o_bool, &ms_chaphashed,
++	  "MS-CHAP passwords are hashed", 1 },
+ #ifdef MSLANMAN
+ 	{ "ms-lanman", o_bool, &ms_lanman,
+ 	  "Use LanMan passwd when using MS-CHAP", 1 },
+@@ -506,6 +509,29 @@ ascii2unicode(char ascii[], int ascii_le
+ 	unicode[i * 2] = (u_char) ascii[i];
+ }
+ 
++static int
++fromhex(int c)
++{
++    if (c>='0' && c<='9') {
++	return c-'0';
++    } else { 
++	c |= ' ';
++	if (c>='a' && c<='f')
++	    return c-'a'+10;
++    }
++    return -1;
++}
++
++
++static void
++hextobin(char hex[], unsigned char hash[MD4_SIGNATURE_SIZE])
++{
++    int i, j;
++
++    for (i = 0, j = 0; i < MD4_SIGNATURE_SIZE; i++, j+=2)
++	hash[i] = (fromhex(hex[j]) << 4) + fromhex(hex[j+1]);
++}
++
+ static void
+ NTPasswordHash(u_char *secret, int secret_len, u_char hash[MD4_SIGNATURE_SIZE])
+ {
+@@ -537,9 +563,12 @@ ChapMS_NT(u_char *rchallenge, char *secr
+     u_char	PasswordHash[MD4_SIGNATURE_SIZE];
+ 
+     /* Hash the Unicode version of the secret (== password). */
+-    ascii2unicode(secret, secret_len, unicodePassword);
+-    NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
+-
++    if (!ms_chaphashed) {
++      ascii2unicode(secret, secret_len, unicodePassword);
++      NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
++    } else {
++      hextobin(secret, PasswordHash);
++    }
+     ChallengeResponse(rchallenge, PasswordHash, NTResponse);
+ }
+ 
+@@ -554,9 +583,12 @@ ChapMS2_NT(u_char *rchallenge, u_char Pe
+     ChallengeHash(PeerChallenge, rchallenge, username, Challenge);
+ 
+     /* Hash the Unicode version of the secret (== password). */
+-    ascii2unicode(secret, secret_len, unicodePassword);
+-    NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
+-
++    if (!ms_chaphashed) {
++      ascii2unicode(secret, secret_len, unicodePassword);
++      NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
++    } else {
++      hextobin(secret, PasswordHash);
++    }
+     ChallengeResponse(Challenge, PasswordHash, NTResponse);
+ }
+ 
+@@ -642,8 +674,12 @@ GenerateAuthenticatorResponsePlain
+     u_char	PasswordHashHash[MD4_SIGNATURE_SIZE];
+ 
+     /* Hash (x2) the Unicode version of the secret (== password). */
+-    ascii2unicode(secret, secret_len, unicodePassword);
+-    NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
++    if (!ms_chaphashed) {
++      ascii2unicode(secret, secret_len, unicodePassword);
++      NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
++    } else {
++      hextobin(secret, PasswordHash);
++    }
+     NTPasswordHash(PasswordHash, sizeof(PasswordHash),
+ 		   PasswordHashHash);
+ 
+@@ -687,8 +723,12 @@ Set_Start_Key(u_char *rchallenge, char *
+     u_char	PasswordHashHash[MD4_SIGNATURE_SIZE];
+ 
+     /* Hash (x2) the Unicode version of the secret (== password). */
+-    ascii2unicode(secret, secret_len, unicodePassword);
+-    NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
++    if (!ms_chaphashed) {
++      ascii2unicode(secret, secret_len, unicodePassword);
++      NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
++    } else {
++      hextobin(secret, PasswordHash);
++    }
+     NTPasswordHash(PasswordHash, sizeof(PasswordHash), PasswordHashHash);
+ 
+     mppe_set_keys(rchallenge, PasswordHashHash);
+@@ -801,8 +841,12 @@ SetMasterKeys(char *secret, int secret_l
+     u_char	PasswordHash[MD4_SIGNATURE_SIZE];
+     u_char	PasswordHashHash[MD4_SIGNATURE_SIZE];
+     /* Hash (x2) the Unicode version of the secret (== password). */
+-    ascii2unicode(secret, secret_len, unicodePassword);
+-    NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
++    if (!ms_chaphashed) {
++      ascii2unicode(secret, secret_len, unicodePassword);
++      NTPasswordHash(unicodePassword, secret_len * 2, PasswordHash);
++    } else {
++      hextobin(secret, PasswordHash);
++    }
+     NTPasswordHash(PasswordHash, sizeof(PasswordHash), PasswordHashHash);
+     mppe_set_keys2(PasswordHashHash, NTResponse, IsServer);
+ }
+diff -up ppp-2.4.5/pppd/pppd.8.ms_chaphashed ppp-2.4.5/pppd/pppd.8
+--- ppp-2.4.5/pppd/pppd.8.ms_chaphashed	2009-11-16 23:26:07.000000000 +0100
++++ ppp-2.4.5/pppd/pppd.8	2010-11-12 17:24:42.185057270 +0100
+@@ -857,6 +857,11 @@ used for checking the identity of the pe
+ pppd should not accept a password which, before encryption, is
+ identical to the secret from the /etc/ppp/pap\-secrets file.
+ .TP
++.B mschaphashed
++Indicates that all secrets in the /etc/ppp/cpap\-secrets file which are
++used for checking the identity of the peer are hashed with NtPasswordHash(),
++and thus pppd should not hash them again internally.
++.TP
+ .B pap\-max\-authreq \fIn
+ Set the maximum number of PAP authenticate-request transmissions to
+ \fIn\fR (default 10).

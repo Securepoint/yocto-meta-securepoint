@@ -1,0 +1,20 @@
+diff -up squid-3.3.10/configure.ac.cross squid-3.3.10/configure.ac
+--- squid-3.3.10/configure.ac.cross	2013-11-07 23:42:15.223324838 +0100
++++ squid-3.3.10/configure.ac	2013-11-08 00:01:25.178923814 +0100
+@@ -1272,11 +1272,11 @@ if test "x$SSLLIBDIR" != "x" ; then
+ fi
+ AC_SUBST(SSLLIB)
+ 
+-if test "x$with_openssl" = "xyes"; then
+-SQUID_CHECK_OPENSSL_GETCERTIFICATE_WORKS
+-SQUID_CHECK_OPENSSL_CONST_SSL_METHOD
+-SQUID_CHECK_OPENSSL_TXTDB
+-fi
++dnl if test "x$with_openssl" = "xyes"; then
++dnl SQUID_CHECK_OPENSSL_GETCERTIFICATE_WORKS
++dnl SQUID_CHECK_OPENSSL_CONST_SSL_METHOD
++dnl SQUID_CHECK_OPENSSL_TXTDB
++dnl fi
+ 
+ AC_ARG_ENABLE(forw-via-db,
+   AS_HELP_STRING([--enable-forw-via-db],[Enable Forw/Via database]), [

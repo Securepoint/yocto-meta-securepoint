@@ -1,0 +1,32 @@
+From 07394f2eb7e38b88647a0b9a351ac17aefe77302 Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Tue, 18 Oct 2016 11:33:39 +0200
+Subject: [PATCH 2/3] configure.ac: check wordexp harder
+
+---
+ configure.ac | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/configure.ac b/configure.ac
+index b8c2e5e..90bd278 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -680,9 +680,14 @@ AC_CHECK_HEADERS([ \
+   sys/vfs.h \
+   sys/vfstab.h \
+   sys/vmmeter.h \
+-  wordexp.h \
+ ])
+ 
++AC_CHECK_FUNCS([wordexp],
++  dnl Make sure wordexp is supported by the C library
++  AC_CHECK_HEADERS([wordexp.h])
++)
++
++
+ # --enable-xfs {{{
+ AC_ARG_ENABLE([xfs],
+   [AS_HELP_STRING([--enable-xfs], [xfs support in df plugin @<:@default=yes@:>@])],
+-- 
+2.7.4
+

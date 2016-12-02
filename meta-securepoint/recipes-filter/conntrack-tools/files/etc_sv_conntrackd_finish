@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# remove possible stale lock-file
+
+rm -f /var/lock/conntrack.lock

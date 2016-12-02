@@ -1,0 +1,52 @@
+PACKAGES += " \
+    ${PN}-lang-af ${PN}-lang-ar ${PN}-lang-az ${PN}-lang-bg ${PN}-lang-ca ${PN}-lang-cs \
+    ${PN}-lang-da ${PN}-lang-de ${PN}-lang-el ${PN}-lang-en ${PN}-lang-es ${PN}-lang-et \
+    ${PN}-lang-fa ${PN}-lang-fi ${PN}-lang-fr ${PN}-lang-he ${PN}-lang-hu ${PN}-lang-hy \
+    ${PN}-lang-id ${PN}-lang-it ${PN}-lang-ja ${PN}-lang-ko ${PN}-lang-lt ${PN}-lang-lv \
+    ${PN}-lang-ms ${PN}-lang-nl ${PN}-lang-oc ${PN}-lang-pl ${PN}-lang-pt ${PN}-lang-ro \
+    ${PN}-lang-ru ${PN}-lang-sk ${PN}-lang-sl ${PN}-lang-sr ${PN}-lang-sv ${PN}-lang-templates \
+    ${PN}-lang-th ${PN}-lang-tr ${PN}-lang-uk ${PN}-lang-uz ${PN}-lang-vi ${PN}-lang-zh \
+    ${PN}-lang-ka"
+
+FILES_${PN}-lang-af = "${datadir}/squid/errors/af*"
+FILES_${PN}-lang-ar = "${datadir}/squid/errors/ar*"
+FILES_${PN}-lang-az = "${datadir}/squid/errors/az*"
+FILES_${PN}-lang-bg = "${datadir}/squid/errors/bg*"
+FILES_${PN}-lang-ca = "${datadir}/squid/errors/ca*"
+FILES_${PN}-lang-cs = "${datadir}/squid/errors/cs*"
+FILES_${PN}-lang-da = "${datadir}/squid/errors/da*"
+FILES_${PN}-lang-de = "${datadir}/squid/errors/de*"
+FILES_${PN}-lang-el = "${datadir}/squid/errors/el*"
+FILES_${PN}-lang-en = "${datadir}/squid/errors/en*"
+FILES_${PN}-lang-es = "${datadir}/squid/errors/es*"
+FILES_${PN}-lang-et = "${datadir}/squid/errors/et*"
+FILES_${PN}-lang-fa = "${datadir}/squid/errors/fa*"
+FILES_${PN}-lang-fi = "${datadir}/squid/errors/fi*"
+FILES_${PN}-lang-fr = "${datadir}/squid/errors/fr*"
+FILES_${PN}-lang-he = "${datadir}/squid/errors/he*"
+FILES_${PN}-lang-hu = "${datadir}/squid/errors/hu*"
+FILES_${PN}-lang-hy = "${datadir}/squid/errors/hy*"
+FILES_${PN}-lang-id = "${datadir}/squid/errors/id*"
+FILES_${PN}-lang-it = "${datadir}/squid/errors/it*"
+FILES_${PN}-lang-ja = "${datadir}/squid/errors/ja*"
+FILES_${PN}-lang-ko = "${datadir}/squid/errors/ko*"
+FILES_${PN}-lang-lt = "${datadir}/squid/errors/lt*"
+FILES_${PN}-lang-lv = "${datadir}/squid/errors/lv*"
+FILES_${PN}-lang-ms = "${datadir}/squid/errors/ms*"
+FILES_${PN}-lang-nl = "${datadir}/squid/errors/nl*"
+FILES_${PN}-lang-oc = "${datadir}/squid/errors/oc*"
+FILES_${PN}-lang-pl = "${datadir}/squid/errors/pl*"
+FILES_${PN}-lang-pt = "${datadir}/squid/errors/pt*"
+FILES_${PN}-lang-ro = "${datadir}/squid/errors/ro*"
+FILES_${PN}-lang-ru = "${datadir}/squid/errors/ru*"
+FILES_${PN}-lang-sk = "${datadir}/squid/errors/sk*"
+FILES_${PN}-lang-sl = "${datadir}/squid/errors/sl*"
+FILES_${PN}-lang-sr = "${datadir}/squid/errors/sr*"
+FILES_${PN}-lang-sv = "${datadir}/squid/errors/sv*"
+FILES_${PN}-lang-th = "${datadir}/squid/errors/th*"
+FILES_${PN}-lang-tr = "${datadir}/squid/errors/tr*"
+FILES_${PN}-lang-uk = "${datadir}/squid/errors/uk*"
+FILES_${PN}-lang-uz = "${datadir}/squid/errors/uz*"
+FILES_${PN}-lang-vi = "${datadir}/squid/errors/vi*"
+FILES_${PN}-lang-zh = "${datadir}/squid/errors/zh*"
+FILES_${PN}-lang-ka = "${datadir}/squid/errors/ka*"

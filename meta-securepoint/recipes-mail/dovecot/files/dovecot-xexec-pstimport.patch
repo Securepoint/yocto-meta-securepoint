@@ -1,0 +1,11 @@
+--- a/src/plugins/xexec/xexec_plugin.c	2014-10-07 13:31:34.369131741 +0200
++++ b/src/plugins/xexec/xexec_plugin.c	2014-10-07 13:32:08.081730301 +0200
+@@ -102,7 +102,7 @@ static void imap_xexec_client_created(st
+ 		xclient = xexec_init(*client);
+ 		if (xclient != NULL) {
+ 			MODULE_CONTEXT_SET(*client, imap_xexec_imap_module, xclient);
+-			str_append((*client)->capability_string, " XEXEC");
++			str_append((*client)->capability_string, " PSTIMPORT");
+ 		}
+ 	}
+ 

@@ -1,0 +1,12 @@
+diff -up bird-1.4.0/client/birdc.c.readline bird-1.4.0/client/birdc.c
+--- bird-1.4.0/client/birdc.c.readline	2015-08-05 10:39:30.269309628 +0200
++++ bird-1.4.0/client/birdc.c	2015-08-05 10:39:48.849456735 +0200
+@@ -29,7 +29,7 @@ static int prompt_active;
+ /* HACK: libreadline internals we need to access */
+ extern int _rl_vis_botlin;
+ extern void _rl_move_vert(int);
+-extern Function *rl_last_func;
++extern rl_command_func_t *rl_last_func;
+ 
+ static void
+ add_history_dedup(char *cmd)

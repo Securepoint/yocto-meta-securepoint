@@ -1,0 +1,33 @@
+diff -up samba-3.6.23/source3/libads/ads_struct.c.memleak samba-3.6.23/source3/libads/ads_struct.c
+diff -up samba-3.6.23/source3/lib/netapi/netapi.c.memleak samba-3.6.23/source3/lib/netapi/netapi.c
+--- samba-3.6.23/source3/lib/netapi/netapi.c.memleak	2014-03-11 11:17:34.000000000 +0100
++++ samba-3.6.23/source3/lib/netapi/netapi.c	2014-05-26 09:08:30.320810815 +0200
+@@ -61,7 +61,7 @@ NET_API_STATUS libnetapi_init(struct lib
+ 		*context = stat_ctx;
+ 		return NET_API_STATUS_SUCCESS;
+ 	}
+-
++	NET_API_STATUS status;
+ #if 0
+ 	talloc_enable_leak_report();
+ #endif
+@@ -73,7 +73,6 @@ NET_API_STATUS libnetapi_init(struct lib
+ 	/* When libnetapi is invoked from an application, it does not
+ 	 * want to be swamped with level 10 debug messages, even if
+ 	 * this has been set for the server in smb.conf */
+-	lp_set_cmdline("log level", "0");
+ 	setup_logging("libnetapi", DEBUG_STDERR);
+ 
+ 	if (!lp_load(get_dyn_CONFIGFILE(), true, false, false, false)) {
+@@ -88,7 +87,9 @@ NET_API_STATUS libnetapi_init(struct lib
+ 
+ 	BlockSignals(True, SIGPIPE);
+ 
+-	return libnetapi_net_init(context);
++	if (NET_API_STATUS_SUCCESS == (status = libnetapi_net_init(context)))
++		libnetapi_set_debuglevel(*context, "0");
++	return status;
+ }
+ 
+ /****************************************************************
+diff -up samba-3.6.23/source3/smbd/server_reload.c.memleak samba-3.6.23/source3/smbd/server_reload.c

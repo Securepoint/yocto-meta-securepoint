@@ -1,0 +1,28 @@
+diff -up dhcprelay-1.2/Makefile.make dhcprelay-1.2/Makefile
+--- dhcprelay-1.2/Makefile.make	2006-03-21 03:46:28.000000000 +0100
++++ dhcprelay-1.2/Makefile	2011-01-11 13:41:19.351123143 +0100
+@@ -1,8 +1,22 @@
++CC      ?= gcc
++CFLAGS  ?= -O2 -Wall -W
++LIBS    ?= -lpcap -ldnet
++CFLAGS  += -D_BSD_SOURCE
++prefix  ?= /usr/local
++sbindir = $(prefix)/sbin
++
++all: dhcprelay
++
+ dhcprelay: dhcprelay.o
+-	gcc -g -o $@ -Wall -L/usr/local/lib -lpcap -ldnet $>
++	$(CC) $(LDFLAGS) -g -o $@ -Wall $< $(LIBS)
+ 
+ dhcprelay.o: dhcprelay.c
+-	gcc -g -c -o $@ -Wall -I/usr/local/include $<
++	$(CC) $(CFLAGS) -g -c -o $@ -Wall $<
+ 
+ clean:
+ 	rm -f dhcprelay.o dhcprelay dhcprelay.core
++
++install:
++	mkdir -p $(DESTDIR)$(sbindir)
++	chmod 755 dhcprelay
++	cp -f dhcprelay $(DESTDIR)$(sbindir)

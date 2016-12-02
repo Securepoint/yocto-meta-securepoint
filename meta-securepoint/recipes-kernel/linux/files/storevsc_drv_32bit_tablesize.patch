@@ -1,0 +1,15 @@
+diff -up kernel-source/drivers/scsi/storvsc_drv.c.32bit kernel-source/drivers/scsi/storvsc_drv.c
+--- kernel-source/drivers/scsi/storvsc_drv.c.32bit	2016-08-12 11:39:33.412642625 +0200
++++ kernel-source/drivers/scsi/storvsc_drv.c	2016-08-12 11:40:20.635171715 +0200
+@@ -1634,6 +1634,11 @@ static int storvsc_probe(struct hv_devic
+ 	 * from the host.
+ 	 */
+ 	host->sg_tablesize = (stor_device->max_transfer_bytes >> PAGE_SHIFT);
++#if defined(CONFIG_X86_32)
++        dev_warn(&device->device, "adjusting sg_tablesize 0x%x -> 0x%x",
++        host->sg_tablesize, MAX_MULTIPAGE_BUFFER_COUNT);
++        host->sg_tablesize = MAX_MULTIPAGE_BUFFER_COUNT;
++#endif
+ 
+ 	/* Register the HBA and start the scsi bus scan */
+ 	ret = scsi_add_host(host, &device->device);

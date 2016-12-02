@@ -1,0 +1,75 @@
+Patches by Paul Howarth
+https://bugzilla.redhat.com/show_bug.cgi?id=485426
+
+--- sendmail-8.14.3/sendmail/milter.c	2008-09-19 15:51:03.000000000 +0100
++++ sendmail-8.14.3/sendmail/milter.c	2008-09-19 16:37:57.000000000 +0100
+@@ -30,6 +30,9 @@
+ 
+ # include <sm/fdset.h>
+ 
++# include <unistd.h>
++# include <fcntl.h>
++
+ static void	milter_connect_timeout __P((int));
+ static void	milter_error __P((struct milter *, ENVELOPE *));
+ static int	milter_open __P((struct milter *, bool, ENVELOPE *));
+@@ -650,6 +653,7 @@
+ 	SOCKADDR_LEN_T addrlen = 0;
+ 	int addrno = 0;
+ 	int save_errno;
++	int fdflags;
+ 	char *p;
+ 	char *colon;
+ 	char *at;
+@@ -1186,6 +1190,21 @@
+ 			   (char *)&nodelay, sizeof(nodelay));
+ 	}
+ # endif /* MILTER_NO_NAGLE && !defined(TCP_CORK) */
++
++	/*
++	** Need to set close-on-exec for sock to prevent it
++	** leaking to the local delivery process
++	*/
++	if ((fdflags = fcntl(sock, F_GETFD, 0)) == -1 ||
++	    fcntl(sock, F_SETFD, fdflags | FD_CLOEXEC) == -1)
++	{
++		save_errno = errno;
++		if (MilterLogLevel > 0)
++			sm_syslog(LOG_WARNING, e->e_id,
++				"Milter (%s): Unable to set close-on-exec on sock (%s)",
++					m->mf_name, sm_errstring(save_errno = errno));
++	}
++
+ 	return sock;
+ }
+ 
+--- sendmail-8.14.3/libmilter/listener.c	2007-04-23 23:22:50.000000000 +0100
++++ sendmail-8.14.3/libmilter/listener.c	2008-06-18 16:36:38.000000000 +0100
+@@ -728,6 +728,7 @@
+ 	int acnt = 0;	/* error count for accept() failures */
+ 	int scnt = 0;	/* error count for select() failures */
+ 	int save_errno = 0;
++	int fdflags;
+ #if !_FFR_WORKERS_POOL
+ 	sthread_t thread_id;
+ #endif /* !_FFR_WORKERS_POOL */
+@@ -807,6 +808,19 @@
+ 		(void) smutex_unlock(&L_Mutex);
+ 
+ 		/*
++		** Need to set close-on-exec for connfd in case a user's
++		** filter starts other applications
++		*/
++		if ((fdflags = fcntl(connfd, F_GETFD, 0)) == -1 ||
++		    fcntl(connfd, F_SETFD, fdflags | FD_CLOEXEC) == -1)
++		{
++			smi_log(SMI_LOG_WARN,
++				"%s: Unable to set close-on-exec on connfd (%s)",
++				smfi->xxfi_name, sm_errstring(errno));
++			/* XXX: continue? */
++		}
++
++		/*
+ 		**  If remote side closes before accept() finishes,
+ 		**  sockaddr might not be fully filled in.
+ 		*/

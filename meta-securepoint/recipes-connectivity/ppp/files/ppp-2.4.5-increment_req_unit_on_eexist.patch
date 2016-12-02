@@ -1,0 +1,15 @@
+diff -uri ppp-2.4.5/pppd/sys-linux.c ppp-2.4.5.orig/pppd/sys-linux.c
+--- ppp-2.4.5/pppd/sys-linux.c	2009-11-16 23:26:07.000000000 +0100
++++ ppp-2.4.5.orig/pppd/sys-linux.c	2012-11-28 15:36:37.000000000 +0100
+@@ -629,9 +629,9 @@
+ 
+ 	ifunit = req_unit;
+ 	x = ioctl(ppp_dev_fd, PPPIOCNEWUNIT, &ifunit);
+-	if (x < 0 && req_unit >= 0 && errno == EEXIST) {
++	while (x < 0 && req_unit >= 0 && errno == EEXIST) {
+ 		warn("Couldn't allocate PPP unit %d as it is already in use", req_unit);
+-		ifunit = -1;
++		(void) ++ifunit;
+ 		x = ioctl(ppp_dev_fd, PPPIOCNEWUNIT, &ifunit);
+ 	}
+ 	if (x < 0)

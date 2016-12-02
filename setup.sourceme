@@ -1,0 +1,46 @@
+error=0
+MYROOT=""
+
+exiterror(){
+	echo $1
+	error=1
+}
+
+help(){
+	echo "cant find meta(s)"
+	echo "meta-securepoint has to be in meta-yocto"
+	echo "# git clone -b fido git://git.yoctoproject.org/poky.git"
+	echo "# cd poky"
+	echo "# git clone -b fido git://git.openembedded.org/meta-openembedded meta-oe"
+	echo "# git clone git://github.com/Securepoint/yocto-meta-securepoint meta-securepoint-public"
+	echo "then come again"
+	error=1
+}
+
+# check for bash as /bin/sh to avoid dash, etc. build errors
+if [ "bash" != "$(basename $(readlink /bin/sh))" ]; then
+        exiterror "Error: /bin/sh should point to bash to give you a great building experience"
+fi
+
+if [ -z "$ZSH_NAME" ] && [ "x$0" = "x./oe-init-build-env" ]; then
+   exiterror "Error: This script needs to be sourced. Please run as '. ./oe-init-build-env'"
+else
+   if [ -n "$BASH_SOURCE" ]; then
+      MYROOT="`dirname $BASH_SOURCE`"
+   elif [ -n "$ZSH_NAME" ]; then
+      MYROOT="`dirname $0`"
+   else
+      MYROOT="`pwd`"
+   fi
+   MYROOT=`readlink -f "$MYROOT"`
+fi
+
+if [ ! -r ${MYROOT}/../oe-init-build-env ]; then
+	help
+else
+	export TEMPLATECONF=${MYROOT}/conf/
+	cd ${MYROOT}/..
+fi
+if [ ! -d meta-oe ] || [ ! -d meta-securepoint-public ];then help ;fi
+[ -r oe-init-build-env ] || exiterror 'cant find "oe-init-build-env"'
+[ $error -eq 0 ] && source ./oe-init-build-env $1

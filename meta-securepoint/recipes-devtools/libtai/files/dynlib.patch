@@ -1,0 +1,11 @@
+--- ./make-makelib.sh.orig	2014-01-09 17:10:58.340324241 +0100
++++ ./make-makelib.sh	2014-01-09 17:10:05.844402651 +0100
+@@ -1,6 +1,7 @@
+ echo 'main="$1"; shift'
+ echo 'rm -f "$main"'
+ echo 'ar cr "$main" ${1+"$@"}'
++echo '$CC -shared -Wl,-soname,${main%.a}.so.1 ${1+"$@"} -o ${main%.a}.so.1'
+ 
+ case "$1" in
+ sunos-5.*) ;;
+

@@ -1,0 +1,22 @@
+diff --git a/libvncserver/websockets.c b/libvncserver/websockets.c
+index 8cd96d3..7101c27 100644
+--- a/libvncserver/websockets.c
++++ b/libvncserver/websockets.c
+@@ -524,7 +524,7 @@ webSocketsDecodeHixie(rfbClientPtr cl, char *dst, int len)
+ 
+     buf = wsctx->codeBuf;
+ 
+-    n = ws_peek(cl, buf, len*2+2);
++    n = ws_peek(cl, buf, B64LEN(len) + 2);
+ 
+     if (n <= 0) {
+         /* save errno because rfbErr() will tamper it */
+@@ -566,7 +566,7 @@ webSocketsDecodeHixie(rfbClientPtr cl, char *dst, int len)
+     len -= wsctx->carrylen;
+ 
+     /* Determine how much base64 data we need */
+-    modlen = len + (len+2)/3;
++    modlen = B64LEN(len);
+     needlen = modlen;
+     if (needlen % 4) {
+         needlen += 4 - (needlen % 4);

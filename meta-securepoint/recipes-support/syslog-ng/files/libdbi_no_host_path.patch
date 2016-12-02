@@ -1,0 +1,12 @@
+diff -up syslog-ng-3.5.4.1/configure.ac.libdbi_no_host_path syslog-ng-3.5.4.1/configure.ac
+--- syslog-ng-3.5.4.1/configure.ac.libdbi_no_host_path	2015-11-05 13:27:54.138785110 +0100
++++ syslog-ng-3.5.4.1/configure.ac	2015-11-05 13:28:34.234132272 +0100
+@@ -586,7 +586,7 @@ PKG_CHECK_MODULES(LIBDBI, dbi >= $LIBDBI
+ 
+ if test "$libdbi_pkgconfig_not_found" -eq 1; then
+ 	dnl if libdbi has no .pc file, try it without one
+-	AC_CHECK_LIB(dbi, dbi_initialize, LIBDBI_LIBS="-ldbi"; LIBDBI_CFLAGS="-I/usr/include")
++	AC_CHECK_LIB(dbi, dbi_initialize, LIBDBI_LIBS="-ldbi"; LIBDBI_CFLAGS="")
+ fi
+ fi
+ if test "x$enable_sql" = "xauto"; then

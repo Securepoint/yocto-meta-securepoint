@@ -1,0 +1,25 @@
+From 6813d930a716facd8b5ef5dc655b2067bc4d5510 Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Wed, 24 Nov 2010 12:29:32 +0100
+Subject: [PATCH 3/3] hostapd: add LOG_PID to openlog() flags
+
+---
+ hostapd/main.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/hostapd/main.c b/hostapd/main.c
+index 8e0b6bc..b55410c 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -387,7 +387,7 @@ static int hostapd_global_init(struct hapd_interfaces *interfaces)
+ 	eloop_register_signal_terminate(handle_term, interfaces);
+ 
+ #ifndef CONFIG_NATIVE_WINDOWS
+-	openlog("hostapd", 0, LOG_DAEMON);
++	openlog("hostapd", LOG_PID, LOG_DAEMON);
+ #endif /* CONFIG_NATIVE_WINDOWS */
+ 
+ 	return 0;
+-- 
+1.7.2.3
+

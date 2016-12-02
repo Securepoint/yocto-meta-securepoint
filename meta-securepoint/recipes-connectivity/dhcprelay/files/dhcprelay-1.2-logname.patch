@@ -1,0 +1,21 @@
+diff -up dhcprelay-1.2/dhcprelay.c.typo dhcprelay-1.2/dhcprelay.c
+--- dhcprelay-1.2/dhcprelay.c.typo	2011-01-11 13:43:40.516241697 +0100
++++ dhcprelay-1.2/dhcprelay.c	2011-01-11 13:45:19.733117871 +0100
+@@ -88,7 +88,7 @@ int main(int argc,char **argv) {
+ 	}
+ 	if ((p=fork())!=0) {
+ 	    FILE *f;
+-	    openlog("dchprelay",LOG_NDELAY|LOG_PID,LOG_DAEMON);
++	    openlog("dhcprelay",LOG_NDELAY|LOG_PID,LOG_DAEMON);
+ 	    syslog(LOG_NOTICE,"dhcprelay started as process %d",p);
+ 	    if ((f=fopen("/var/run/dhcprelay.pid","w"))!=NULL) {
+ 		fprintf(f,"%d\n",p);
+@@ -110,7 +110,7 @@ int main(int argc,char **argv) {
+ 	bootpc_port=servent->s_port;
+     }
+ 
+-    openlog("dchprelay",LOG_NDELAY|LOG_PID,LOG_DAEMON);
++    openlog("dhcprelay",LOG_NDELAY|LOG_PID,LOG_DAEMON);
+ 
+     if (argc==1) {
+ 	printf(

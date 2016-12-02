@@ -1,0 +1,4 @@
+#!/bin/sh
+exec 2>&1
+exec /usr/sbin/snmpd udp:161,udp6:161 -LSid -f -c /etc/snmpd.conf
+

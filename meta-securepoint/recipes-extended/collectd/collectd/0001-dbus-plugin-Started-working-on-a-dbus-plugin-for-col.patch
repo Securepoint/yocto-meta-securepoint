@@ -1,0 +1,330 @@
+From 12d38af48166445ea7dad346738f547ce5987aa8 Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Wed, 28 Sep 2016 10:16:25 +0200
+Subject: [PATCH 1/3] dbus plugin: Started working on a dbus plugin for
+ collectd.
+
+---
+ configure.ac           |   8 ++
+ src/Makefile.am        |  17 ++++-
+ src/collectd-dbus.conf |  14 ++++
+ src/dbus.c             | 199 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 237 insertions(+), 1 deletion(-)
+ create mode 100644 src/collectd-dbus.conf
+ create mode 100644 src/dbus.c
+
+diff --git a/configure.ac b/configure.ac
+index 31c842a..b8c2e5e 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -5631,6 +5631,11 @@ PKG_CHECK_MODULES([LIBNOTIFY], [libnotify],
+ 		[with_libnotify="no (pkg-config doesn't know libnotify)"]
+ )
+ 
++PKG_CHECK_MODULES([LIBDBUS1], [dbus-1],
++		[with_libdbus1="yes"],
++		[with_libdbus1="no (pkg-config doesn't know libdbus1)"]
++)
++
+ PKG_CHECK_MODULES([LIBRIEMANN_CLIENT], [riemann-client >= 1.6.0],
+  [with_libriemann_client="yes"],
+  [with_libriemann_client="no (pkg-config doesn't know libriemann-client)"])
+@@ -6278,6 +6283,7 @@ AC_PLUGIN([network],             [yes],                     [Network communicati
+ AC_PLUGIN([nfs],                 [$plugin_nfs],             [NFS statistics])
+ AC_PLUGIN([nginx],               [$with_libcurl],           [nginx statistics])
+ AC_PLUGIN([notify_desktop],      [$with_libnotify],         [Desktop notifications])
++AC_PLUGIN([dbus],                [$with_libdbus1],          [DBus notifications])
+ AC_PLUGIN([notify_email],        [$with_libesmtp],          [Email notifier])
+ AC_PLUGIN([notify_nagios],       [yes],                     [Nagios notification plugin])
+ AC_PLUGIN([ntpd],                [yes],                     [NTPd statistics])
+@@ -6596,6 +6602,7 @@ AC_MSG_RESULT([    libmysql  . . . . . . $with_libmysql])
+ AC_MSG_RESULT([    libnetapp . . . . . . $with_libnetapp])
+ AC_MSG_RESULT([    libnetsnmp  . . . . . $with_libnetsnmp])
+ AC_MSG_RESULT([    libnotify . . . . . . $with_libnotify])
++AC_MSG_RESULT([    libdbus1  . . . . . . $with_libdbus1])
+ AC_MSG_RESULT([    liboconfig  . . . . . $with_liboconfig])
+ AC_MSG_RESULT([    libopenipmi . . . . . $with_libopenipmipthread])
+ AC_MSG_RESULT([    liboping  . . . . . . $with_liboping])
+@@ -6659,6 +6666,7 @@ AC_MSG_RESULT([    curl  . . . . . . . . $enable_curl])
+ AC_MSG_RESULT([    curl_json . . . . . . $enable_curl_json])
+ AC_MSG_RESULT([    curl_xml  . . . . . . $enable_curl_xml])
+ AC_MSG_RESULT([    dbi . . . . . . . . . $enable_dbi])
++AC_MSG_RESULT([    dbus  . . . . . . . . $enable_dbus])
+ AC_MSG_RESULT([    df  . . . . . . . . . $enable_df])
+ AC_MSG_RESULT([    disk  . . . . . . . . $enable_disk])
+ AC_MSG_RESULT([    dns . . . . . . . . . $enable_dns])
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 99a7c02..bf9dd93 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -796,6 +796,14 @@ notify_desktop_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+ notify_desktop_la_LIBADD = $(LIBNOTIFY_LIBS)
+ endif
+ 
++if BUILD_PLUGIN_DBUS
++pkglib_LTLIBRARIES += dbus.la
++dbus_la_SOURCES = dbus.c
++dbus_la_CFLAGS = $(AM_CFLAGS) $(LIBDBUS1_CFLAGS)
++dbus_la_LDFLAGS = $(PLUGIN_LDFLAGS)
++dbus_la_LIBADD = $(LIBDBUS1_LIBS)
++endif
++
+ if BUILD_PLUGIN_NOTIFY_EMAIL
+ pkglib_LTLIBRARIES += notify_email.la
+ notify_email_la_SOURCES = notify_email.c
+@@ -1408,7 +1416,8 @@ EXTRA_DIST =	collectd.conf.pod \
+ 		postgresql_default.conf \
+ 		types.db \
+ 		types.db.pod \
+-		valgrind.FreeBSD.suppress
++		valgrind.FreeBSD.suppress \
++		collectd-dbus.conf
+ 
+ AM_V_POD2MAN_C = $(am__v_POD2MAN_C_@AM_V@)
+ am__v_POD2MAN_C_ = $(am__v_POD2MAN_C_@AM_DEFAULT_V@)
+@@ -1458,11 +1467,17 @@ install-exec-hook:
+ 	$(INSTALL) -m 0644 $(srcdir)/types.db $(DESTDIR)$(pkgdatadir)/types.db;
+ 	$(INSTALL) -m 0644 $(srcdir)/postgresql_default.conf \
+ 		$(DESTDIR)$(pkgdatadir)/postgresql_default.conf;
++	$(mkinstalldirs) $(DESTDIR)/etc/dbus-1/system.d
++	$(INSTALL) -m 0644 $(srcdir)/collectd-dbus.conf \
++		$(DESTDIR)/etc/dbus-1/system.d/org.collectd.Notifications.conf
++		
++
+ 
+ uninstall-hook:
+ 	rm -f $(DESTDIR)$(pkgdatadir)/types.db;
+ 	rm -f $(DESTDIR)$(sysconfdir)/collectd.conf
+ 	rm -f $(DESTDIR)$(pkgdatadir)/postgresql_default.conf;
++	rm -f $(DESTDIR)/etc/dbus-1/system.d/org.collectd.Notifications.conf
+ 
+ if BUILD_PLUGIN_CEPH
+ test_plugin_ceph_SOURCES = ceph_test.c
+diff --git a/src/collectd-dbus.conf b/src/collectd-dbus.conf
+new file mode 100644
+index 0000000..0e9ce1b
+--- /dev/null
++++ b/src/collectd-dbus.conf
+@@ -0,0 +1,14 @@
++<!DOCTYPE busconfig PUBLIC
++ "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
++ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
++<busconfig>
++	<policy user="root">
++		<allow own="org.collectd.Notifications"/>
++		<allow send_destination="org.collectd.Notifications"/>
++	</policy>
++	<policy context="default">
++                <deny own="org.collectd.Notifications"/>
++                <deny send_destination="org.collectd.Notifications"/>
++        </policy>
++</busconfig>
++
+diff --git a/src/dbus.c b/src/dbus.c
+new file mode 100644
+index 0000000..cbb71a7
+--- /dev/null
++++ b/src/dbus.c
+@@ -0,0 +1,199 @@
++/**
++ * collectd - src/dbus.c
++ * Copyright (C) 2016       Gernot Tenchio
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the
++ * Free Software Foundation; only version 2 of the License is applicable.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
++ *
++ * Authors:
++ *   Gernot Tenchio <gernot at tenchio.de>
++ **/
++
++#include "collectd.h"
++
++#include "common.h"
++#include "plugin.h"
++
++#include <dbus/dbus.h>
++
++#define PLUGNAME "dbus plugin"
++#define PLUG_PATH "/org/collectd/Notifications"
++#define PLUG_INTERFACE "org.collectd.Notifications"
++
++#define log_info(...) INFO (PLUGNAME ": " __VA_ARGS__)
++#define log_warn(...) WARNING (PLUGNAME ": " __VA_ARGS__)
++#define log_error(...) ERROR (PLUGNAME ": " __VA_ARGS__)
++/*
++ * Private data types
++ */
++struct dbus_cdata_s
++{
++  DBusConnection *connection;
++  char *path;
++  char *interface;
++};
++typedef struct dbus_cdata_s dbus_cdata_t;
++
++/*
++ * Private variables
++ */
++static dbus_cdata_t cdata = {};
++
++static dbus_bool_t dbus_append_property(DBusMessageIter *dict, char *name, char type, const void *value) /* {{{ */
++{
++  DBusMessageIter __entry, __value;
++  char signature[2] = { type, '\0' };
++  dbus_bool_t ret = FALSE;
++
++  if (FALSE == dbus_message_iter_open_container (dict, DBUS_TYPE_DICT_ENTRY, NULL, &__entry)) {
++    /* */
++  } else if (FALSE == dbus_message_iter_append_basic (&__entry, DBUS_TYPE_STRING, &name)) {
++    /* */
++  } else if (FALSE == dbus_message_iter_open_container (&__entry, DBUS_TYPE_VARIANT, signature, &__value)) {
++    /* */
++  } else if (FALSE == dbus_message_iter_append_basic (&__value, type, type == DBUS_TYPE_STRING ? &value : value)) {
++    /* */
++  } else {
++    ret = TRUE;
++    dbus_message_iter_close_container (&__entry, &__value);
++    dbus_message_iter_close_container (dict, &__entry);
++  }
++  return ret;
++} /* dbus_bool_t dbus_append_property }}} */
++
++static dbus_bool_t dbus_append_meta(DBusMessageIter *dict, const notification_t *n) /* {{{ */
++{
++  notification_meta_t *meta = n->meta;
++
++  while (NULL != meta) {
++    char type;
++    void *value;
++    switch (meta->type) {
++      case NM_TYPE_STRING:
++        type = DBUS_TYPE_STRING;
++        value = (void *)meta->nm_value.nm_string;
++        break;
++      case NM_TYPE_SIGNED_INT:
++        type = DBUS_TYPE_INT32;
++        value = &meta->nm_value.nm_signed_int;
++        break;
++      case NM_TYPE_UNSIGNED_INT:
++        type = DBUS_TYPE_UINT32;
++        value = &meta->nm_value.nm_unsigned_int;
++        break;
++      case NM_TYPE_BOOLEAN:
++        type = DBUS_TYPE_BOOLEAN;
++        value = &meta->nm_value.nm_boolean;
++        break;
++      case NM_TYPE_DOUBLE:
++        type = DBUS_TYPE_DOUBLE;
++        value = &meta->nm_value.nm_double;
++        break;
++      default:
++        return FALSE;
++    }
++    dbus_append_property(dict, meta->name, type, value);
++    meta = meta->next;
++  }
++  return TRUE;
++} /* dbus_bool_t dbus_append_meta }}} */
++
++static int plug_dbus_init (void) /* {{{ */
++{
++  int ret = -1;
++  DBusError error;
++
++  dbus_error_init (&error);
++  if (NULL == (cdata.connection = dbus_bus_get (DBUS_BUS_SYSTEM, &error)))
++  {
++    log_error("failed to open connection to system message bus: %s.", error.message);
++    dbus_error_free (&error);
++  }
++  else if (DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER != dbus_bus_request_name (cdata.connection, PLUG_INTERFACE, DBUS_NAME_FLAG_REPLACE_EXISTING, &error))
++  {
++    log_error("failed to request a bus name on system message bus: %s.", error.message);
++    dbus_error_free (&error);
++  }
++  else ret = 0;
++
++  return (ret);
++} /* int dbus_int }}} */
++
++static int plug_dbus_notification (const notification_t *n, /* {{{ */
++    user_data_t __attribute__((unused)) *user_data)
++{
++  int ret = -1;
++  DBusMessage *message;
++
++  if (NULL == (message = dbus_message_new_signal (PLUG_PATH, PLUG_INTERFACE, "Notification"))) {
++    log_error("couldn't allocate D-Bus message");
++  } else {
++    DBusMessageIter iter, dict;
++    char *severity = (NOTIF_FAILURE == n->severity) ? "FAILURE"
++	      : (NOTIF_WARNING == n->severity) ? "WARNING"
++	      : (NOTIF_OKAY == n->severity) ? "OKAY" : "UNKNOWN";
++    char *signature = DBUS_DICT_ENTRY_BEGIN_CHAR_AS_STRING DBUS_TYPE_STRING_AS_STRING
++                      DBUS_TYPE_VARIANT_AS_STRING DBUS_DICT_ENTRY_END_CHAR_AS_STRING;
++    dbus_message_iter_init_append (message, &iter);
++
++    if (FALSE == dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, signature, &dict)) {
++      log_error("couldn't append severity");
++    } else if (FALSE == dbus_append_property (&dict, "severity", DBUS_TYPE_STRING, severity)) {
++      log_error("couldn't append severity");
++    } else if (FALSE == dbus_append_property (&dict, "time", DBUS_TYPE_UINT64, &n->time)) {
++      log_error("couldn't append time");
++    } else if (FALSE == dbus_append_property (&dict, "message", DBUS_TYPE_STRING, n->message)) {
++      log_error("couldn't append message");
++    } else if (FALSE == dbus_append_property (&dict, "host", DBUS_TYPE_STRING, n->host)) {
++      log_error("couldn't append host");
++    } else if (FALSE == dbus_append_property (&dict, "plugin", DBUS_TYPE_STRING, n->plugin)) {
++      log_error("couldn't append plugin");
++    } else if (FALSE == dbus_append_property (&dict, "instance", DBUS_TYPE_STRING, n->plugin_instance)) {
++      log_error("couldn't append plugin_instance");
++    } else if (FALSE == dbus_append_property (&dict, "type", DBUS_TYPE_STRING, n->type)) {
++      log_error("couldn't append type");
++    } else if (FALSE == dbus_append_property (&dict, "type_instance", DBUS_TYPE_STRING, n->type_instance)) {
++      log_error("couldn't append type");
++    } else if (FALSE == dbus_append_meta (&dict, n)) {
++      log_error("couldn't append meta");
++    } else if (FALSE == dbus_message_iter_close_container(&iter, &dict)) {
++      log_error("couldn't close container");
++    } else if (FALSE == dbus_connection_send (cdata.connection, message, NULL)) {
++      log_error("couldn't send message");
++    } else {
++      dbus_connection_flush (cdata.connection);
++      ret = 0;
++    }
++    dbus_message_unref (message);
++  }
++  return (ret);
++} /* int dbus_notification }}} */
++
++static int plug_dbus_shutdown (void) /* {{{ */
++{
++  dbus_bus_release_name (cdata.connection, PLUG_INTERFACE, NULL);
++  dbus_connection_unref (cdata.connection);
++  return 0;
++} /* int dbus_shutdown }}} */
++
++void module_register (void)
++{
++  plugin_register_init ("dbus", plug_dbus_init);
++  plugin_register_notification ("dbus", plug_dbus_notification,
++      /* user_data = */ NULL);
++  plugin_register_shutdown ("dbus", plug_dbus_shutdown);
++} /* void module_register */
++
++/*
++ * vim:shiftwidth=2:softtabstop=2:tabstop=8:fdm=marker
++ */
+-- 
+2.7.4
+

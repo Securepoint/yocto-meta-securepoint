@@ -1,0 +1,12 @@
+diff -up bind-9.8.1/bin/tests/system/dlzexternal/Makefile.in.test_dlzexternal bind-9.8.1/bin/tests/system/dlzexternal/Makefile.in
+--- bind-9.8.1/bin/tests/system/dlzexternal/Makefile.in.test_dlzexternal	2015-01-30 10:57:56.381812954 +0100
++++ bind-9.8.1/bin/tests/system/dlzexternal/Makefile.in	2015-01-30 11:13:40.945199029 +0100
+@@ -29,7 +29,7 @@ CWARNINGS =
+ LIBS =		@LIBS@
+ 
+ SO_TARGETS =    driver.@SO@
+-TARGETS =	dlopen@EXEEXT@ @SO_TARGETS@
++TARGETS =	dlopen@EXEEXT@ # @SO_TARGETS@
+ 
+ SRCS =		dlopen.c driver.c
+ 

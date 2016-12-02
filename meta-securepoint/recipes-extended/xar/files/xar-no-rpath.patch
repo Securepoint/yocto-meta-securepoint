@@ -1,0 +1,27 @@
+diff -up xar-1.5.2/src/Makefile.inc.in.rpath xar-1.5.2/src/Makefile.inc.in
+--- xar-1.5.2/src/Makefile.inc.in.rpath	2014-09-10 09:51:45.326477171 +0200
++++ xar-1.5.2/src/Makefile.inc.in	2014-09-10 09:52:11.240745312 +0200
+@@ -37,11 +37,7 @@ endif
+ # libxar.
+ @objroot@src/% : @objroot@src/%.o $(LIBRXAR)
+ 	@mkdir -p $(@D)
+-ifneq ($(words "" @RPATH@), 1)
+-	$(CC) $(CFLAGS) -o $@ $< @RPATH@@abs_objroot@lib $(LDFLAGS) $(LIBRXAR) @LIBS@
+-else
+ 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS) $(LIBRXAR) @LIBS@
+-endif
+ 
+ ifeq (yes, @static@)
+ LIBXAR := $(LIBXAR_A)
+@@ -53,11 +49,7 @@ endif
+ # ixar is the version of the xar binary that gets installed.
+ @objroot@src/i% : @objroot@src/%.o $(LIBXAR)
+ 	@mkdir -p $(@D)
+-ifneq ($(words "" @RPATH@), 1)
+-	$(CC) $(CFLAGS) -o $@ $< @RPATH@$(LIBDIR) $(LDFLAGS) $(LIBXAR) @LIBS@
+-else
+ 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS) $(LIBXAR) @LIBS@
+-endif
+ 
+ @objroot@src/%.o : @srcroot@src/%.c
+ 	@mkdir -p $(@D)

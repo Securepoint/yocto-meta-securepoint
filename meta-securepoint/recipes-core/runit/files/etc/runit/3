@@ -1,0 +1,18 @@
+#!/bin/sh
+exec 2>&1
+
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+export INIT_DOES_REBOOTHALT=1
+export RUNLEVEL=0
+test -x /etc/runit/reboot && export RUNLEVEL=6
+
+echo 'Waiting for services to stop...'
+sv -w15 force-stop /var/service/*
+sv exit /var/service/*
+
+echo 'Shutdown...'
+for x in /etc/runit/3.d/*; do
+	[ -x $x ] && $x stop
+done
+true

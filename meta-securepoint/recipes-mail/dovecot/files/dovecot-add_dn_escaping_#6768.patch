@@ -1,0 +1,66 @@
+diff --git a/src/auth/db-ldap.c b/src/auth/db-ldap.c
+index 1476fa9..e9218ca 100644
+--- a/src/auth/db-ldap.c
++++ b/src/auth/db-ldap.c
+@@ -1423,6 +1422,35 @@ db_ldap_value_get_var_expand_table(struct auth_request *auth_request,
+ 	return table;
+ }
+ 
++
++#define IS_LDAPDN_ESCAPED_CHAR(c) \
++	((c) == '"' || (c) == '+' || (c) == ',' || (c) == '\\' || (c) == '<' || (c) == '>' || (c) == ';')
++
++const char *ldapdn_escape(const char *str,
++			const struct auth_request *auth_request ATTR_UNUSED)
++{
++	const char *p;
++	string_t *ret;
++
++	for (p = str; *p != '\0'; p++) {
++		if (IS_LDAPDN_ESCAPED_CHAR(*p))
++			break;
++	}
++
++	if (*p == '\0')
++		return str;
++
++	ret = t_str_new((size_t) (p - str) + 64);
++	str_append_n(ret, str, (size_t) (p - str));
++
++	for (; *p != '\0'; p++) {
++		if (IS_LDAPDN_ESCAPED_CHAR(*p))
++			str_append_c(ret, '\\');
++		str_append_c(ret, *p);
++	}
++	return str_c(ret);
++}
++
+ #define IS_LDAP_ESCAPED_CHAR(c) \
+ 	((c) == '*' || (c) == '(' || (c) == ')' || (c) == '\\')
+ 
+diff --git a/src/auth/db-ldap.h b/src/auth/db-ldap.h
+index 8a51081..82ed1b3 100644
+--- a/src/auth/db-ldap.h
++++ b/src/auth/db-ldap.h
+@@ -197,6 +197,8 @@ void db_ldap_enable_input(struct ldap_connection *conn, bool enable);
+ 
+ const char *ldap_escape(const char *str,
+ 			const struct auth_request *auth_request);
++const char *ldapdn_escape(const char *str,
++			const struct auth_request *auth_request);
+ const char *ldap_get_error(struct ldap_connection *conn);
+ 
+ struct db_ldap_result_iterate_context *
+diff --git a/src/auth/passdb-ldap.c b/src/auth/passdb-ldap.c
+index c1c2544..0d87c96 100644
+--- a/src/auth/passdb-ldap.c
++++ b/src/auth/passdb-ldap.c
+@@ -367,7 +366,7 @@ ldap_verify_plain_auth_bind_userdn(struct auth_request *auth_request,
+ 
+ 	brequest->request.type = LDAP_REQUEST_TYPE_BIND;
+ 
+-	vars = auth_request_get_var_expand_table(auth_request, ldap_escape);
++	vars = auth_request_get_var_expand_table(auth_request, ldapdn_escape);
+ 	dn = t_str_new(512);
+ 	var_expand(dn, conn->set.auth_bind_userdn, vars);
+ 

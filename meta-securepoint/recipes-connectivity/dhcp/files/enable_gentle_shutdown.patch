@@ -1,0 +1,13 @@
+diff --git a/includes/site.h b/includes/site.h
+index 1f4407f..d116360 100644
+--- a/includes/site.h
++++ b/includes/site.h
+@@ -288,7 +288,7 @@
+    situations.  We plan to revisit this feature and may
+    make non-backwards compatible changes including the
+    removal of this define.  Use at your own risk.  */
+-/* #define ENABLE_GENTLE_SHUTDOWN */
++#define ENABLE_GENTLE_SHUTDOWN
+ 
+ /* Include old error codes.  This is provided in case you
+    are building an external program similar to omshell for

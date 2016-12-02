@@ -1,0 +1,23 @@
+diff --git a/libvncserver/rfbssl_gnutls.c b/libvncserver/rfbssl_gnutls.c
+index cf60cdc..0f88fc3 100644
+--- a/libvncserver/rfbssl_gnutls.c
++++ b/libvncserver/rfbssl_gnutls.c
+@@ -99,9 +99,9 @@ struct rfbssl_ctx *rfbssl_init_global(char *key, char *cert)
+ 	/* */
+     } else if (!GNUTLS_E_SUCCESS == (ret = gnutls_certificate_set_x509_key_file(ctx->x509_cred, cert, key, GNUTLS_X509_FMT_PEM))) {
+ 	/* */
++#ifdef I_LIKE_RSA_PARAMS_THAT_MUCH
+     } else if (!GNUTLS_E_SUCCESS == (ret = generate_dh_params(ctx))) {
+ 	/* */
+-#ifdef I_LIKE_RSA_PARAMS_THAT_MUCH
+     } else if (!GNUTLS_E_SUCCESS == (ret = generate_rsa_params(ctx))) {
+ 	/* */
+ #endif
+@@ -141,6 +141,7 @@ int rfbssl_init(rfbClientPtr cl)
+     } else {
+ 	cl->sslctx = (rfbSslCtx *)ctx;
+ 	rfbLog("%s protocol initialized\n", gnutls_protocol_get_name(gnutls_protocol_get_version(ctx->session)));
++	rfbLog("cipher: %s\n", gnutls_cipher_get_name(gnutls_cipher_get(ctx->session)));
+     }
+     return ret;
+ }

@@ -1,0 +1,14 @@
+diff -ur openvpn-2.3.8.orig/src/openvpn/options.h openvpn-2.3.8/src/openvpn/options.h
+--- openvpn-2.3.8.orig/src/openvpn/options.h	2015-09-04 11:22:39.000000000 +0200
++++ openvpn-2.3.8/src/openvpn/options.h	2015-09-04 11:24:01.000000000 +0200
+@@ -52,8 +52,8 @@
+ /*
+  * Max size of options line and parameter.
+  */
+-#define OPTION_PARM_SIZE 256
+-#define OPTION_LINE_SIZE 256
++#define OPTION_PARM_SIZE 20480
++#define OPTION_LINE_SIZE 20480
+ 
+ extern const char title_string[];
+ 

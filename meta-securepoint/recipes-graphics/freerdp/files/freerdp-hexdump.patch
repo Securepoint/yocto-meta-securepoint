@@ -1,0 +1,22 @@
+diff -up freerdp-v0.9.1-sp/include/freerdp/utils/hexdump.h.hexdump freerdp-v0.9.1-sp/include/freerdp/utils/hexdump.h
+--- freerdp-v0.9.1-sp/include/freerdp/utils/hexdump.h.hexdump	2014-09-01 15:43:29.473047086 +0200
++++ freerdp-v0.9.1-sp/include/freerdp/utils/hexdump.h	2014-09-01 15:44:08.975395742 +0200
+@@ -22,6 +22,7 @@
+ 
+ #define FREERDP_HEXDUMP_LINE_LENGTH	16
+ 
++#define hexdump(a, b) freerdp_hexdump(a, b)
+ void freerdp_hexdump(uint8* data, int length);
+ 
+ #endif /* __UTILS_HEXDUMP_H */
+diff -up freerdp-v0.9.1-sp/libfreerdp-core/security.c.hexdump freerdp-v0.9.1-sp/libfreerdp-core/security.c
+--- freerdp-v0.9.1-sp/libfreerdp-core/security.c.hexdump	2011-07-12 12:51:03.000000000 +0200
++++ freerdp-v0.9.1-sp/libfreerdp-core/security.c	2014-09-01 15:59:13.350363364 +0200
+@@ -26,6 +26,7 @@
+ #include "tcp.h"
+ #include <freerdp/rdpset.h>
+ #include <freerdp/utils/memory.h>
++#include <freerdp/utils/hexdump.h>
+ 
+ #ifndef DISABLE_TLS
+ #include "tls.h"

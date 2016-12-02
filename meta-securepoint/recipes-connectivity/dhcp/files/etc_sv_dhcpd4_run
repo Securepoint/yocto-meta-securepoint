@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/sbin/dhcpd -4 -f -cf dhcpd.conf

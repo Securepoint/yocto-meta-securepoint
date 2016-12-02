@@ -1,0 +1,211 @@
+From 3120f1c5edf019c4f0eef83bd5327c572ecff7f9 Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Wed, 24 Nov 2010 10:49:01 +0100
+Subject: [PATCH] hostapd: Add support for PAM session management
+
+---
+ hostapd/Makefile      |    5 ++++
+ hostapd/defconfig     |    3 ++
+ hostapd/main.c        |    3 ++
+ src/ap/accounting.c   |   11 +++++++-
+ src/ap/pam.c          |   57 +++++++++++++++++++++++++++++++++++++++++++++++++
+ src/ap/pam.h          |    7 ++++++
+ src/ap/sta_info.h     |    4 +++
+ src/utils/wpa_debug.h |    1 +
+ 8 files changed, 89 insertions(+), 2 deletions(-)
+ create mode 100644 src/ap/pam.c
+ create mode 100644 src/ap/pam.h
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index 887a62f..2db0707 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -105,6 +105,11 @@ ifdef CONFIG_NO_ACCOUNTING
+ CFLAGS += -DCONFIG_NO_ACCOUNTING
+ else
+ OBJS += ../src/ap/accounting.o
++ifdef CONFIG_PAM
++CFLAGS += -DCONFIG_PAM
++OBJS += ../src/ap/pam.o
++LIBS += -lpam
++endif
+ endif
+ 
+ ifdef CONFIG_NO_VLAN
+diff --git a/hostapd/defconfig b/hostapd/defconfig
+index 61793c4..fbdc158 100644
+--- a/hostapd/defconfig
++++ b/hostapd/defconfig
+@@ -147,6 +147,9 @@ CONFIG_IPV6=y
+ # Remove support for RADIUS accounting
+ #CONFIG_NO_ACCOUNTING=y
+ 
++# Add support for PAM session management
++#CONFIG_PAM=y
++
+ # Remove support for RADIUS
+ #CONFIG_NO_RADIUS=y
+ 
+diff --git a/hostapd/main.c b/hostapd/main.c
+index 9c532d4..8e0b6bc 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -107,6 +107,9 @@ static void hostapd_logger_cb(void *ctx, const u8 *addr, unsigned int module,
+ 	case HOSTAPD_MODULE_MLME:
+ 		module_str = "MLME";
+ 		break;
++	case HOSTAPD_MODULE_PAM:
++		module_str = "PAM";
++		break;
+ 	default:
+ 		module_str = NULL;
+ 		break;
+diff --git a/src/ap/accounting.c b/src/ap/accounting.c
+index 7939c68..c835b61 100644
+--- a/src/ap/accounting.c
++++ b/src/ap/accounting.c
+@@ -24,6 +24,9 @@
+ #include "ap_config.h"
+ #include "sta_info.h"
+ #include "accounting.h"
++#ifdef CONFIG_PAM
++#include "pam.h"
++#endif
+ 
+ 
+ /* Default interval in seconds for polling TX/RX octets from the driver if
+@@ -236,7 +239,6 @@ void accounting_sta_start(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	struct radius_msg *msg;
+ 	int interval;
+-
+ 	if (sta->acct_session_started)
+ 		return;
+ 
+@@ -250,7 +252,9 @@ void accounting_sta_start(struct hostapd_data *hapd, struct sta_info *sta)
+ 	sta->last_rx_bytes = sta->last_tx_bytes = 0;
+ 	sta->acct_input_gigawords = sta->acct_output_gigawords = 0;
+ 	hostapd_drv_sta_clear_stats(hapd, sta->addr);
+-
++#ifdef CONFIG_PAM
++	hapd_pam_session_open(hapd, sta);
++#endif
+ 	if (!hapd->conf->radius->acct_server)
+ 		return;
+ 
+@@ -388,6 +392,9 @@ void accounting_sta_interim(struct hostapd_data *hapd, struct sta_info *sta)
+  */
+ void accounting_sta_stop(struct hostapd_data *hapd, struct sta_info *sta)
+ {
++#ifdef CONFIG_PAM
++	hapd_pam_session_close(hapd, sta);
++#endif
+ 	if (sta->acct_session_started) {
+ 		accounting_sta_report(hapd, sta, 1);
+ 		eloop_cancel_timeout(accounting_interim_update, hapd, sta);
+diff --git a/src/ap/pam.c b/src/ap/pam.c
+new file mode 100644
+index 0000000..5585b82
+--- /dev/null
++++ b/src/ap/pam.c
+@@ -0,0 +1,57 @@
++#include <security/pam_appl.h>
++
++#include "utils/includes.h"
++#include "utils/common.h"
++#include "utils/eloop.h"
++#include "hostapd.h"
++#include "ap_config.h"
++#include "sta_info.h"
++
++static struct pam_conv pam_conv_data = {
++    NULL
++};
++
++int hapd_pam_session_open(struct hostapd_data *hapd, struct sta_info *sta)
++{
++	pam_handle_t *pamh = NULL;
++	int rc;
++	char macstr[18];
++
++	os_snprintf(macstr, 18, MACSTR, MAC2STR(sta->addr));
++
++	if (PAM_SUCCESS != (rc = pam_start("hostapd", macstr, &pam_conv_data, &pamh))) {
++	  /* fall through */
++	} else if (PAM_SUCCESS != (rc = pam_set_item(pamh, PAM_TTY, hapd->conf->iface))) {
++	  /* fall through */
++	} else if (PAM_SUCCESS != (rc = pam_set_item(pamh, PAM_RHOST, hapd->conf->iface))) {
++	  /* fall through */
++	} else if (PAM_SUCCESS == (rc = pam_open_session(pamh, PAM_SILENT))) {
++		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_PAM,
++			HOSTAPD_LEVEL_INFO,
++			"session opened");
++		sta->pamh = pamh;
++		return rc;
++	}
++
++	sta->pamh = NULL;
++	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_PAM,
++		HOSTAPD_LEVEL_INFO,
++		"PAM session denied %s",
++		pam_strerror(pamh, rc));
++	return rc;
++}
++
++void hapd_pam_session_close(struct hostapd_data *hapd, struct sta_info *sta)
++{
++	if (sta->pamh != NULL) {
++		int rc;
++		pam_handle_t *pamh = (pam_handle_t *)sta->pamh;
++		
++		rc = pam_close_session(pamh, PAM_SILENT);
++		pam_end(pamh, rc);
++		sta->pamh = NULL;
++		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_PAM,
++			HOSTAPD_LEVEL_INFO,
++			"session closed");
++	}
++}
+diff --git a/src/ap/pam.h b/src/ap/pam.h
+new file mode 100644
+index 0000000..68a2827
+--- /dev/null
++++ b/src/ap/pam.h
+@@ -0,0 +1,7 @@
++#ifndef _PAM_H
++#define _PAM_H 1
++
++int hapd_pam_session_open(struct hostapd_data *hapd, struct sta_info *sta);
++void hapd_pam_session_close(struct hostapd_data *hapd, struct sta_info *sta);
++
++#endif
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index 51bd9d2..53312bc 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -82,6 +82,10 @@ struct sta_info {
+ 	u32 acct_input_gigawords; /* Acct-Input-Gigawords */
+ 	u32 acct_output_gigawords; /* Acct-Output-Gigawords */
+ 
++#ifdef CONFIG_PAM
++	void *pamh; /* PAM handle */
++#endif
++
+ 	u8 *challenge; /* IEEE 802.11 Shared Key Authentication Challenge */
+ 
+ 	struct wpa_state_machine *wpa_sm;
+diff --git a/src/utils/wpa_debug.h b/src/utils/wpa_debug.h
+index f2e8646..38eafc6 100644
+--- a/src/utils/wpa_debug.h
++++ b/src/utils/wpa_debug.h
+@@ -215,6 +215,7 @@ void hostapd_logger_register_cb(hostapd_logger_cb_func func);
+ #define HOSTAPD_MODULE_DRIVER		0x00000010
+ #define HOSTAPD_MODULE_IAPP		0x00000020
+ #define HOSTAPD_MODULE_MLME		0x00000040
++#define HOSTAPD_MODULE_PAM              0x00000080
+ 
+ enum hostapd_logger_level {
+ 	HOSTAPD_LEVEL_DEBUG_VERBOSE = 0,
+-- 
+1.7.2.3
+

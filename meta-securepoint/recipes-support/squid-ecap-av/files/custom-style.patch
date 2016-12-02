@@ -1,0 +1,45 @@
+diff -up squid-ecap-av-squid-ecap-av-v1.0.7/src/adapter_avscan.cc.orig squid-ecap-av-squid-ecap-av-v1.0.7/src/adapter_avscan.cc
+--- squid-ecap-av-squid-ecap-av-v1.0.7/src/adapter_avscan.cc.orig	2014-08-28 17:32:48.000000000 +0200
++++ squid-ecap-av-squid-ecap-av-v1.0.7/src/adapter_avscan.cc	2014-10-02 14:23:29.551446828 +0200
+@@ -62,18 +62,33 @@ using namespace std;
+ 
+ libecap::Area Adapter::Xaction::ErrorPage(void)
+ {
+-    std::string errmsg = "<html><head></head><body>";
++    std::string errmsg = ""
++    "<!DOCTYPE html><html><head><meta http-equiv='Content-Type' content='text/html;"
++    "charset=utf-8'><title>ERROR: The requested URL could not be retrieved</title><"
++    "style type='text/css'>* {font-family: 'Helvetica Neue', Helvetica, Arial, sans"
++    "-serif;}a,a:hover,a:visited {color: #000000;text-decoration: none;} html body "
++    "{margin: 0;padding: 0;background-color: #B60000;font-size: 12px;color: #1e1e1e"
++    ";}#content {margin-top: 100px;padding: 10px;background: #ffffff;width: 800px;m"
++    "argin-left: auto;margin-right: auto;-webkit-box-shadow: 0 1px 4px rgba(0,0,0,0"
++    ".6);-moz-box-shadow: 0 1px 4px rgba(0,0,0,0.6);box-shadow: 0 1px 4px rgba(0,0,"
++    "0,0.6);-moz-border-radius: 3px;-webkit-border-radius: 3px;border-radius: 3px;}"
++    "#message {margin-top: 30px;}#footer {font-size: 9px;width: 820px;margin-left:a"
++    "uto;margin-right:auto;}</style></head><body><div id='content'><div id='title'>"
++    "<h1>ERROR</h1>";
+     if (Ctx->status == stInfected) {
+-        errmsg += "<h1>Access denied!</h1>";
+-        errmsg += "You've tried to upload/download a file that contains the virus ";
++	errmsg += "<h2>Access denied!</h2></div><div id='message'><p>You've tried to upload/downl";
++	errmsg += "oad a file that contains the virus:</p></div>";
+     } else if (Ctx->status == stBlocked) {
+-        errmsg += "<h1>Access denied!</h1>";
++        errmsg += "<h2>Access denied!</h2>";
+     } else {
+-        errmsg += "<h1>Internal error!</h1>";
+-        errmsg += "While scanning your request for virus infection an internal error occured!";
++	errmsg += "<h2>Internal error!</h2></div><div id='message'><p>While scanning your request";
++	errmsg += " for virus infection an internal error occured!</p></div>";
+     }
+-    errmsg += "<blockquote>" + statusString + ".</blockquote>";
+-    errmsg += "</body></html>\n";
++    errmsg += "<div id='error'><blockquote><p><b>" + statusString + ".</b></p></blockquote></";
++    errmsg += "div></div><div id='footer'><p>Securepoint GmbH, Salzstrasse 1, 21335 Lüneburg,";
++    errmsg += " Germany, Email: <a href='mailto:info@securepoint.cc'>info@securepoint.cc</a>,";
++    errmsg += " Internet: <a href='http://www.securepoint.cc/'>http://www.securepoint.cc/</a>";
++    errmsg += "</p></div></body></html>\n";
+     return libecap::Area::FromTempString(errmsg);
+ }
+ 

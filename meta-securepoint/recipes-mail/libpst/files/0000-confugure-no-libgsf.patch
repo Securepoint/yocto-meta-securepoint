@@ -1,0 +1,51 @@
+diff -Naur a/configure b/configure                           
+--- a/configure	2013-12-27 17:44:25.000000000 +0100
++++ b/configure	2014-04-28 16:18:54.370525266 +0200
+@@ -24388,20 +24388,6 @@ configure
+   GPROF_PROFILING_FALSE=
+ fi
+ 
+-
+-gsf_flags="`pkg-config libgsf-1 --cflags`"
+-gsf_libs="`pkg-config libgsf-1 --libs`"
+-if test "$gsf_flags" = ""; then
+-    { { $as_echo "$as_me:$LINENO: error: libgsf not found" >&5
+-$as_echo "$as_me: error: libgsf not found" >&2;}
+-   { (exit 1); exit 1; }; }
+-fi
+-
+-GSF_FLAGS=$gsf_flags
+-
+-GSF_LIBS=$gsf_libs
+-
+-
+ ac_config_files="$ac_config_files Makefile html/Makefile libpst.pc libpst.spec man/Makefile src/Makefile src/pst2dii.cpp python/Makefile xml/Makefile xml/libpst"
+ 
+ cat >confcache <<\_ACEOF
+diff -Naur a/configure.in b/configure.in
+--- a/configure.in	2014-04-28 16:15:48.749102150 +0200
++++ b/configure.in	2014-04-28 16:18:54.370525266 +0200
+@@ -364,14 +364,14 @@ configure.in
+ AC_MSG_RESULT([$enable_profiling])
+ AM_CONDITIONAL(GPROF_PROFILING, [test "$enable_profiling" = "yes"])
+ 
+-gsf_flags="`pkg-config libgsf-1 --cflags`"
+-gsf_libs="`pkg-config libgsf-1 --libs`"
+-if test "$gsf_flags" = ""; then
+-    AC_MSG_ERROR(libgsf not found)
+-fi
+-
+-AC_SUBST(GSF_FLAGS, [$gsf_flags])
+-AC_SUBST(GSF_LIBS, [$gsf_libs])
++#gsf_flags="`pkg-config libgsf-1 --cflags`"
++#gsf_libs="`pkg-config libgsf-1 --libs`"
++#if test "$gsf_flags" = ""; then
++#    AC_MSG_ERROR(libgsf not found)
++#fi
++#
++#AC_SUBST(GSF_FLAGS, [$gsf_flags])
++#AC_SUBST(GSF_LIBS, [$gsf_libs])
+ 
+ AC_OUTPUT(                  \
+     Makefile                \
+

@@ -1,0 +1,12 @@
+diff -up git/json-builder.h.incpath git/json-builder.h
+--- git/json-builder.h.incpath	2015-07-08 10:06:17.557114936 +0200
++++ git/json-builder.h	2015-07-08 10:06:32.831239886 +0200
+@@ -34,7 +34,7 @@
+ /* Requires json.h from json-parser
+  * https://github.com/udp/json-parser
+  */
+-#include <json.h>
++#include <json-parser/json.h>
+ 
+ #ifdef __cplusplus
+ extern "C"

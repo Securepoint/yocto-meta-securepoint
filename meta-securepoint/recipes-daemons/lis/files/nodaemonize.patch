@@ -1,0 +1,57 @@
+--- ./hv-rhel6.x/hv/tools/hv_vss_daemon.c.orig	2014-07-02 12:02:24.725315971 +0200
++++ ./hv-rhel6.x/hv/tools/hv_vss_daemon.c	2014-07-02 12:03:22.821496551 +0200
+@@ -149,8 +149,8 @@
+ 	int	op;
+ 	struct hv_vss_msg *vss_msg;
+ 
+-	if (daemon(1, 0))
+-		return 1;
++	//if (daemon(1, 0))
++	//	return 1;
+ 
+ 	openlog("Hyper-V VSS", 0, LOG_USER);
+ 	syslog(LOG_INFO, "VSS starting; pid is:%d", getpid());
+--- ./hv-rhel6.x/hv/tools/hv_kvp_daemon.c.orig	2014-07-02 15:38:34.303965944 +0200
++++ ./hv-rhel6.x/hv/tools/hv_kvp_daemon.c	2014-07-02 15:39:17.440755080 +0200
+@@ -92,6 +92,11 @@
+ static char *os_build;
+ static char *os_version;
+ static char *lic_version = "Unknown version";
++#ifdef MYLICVERSION
++static char *static_lic_version = MYLICVERSION;
++#else
++static char *static_lic_version = NULL;
++#endif
+ static struct utsname uts_buf;
+ 
+ /*
+@@ -1434,7 +1439,7 @@
+ 	char	*if_name;
+ 	struct hv_kvp_ipaddr_value *kvp_ip_val;
+ 
+-	daemon(1, 0);
++	//daemon(1, 0);
+ 	openlog("KVP", 0, LOG_USER);
+ 	syslog(LOG_INFO, "KVP starting; pid is:%d", getpid());
+ 	/*
+@@ -1549,13 +1554,17 @@
+ 			 */
+ 			in_hand_shake = 0;
+ 			p = (char *)hv_msg->body.kvp_register.version;
+-			lic_version = malloc(strlen(p) + 1);
+-			if (lic_version) {
++			if (static_lic_version){
++				lic_version = static_lic_version;
++			} else{
++			  lic_version = malloc(strlen(p) + 1);
++			  if (lic_version) {
+ 				strcpy(lic_version, p);
+ 				syslog(LOG_INFO, "KVP LIC Version: %s",
+ 					lic_version);
+-			} else {
++			  } else {
+ 				syslog(LOG_ERR, "malloc failed");
++			  }
+ 			}
+ 			continue;
+ 		}

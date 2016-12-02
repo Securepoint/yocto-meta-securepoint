@@ -1,0 +1,11 @@
+#!/bin/sh
+KRB5_KTNAME=/rootdisk/config/AD.keytab
+export KRB5_KTNAME
+read ULIMITN < env/ULIMITN
+if [ $ULIMITN -lt 4096 ]; then
+  ULIMITN=4096
+fi
+ulimit -HS -n $ULIMITN
+exec 2>&1
+exec /usr/sbin/squid -N -s
+
