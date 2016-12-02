@@ -4,7 +4,6 @@ This is a meta layer for the yocto project buildsystem https://www.yoctoproject.
 to build this software into a bootable image you need the yocto buildsystem setup with the following steps
 
 * git clone -b fido git://git.yoctoproject.org/poky.git
-* cd poky
 * git clone -b fido git://git.openembedded.org/meta-openembedded meta-oe
 * git clone git://github.com/Securepoint/yocto-meta-securepoint meta-securepoint-public
 
