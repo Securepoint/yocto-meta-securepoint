@@ -32,7 +32,6 @@ IMAGE_INSTALL_append = "\
     dovecot-pigeonhole \
     lua5.1 \
     lualdap \
-    spqmail \
     coreutils \
     util-linux-fsck \ 
     e2fsprogs-mke2fs syslinux-mbr syslinux-extlinux \
