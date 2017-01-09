@@ -1,0 +1,61 @@
+diff --git a/src/libcharon/sa/ikev1/phase1.c b/src/libcharon/sa/ikev1/phase1.c
+index b7047e8..97c2a9d 100644
+--- a/src/libcharon/sa/ikev1/phase1.c
++++ b/src/libcharon/sa/ikev1/phase1.c
+@@ -113,22 +113,8 @@ static shared_key_t *lookup_shared_key(private_phase1_t *this,
+ 	auth_cfg_t *my_auth, *other_auth;
+ 	enumerator_t *enumerator;
+ 
+-	/* try to get a PSK for IP addresses */
+ 	me = this->ike_sa->get_my_host(this->ike_sa);
+ 	other = this->ike_sa->get_other_host(this->ike_sa);
+-	my_id = identification_create_from_sockaddr(me->get_sockaddr(me));
+-	other_id = identification_create_from_sockaddr(other->get_sockaddr(other));
+-	if (my_id && other_id)
+-	{
+-		shared_key = lib->credmgr->get_shared(lib->credmgr, SHARED_IKE,
+-											  my_id, other_id);
+-	}
+-	DESTROY_IF(my_id);
+-	DESTROY_IF(other_id);
+-	if (shared_key)
+-	{
+-		return shared_key;
+-	}
+ 
+ 	if (peer_cfg)
+ 	{	/* as initiator or aggressive responder, use identities */
+@@ -158,7 +144,9 @@ static shared_key_t *lookup_shared_key(private_phase1_t *this,
+ 		}
+ 		return shared_key;
+ 	}
+-	/* as responder, we try to find a config by IP */
++
++	/* as responder, we try to find a config by IP address and use the ID
++	 * given in the config to find the PSK */
+ 	enumerator = charon->backends->create_peer_cfg_enumerator(charon->backends,
+ 												me, other, NULL, NULL, IKEV1);
+ 	while (enumerator->enumerate(enumerator, &peer_cfg))
+@@ -185,6 +173,22 @@ static shared_key_t *lookup_shared_key(private_phase1_t *this,
+ 			}
+ 		}
+ 	}
++	if (shared_key)
++	{
++		return shared_key;
++	}
++
++  /* if other methods fail, fallback to lookup by IP address directly */
++  my_id = identification_create_from_sockaddr(me->get_sockaddr(me));
++	other_id = identification_create_from_sockaddr(other->get_sockaddr(other));
++	if (my_id && other_id)
++	{
++		shared_key = lib->credmgr->get_shared(lib->credmgr, SHARED_IKE,
++											  my_id, other_id);
++	}
++	DESTROY_IF(my_id);
++	DESTROY_IF(other_id);
++
+ 	enumerator->destroy(enumerator);
+ 	if (!shared_key)
+ 	{
