@@ -1,0 +1,32 @@
+diff -ur keepalived-1.2.24.orig/doc/Makefile.am keepalived-1.2.24/doc/Makefile.am
+--- keepalived-1.2.24.orig/doc/Makefile.am	2017-01-12 09:30:45.834624000 +0100
++++ keepalived-1.2.24/doc/Makefile.am	2017-01-12 09:55:25.913378000 +0100
+@@ -13,17 +13,17 @@
+ sampledir	= $(sysconfdir)/@PACKAGE@/samples
+ sample_DATA	= $(srcdir)/samples/*
+ 
+-mibsdir		= $(datarootdir)/snmp/mibs
+-mibs_DATA	=
+-if SNMP
+-mibs_DATA	+= KEEPALIVED-MIB
+-endif
+-if SNMP_RFCV2
+-mibs_DATA	+= VRRP-MIB
+-endif
+-if SNMP_RFCV3
+-mibs_DATA	+= VRRPv3-MIB
+-endif
++#mibsdir		= $(datarootdir)/snmp/mibs
++#mibs_DATA	=
++#if SNMP
++#mibs_DATA	+= KEEPALIVED-MIB
++#endif
++#if SNMP_RFCV2
++#mibs_DATA	+= VRRP-MIB
++#endif
++#if SNMP_RFCV3
++#mibs_DATA	+= VRRPv3-MIB
++#endif
+ 
+ dist-hook:
+ 	rm -rf `find $(distdir)/doc -type d -name ".git*"`

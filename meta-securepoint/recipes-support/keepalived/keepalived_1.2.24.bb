@@ -17,16 +17,23 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=b234ee4d69f5fce4486a80fdaf4a4263"
 
 PR = "r0"
 SRC_URI = "\
-    http://www.keepalived.org/software/keepalived-1.2.9.tar.gz \
+    http://www.keepalived.org/software/keepalived-${PV}.tar.gz \
+    file://nosystemd.patch \
+    file://nosnmp.patch \
 "
 
-SRC_URI[md5sum] = "adfad98a2cc34230867d794ebc633492"
-SRC_URI[sha256sum] = "fb711dacce95b60eee18f2b89938a9fbebc5096022f17850fd2284f207e41d9d"
+SRC_URI[md5sum] = "e878312095b7dcab91ad06e257822247"
+SRC_URI[sha256sum] = "3071804478077e606197a2348b5733d7d53af2843906af5e0d544945565c36ef"
 
 inherit autotools-brokensep gettext
 
+CPPFLAGS_append = " -I=/usr/include/libnl3"
+
 # Pass STRIP=/bin/true to "make" in order to get a useful debuginfo package."
 EXTRA_OEMAKE += " STRIP=/bin/true"
+EXTRA_OECONF += " --disable-snmp --disable-snmp-keepalived --disable-snmp-checker --disable-snmp-rfc -disable-snmp-rfcv2 --disable-snmp-rfcv3 --disable-snmp-reply-v3-for-v2"
+
+#DEPENDS += "libnl"
 
 do_install_append() {
     install -d ${D}${datadir}/doc/${PN}-${PV}

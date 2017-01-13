@@ -1,0 +1,14 @@
+diff -ur keepalived-1.2.24.orig/keepalived/Makefile.am keepalived-1.2.24/keepalived/Makefile.am
+--- keepalived-1.2.24.orig/keepalived/Makefile.am	2017-01-12 09:30:45.845226000 +0100
++++ keepalived-1.2.24/keepalived/Makefile.am	2017-01-12 09:41:16.362187000 +0100
+@@ -43,8 +43,8 @@
+ initdir			= $(sysconfdir)/rc.d/init.d
+ init_DATA		= etc/init.d/keepalived.init
+ 
+-systemddir		= $(prefix)/lib/systemd/system
+-systemd_DATA		= keepalived.service
++#systemddir		= $(prefix)/lib/systemd/system
++#systemd_DATA		= keepalived.service
+ 
+ install-data-hook:
+ 	mv $(DESTDIR)/$(sysconfdir)/rc.d/init.d/keepalived.init $(DESTDIR)/$(sysconfdir)/rc.d/init.d/keepalived
