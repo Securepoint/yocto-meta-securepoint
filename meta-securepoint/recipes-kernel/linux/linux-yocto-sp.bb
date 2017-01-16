@@ -18,7 +18,7 @@ SRC_URI += " \
     file://${MACHINE}.cfg \
     file://tomoyo.cfg \
     file://usbserial.cfg \
-    file://403-ath_regd_optional.patch \
+    file://linux-${LINUX_VERSION}-ath_regd_optional.patch \
     file://storevsc_drv_32bit_tablesize.patch \
     file://0002-e1000e-Intel-Quadport-0x10A0-hack.patch \
     file://09-hyperv \
