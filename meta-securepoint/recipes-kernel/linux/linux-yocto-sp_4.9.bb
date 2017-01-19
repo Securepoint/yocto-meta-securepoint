@@ -3,7 +3,7 @@ require recipes-kernel/linux/linux-yocto.inc
 
 FILESEXTRAPATHS_prepend := "${THISDIR}/files:"
 
-SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git;branch=linux-${LINUX_VERSION}.y;bareclone=1"
+SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git;branch=linux-${PV}.y;bareclone=1"
 SRC_URI += " \
     file://defconfig \
     file://squashfs.cfg \
@@ -18,21 +18,18 @@ SRC_URI += " \
     file://${MACHINE}.cfg \
     file://tomoyo.cfg \
     file://usbserial.cfg \
-    file://linux-${LINUX_VERSION}-ath_regd_optional.patch \
+    file://linux-${PV}-ath_regd_optional.patch \
     file://storevsc_drv_32bit_tablesize.patch \
     file://0002-e1000e-Intel-Quadport-0x10A0-hack.patch \
     file://09-hyperv \
     file://fanotify.cfg \
 "
 
-LINUX_VERSION ?= "4.4"
 LINUX_VERSION_EXTENSION ?= "-sp"
 LINUX_KERNEL_TYPE = "custom"
 
 SRCREV="${AUTOREV}"
-
-PR = "r1"
-PV = "${LINUX_VERSION}+git${SRCPV}"
+PR = "r1.git${SRCPV}"
 
 #exclude the kernel image from rootfs
 RDEPENDS_kernel-base = ""
