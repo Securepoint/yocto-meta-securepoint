@@ -1,0 +1,22 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index db69a43..b92c75f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,5 +1,5 @@
+-cmake_minimum_required(VERSION 3.4)
+-cmake_policy(SET CMP0037 NEW)
++cmake_minimum_required(VERSION 2.6)
++#cmake_policy(SET CMP0037 NEW)
+ 
+ project(LibVNCServer)
+ include(CheckFunctionExists)
+@@ -517,7 +517,8 @@ function(get_link_libraries OUT TARGET)
+ 	list(APPEND RESULT "-l${LIB}")
+     endforeach()
+     list(REMOVE_DUPLICATES RESULT)
+-    string(CONCAT RESULT ${RESULT}) # back to string
++    set(RESULT ${RESULT})
++    #string(CONCAT RESULT ${RESULT}) # back to string
+     string(REPLACE "-l" " -l" RESULT ${RESULT}) # re-add separators
+     set(${OUT} ${RESULT} PARENT_SCOPE)
+ endfunction()
