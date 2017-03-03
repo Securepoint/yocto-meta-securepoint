@@ -1,17 +1,17 @@
-diff -rupN dovecot-2.2.14.orig/src/doveadm/doveadm-mail-fetch.c dovecot-2.2.14/src/doveadm/doveadm-mail-fetch.c
---- dovecot-2.2.14.orig/src/doveadm/doveadm-mail-fetch.c	2014-09-10 12:38:58.000000000 +0200
-+++ dovecot-2.2.14/src/doveadm/doveadm-mail-fetch.c	2015-06-19 18:14:51.974858111 +0200
-@@ -19,6 +19,9 @@
- #include "doveadm-mail.h"
- #include "doveadm-mailbox-list-iter.h"
- #include "doveadm-mail-iter.h"
+diff -rupN dovecot-2.2.28.orig/src/doveadm/doveadm-mail-fetch.c dovecot-2.2.28/src/doveadm/doveadm-mail-fetch.c
+--- dovecot-2.2.28.orig/src/doveadm/doveadm-mail-fetch.c	2017-02-20 10:34:52.000000000 +0100
++++ dovecot-2.2.28/src/doveadm/doveadm-mail-fetch.c	2017-03-03 10:08:45.912923442 +0100
+@@ -15,6 +15,9 @@
+ #include "mail-storage.h"
+ #include "mail-search.h"
+ #include "mail-namespace.h"
 +#include "maildir-storage.h"
 +#include "maildir-uidlist.h"
 +#include "maildir-sync.h"
- 
- #include <stdio.h>
- 
-@@ -411,6 +414,31 @@ static int fetch_pop3_order(struct fetch
+ #include "imap-msgpart.h"
+ #include "doveadm-print.h"
+ #include "doveadm-mail.h"
+@@ -315,6 +318,31 @@ static int fetch_text_utf8(struct fetch_
  	return 0;
  }
  
@@ -40,40 +40,14 @@ diff -rupN dovecot-2.2.14.orig/src/doveadm/doveadm-mail-fetch.c dovecot-2.2.14/s
 +	return ret;
 +}
 +
- static const struct fetch_field fetch_fields[] = {
- 	{ "user",          0,                        fetch_user },
- 	{ "mailbox",       0,                        fetch_mailbox },
-@@ -435,7 +463,8 @@ static const struct fetch_field fetch_fi
- 	{ "imap.body",     MAIL_FETCH_IMAP_BODY,     fetch_imap_body },
- 	{ "imap.bodystructure", MAIL_FETCH_IMAP_BODYSTRUCTURE, fetch_imap_bodystructure },
- 	{ "pop3.uidl",     MAIL_FETCH_UIDL_BACKEND,  fetch_pop3_uidl },
--	{ "pop3.order",    MAIL_FETCH_POP3_ORDER,    fetch_pop3_order }
-+	{ "pop3.order",    MAIL_FETCH_POP3_ORDER,    fetch_pop3_order },
-+	{ "fname",         0,                        fetch_fname }
- };
- 
- static const struct fetch_field *fetch_field_find(const char *name)
-diff -rupN dovecot-2.2.14.orig/src/doveadm/Makefile.am dovecot-2.2.14/src/doveadm/Makefile.am
---- dovecot-2.2.14.orig/src/doveadm/Makefile.am	2014-09-16 14:23:48.000000000 +0200
-+++ dovecot-2.2.14/src/doveadm/Makefile.am	2015-06-19 18:15:15.477859425 +0200
-@@ -19,6 +19,8 @@ AM_CPPFLAGS = \
- 	-I$(top_srcdir)/src/lib-imap \
- 	-I$(top_srcdir)/src/lib-index \
- 	-I$(top_srcdir)/src/lib-storage \
-+	-I$(top_srcdir)/src/lib-storage/index \
-+	-I$(top_srcdir)/src/lib-storage/index/maildir \
- 	-I$(top_srcdir)/src/auth \
- 	-DMODULEDIR=\""$(moduledir)"\" \
- 	-DDOVEADM_MODULEDIR=\""$(doveadm_moduledir)"\" \
-diff -rupN dovecot-2.2.14.orig/src/doveadm/Makefile.in dovecot-2.2.14/src/doveadm/Makefile.in
---- dovecot-2.2.14.orig/src/doveadm/Makefile.in	2014-10-14 16:17:06.000000000 +0200
-+++ dovecot-2.2.14/src/doveadm/Makefile.in	2015-06-19 18:15:30.802860282 +0200
-@@ -460,6 +460,8 @@ AM_CPPFLAGS = \
- 	-I$(top_srcdir)/src/lib-imap \
- 	-I$(top_srcdir)/src/lib-index \
- 	-I$(top_srcdir)/src/lib-storage \
-+	-I$(top_srcdir)/src/lib-storage/index \
-+	-I$(top_srcdir)/src/lib-storage/index/maildir \
- 	-I$(top_srcdir)/src/auth \
- 	-DMODULEDIR=\""$(moduledir)"\" \
- 	-DDOVEADM_MODULEDIR=\""$(doveadm_moduledir)"\" \
+ static int fetch_size_physical(struct fetch_cmd_context *ctx)
+ {
+ 	uoff_t size;
+@@ -488,6 +516,7 @@ static const struct fetch_field fetch_fi
+ 	                   MAIL_FETCH_STREAM_BODY,   fetch_text },
+ 	{ "text.utf8",     MAIL_FETCH_STREAM_HEADER |
+ 	                   MAIL_FETCH_STREAM_BODY,   fetch_text_utf8 },
++	{ "fname",         0,                        fetch_fname },
+ 	{ "size.physical", MAIL_FETCH_PHYSICAL_SIZE, fetch_size_physical },
+ 	{ "size.virtual",  MAIL_FETCH_VIRTUAL_SIZE,  fetch_size_virtual },
+ 	{ "date.received", MAIL_FETCH_RECEIVED_DATE, fetch_date_received },
