@@ -29,9 +29,9 @@ LINUX_VERSION = "${PV}"
 LINUX_VERSION_EXTENSION ?= "-sp"
 LINUX_KERNEL_TYPE = "custom"
 
-SRCREV="${AUTOREV}"
-
-PR = "r1.git${SRCPV}"
+PV = "4.4.44"
+SRCREV = "v${PV}"
+PR = "r1"
 
 #exclude the kernel image from rootfs
 RDEPENDS_kernel-base = ""
