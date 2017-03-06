@@ -29,7 +29,7 @@ LINUX_VERSION = "${PV}"
 LINUX_VERSION_EXTENSION ?= "-sp"
 LINUX_KERNEL_TYPE = "custom"
 
-PV = "4.4.44"
+PV = "4.4.52"
 SRCREV = "v${PV}"
 PR = "r1"
 
