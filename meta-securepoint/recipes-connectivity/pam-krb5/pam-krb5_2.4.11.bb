@@ -2,13 +2,13 @@
 # Released under the MIT license (see COPYING.MIT for the terms)
 
 DESCRIPTION = "pam_krb5 is designed to allow smooth integration of Kerberos 5 passwordchecking with applications built using PAM. It also supports session-specific ticket files (which are neater), Kerberos IV ticket file grabbing, and AFS token-grabbing."
-HOMEPAGE = "https://git.fedorahosted.org/cgit/pam_krb5.git/"
+HOMEPAGE = "https://pagure.io/pam_krb5"
 LICENSE = "MIT"
 SECTION = "base"
 DEPENDS = "krb5 libpam"
 PR = "r0"
 
-SRC_URI = "git://git.fedorahosted.org/git/pam_krb5.git;protocol=https;tag=pam_krb5-${PV}"
+SRC_URI = "git://pagure.io/pam_krb5.git;protocol=https;tag=pam_krb5-${PV}"
 LIC_FILES_CHKSUM = "file://COPYING.MIT;md5=5288d1454395f7ed938af11db77eaf91"
 
 #libPAM installs under /lib not /usr/lib
