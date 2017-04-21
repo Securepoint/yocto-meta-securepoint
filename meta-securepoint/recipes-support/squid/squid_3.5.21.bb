@@ -14,6 +14,7 @@ SRC_URI = "http://www.squid-cache.org/Versions/v3/3.5/squid-${PV}.tar.bz2 \
     file://Fix-flawed-dynamic-ldb-link-test-in-configure.patch \
     file://squid-3.5.15-cross.patch \
     file://squid-3.3.9-remove-key-usage.patch \
+    file://squid_3.5.24_backport_renegotiation_vuln.patch \
     file://etc_sv_squid_run \
     file://etc_sv_squid_down \
     file://etc_sv_squid-reverse_run \
