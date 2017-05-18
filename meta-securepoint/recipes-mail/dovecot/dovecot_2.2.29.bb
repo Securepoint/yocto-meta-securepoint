@@ -1,12 +1,13 @@
 LIC_FILES_CHKSUM = "file://COPYING.MIT;md5=bba6cdb9c2b03c849ed4975ed9ed90dc"
 SRC_URI = "http://dovecot.org/releases/2.2/${PN}-${PV}.tar.gz \
 git://github.com/Securepoint/dovecot-xexec-2.2.git;protocol=http;name=xexec \
-file://dovecot-xexec-pstimport.patch \
-file://dovecot-add_dn_escaping_#6768.patch \
 file://dovecot-doveadm-fetch-fname.patch"
 
-SRC_URI[md5sum] = "1e42eb3b69544c447ad882d7858f3630"
-SRC_URI[sha256sum] = "b6d8468cea47f1227f47b80618f7fb872e2b2e9d3302adc107a005dd083865bb"
+# recheck this bug in new version. ohterwise see ticket and fix upstream
+#file://dovecot-add_dn_escaping_#6768.patch 
+
+SRC_URI[md5sum] = "ff95486a5c43025a2c3f5a712e7962b9"
+SRC_URI[sha256sum] = "d939ea99126eb8a8c6955390b422b6e27ec0fa43a3b59b2b3218cb5ad67139a6"
 
 SRCREV_xexec = "master"
 # xexec chksum
