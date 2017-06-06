@@ -21,5 +21,7 @@ FILES_${PN}-plugins-staticdev = "${libdir}/ipsec/plugins/*.a ${libdir}/ipsec/plu
 SRC_URI += "\
     file://etc_sv_ipsec_down \
     file://etc_sv_ipsec_run \
+    file://multi_psk_essential.patch \
+    file://strongswan-5.0.0-5.5.2_asn1_choice.patch \
 "
 
