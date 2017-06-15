@@ -2,7 +2,7 @@ SUMMARY = "A full-featured SSL VPN solution via tun device."
 HOMEPAGE = "http://openvpn.sourceforge.net"
 SECTION = "console/network"
 LICENSE = "GPLv2"
-LIC_FILES_CHKSUM = "file://COPYING;md5=5aac200199fde47501876cba7263cb0c"
+LIC_FILES_CHKSUM = "file://COPYING;md5=e9b64491ec98eb6c6493ac5e4118f107"
 DEPENDS = "lzo openssl libpam"
 
 inherit autotools
@@ -14,8 +14,8 @@ SRC_URI = "\
 	file://openvpn-param-size.patch \
         file://openvpn"
 
-SRC_URI[md5sum] = "10b7b1de84dfa45ed8ff8f39a1011371"
-SRC_URI[sha256sum] = "05c1c5c5379a5338a188a65fba2a3c3ba23c1ce11f1dfefcafb4e6ec0db13dd5"
+SRC_URI[md5sum] = "5de0842d09b5743c5acdc52cd7b07812"
+SRC_URI[sha256sum] = "b56e65c954e1012c53d140eed6c109934807580b2ff883480dbed881f3e12558"
 
 CFLAGS += "-fno-inline"
 
