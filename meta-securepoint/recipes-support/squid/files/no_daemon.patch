@@ -1,0 +1,111 @@
+=== modified file 'src/main.cc'
+--- src/main.cc	2016-09-23 15:28:42 +0000
++++ src/main.cc	2017-06-08 15:31:13 +0000
+@@ -628,7 +628,7 @@
+ void
+ shut_down(int sig)
+ {
+-    do_shutdown = sig == SIGINT ? -1 : 1;
++    do_shutdown = sig == SIGINT ? 1 : -1;
+     ShutdownSignal = sig;
+ #if defined(SIGTTIN)
+     if (SIGTTIN == sig)
+@@ -1457,7 +1457,7 @@
+     RunRegisteredHere(RegisteredRunner::useConfig);
+     enter_suid();
+
+-    if (!opt_no_daemon && Config.workers > 0)
++    if (!opt_no_daemon || Config.workers > 1)
+         watch_child(argv);
+
+     if (opt_create_swap_dirs) {
+@@ -1689,14 +1689,14 @@
+         return;
+
+     openlog(APP_SHORTNAME, LOG_PID | LOG_NDELAY | LOG_CONS, LOG_LOCAL4);
+-
+-    if ((pid = fork()) < 0)
+-        syslog(LOG_ALERT, "fork failed: %s", xstrerror());
+-    else if (pid > 0)
+-        exit(0);
+-
+-    if (setsid() < 0)
+-        syslog(LOG_ALERT, "setsid failed: %s", xstrerror());
++    if (!opt_no_daemon) {
++      if ((pid = fork()) < 0)
++          syslog(LOG_ALERT, "fork failed: %s", xstrerror());
++      else if (pid > 0)
++          exit(0);
++      if (setsid() < 0)
++          syslog(LOG_ALERT, "setsid failed: %s", xstrerror());
++    }
+
+     closelog();
+
+@@ -1727,9 +1727,6 @@
+         dup2(nullfd, 2);
+     }
+
+-    // handle shutdown notifications from kids
+-    squid_signal(SIGUSR1, sig_shutdown, SA_RESTART);
+-
+     if (Config.workers > 128) {
+         syslog(LOG_ALERT, "Suspiciously high workers value: %d",
+                Config.workers);
+@@ -1766,7 +1763,10 @@
+         /* parent */
+         openlog(APP_SHORTNAME, LOG_PID | LOG_NDELAY | LOG_CONS, LOG_LOCAL4);
+
+-        squid_signal(SIGINT, SIG_IGN, SA_RESTART);
++        // handle shutdown notifications from kids
++        squid_signal(SIGUSR1, sig_shutdown, SA_RESTART);
++        squid_signal(SIGINT, sig_shutdown, SA_RESTART);
++        squid_signal(SIGTERM, sig_shutdown, SA_RESTART);
+
+ #if _SQUID_NEXT_
+
+
+=== modified file 'src/tools.cc'
+--- src/tools.cc	2016-12-16 12:18:27 +0000
++++ src/tools.cc	2017-06-08 15:22:22 +0000
+@@ -438,6 +438,12 @@
+ sig_shutdown(int sig)
+ {
+     shutting_down = 1;
++    if (IamMasterProcess()) {
++        for (int i = TheKids.count() - 1; i >= 0; --i) {
++          Kid &cur = TheKids.get(i);
++          kill(cur.getPid(), SIGINT);
++        }
++    }
+ }
+
+ const char *
+@@ -661,7 +667,7 @@
+ IamWorkerProcess()
+ {
+     // when there is only one process, it has to be the worker
+-    if (opt_no_daemon || Config.workers == 0)
++    if (Config.workers == 1)
+         return true;
+
+     return TheProcessKind == pkWorker;
+@@ -676,7 +682,7 @@
+ bool
+ InDaemonMode()
+ {
+-    return !opt_no_daemon && Config.workers > 0;
++    return !opt_no_daemon || Config.workers > 1;
+ }
+
+ bool
+@@ -695,7 +701,7 @@
+ IamPrimaryProcess()
+ {
+     // when there is only one process, it has to be primary
+-    if (opt_no_daemon || Config.workers == 0)
++    if (Config.workers == 1)
+         return true;
+
+     // when there is a master and worker process, the master delegates
+

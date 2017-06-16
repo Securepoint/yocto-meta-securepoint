@@ -2,6 +2,11 @@
 KRB5_KTNAME=/rootdisk/config/AD.keytab
 export KRB5_KTNAME
 read ULIMITN < env/ULIMITN
+chown nobody:nogroup /var/run/squid
+chmod 700 /var/run/squid
+read ULIMITN < /etc/squid/ULIMITN
+# prevent ULIMITN causing segmentation faults in combination with a 
+# SQUID_MAXFD that is set to low, see #7749
 if [ $ULIMITN -lt 4096 ]; then
   ULIMITN=4096
 fi
