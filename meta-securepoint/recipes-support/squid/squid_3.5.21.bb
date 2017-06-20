@@ -19,7 +19,7 @@ SRC_URI = "http://www.squid-cache.org/Versions/v3/3.5/squid-${PV}.tar.bz2 \
     file://etc_sv_squid_down \
     file://etc_sv_squid-reverse_run \
     file://etc_sv_squid-reverse_down \
-    file://no_daemon_2.patch \
+    file://no_daemon.patch \
 "
 SRC_URI[md5sum] = "95bfeb8796bb4e139e7d43ee396db38f"
 SRC_URI[sha256sum] = "94ae3a83776d05be63abff7e88ce7d20f7336735391ac12d2833c03748e7f314"
