@@ -14,8 +14,8 @@ SRC_URI = "\
 	file://openvpn-param-size.patch \
         file://openvpn"
 
-SRC_URI[md5sum] = "5de0842d09b5743c5acdc52cd7b07812"
-SRC_URI[sha256sum] = "b56e65c954e1012c53d140eed6c109934807580b2ff883480dbed881f3e12558"
+SRC_URI[md5sum] = "d86a69d9e887f139790c079e71edd43a"
+SRC_URI[sha256sum] = "42ac5b9ffb6ac1b83e6ac37605a581a5b6d0f5e62bf4831b3050fbbb3a18138b"
 
 CFLAGS += "-fno-inline"
 
