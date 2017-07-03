@@ -14,8 +14,8 @@ SRC_URI = "http://nginx.org/download/nginx-${PV}.tar.gz \
 	   file://nginx.init \
 	   file://users"
 
-SRC_URI[md5sum] = "c184c873d2798c5ba92be95ed1209c02"
-SRC_URI[sha256sum] = "8ed647c3dd65bc4ced03b0e0f6bf9e633eff6b01bac772bcf97077d58bc2be4d"
+SRC_URI[md5sum] = "204a20cb4f0b0c9db746c630d89ff4ea"
+SRC_URI[sha256sum] = "75020f1364cac459cb733c4e1caed2d00376e40ea05588fb8793076a4c69dd90"
 
 DEPENDS = "libpcre rrdtool openssl zlib"
 
