@@ -15,7 +15,7 @@ SRC_URI += " \
     file://cong_algos.cfg \
     file://taskstats.cfg \
     file://cifs.cfg \
-    file://${MACHINE}.cfg \
+    file://spx86.cfg \
     file://tomoyo.cfg \
     file://usbserial.cfg \
     file://linux-${PV}-ath_regd_optional.patch \
