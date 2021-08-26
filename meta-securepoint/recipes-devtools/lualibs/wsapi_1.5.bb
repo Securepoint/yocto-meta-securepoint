@@ -1,10 +1,12 @@
-DESCRIPTION = "Cosmo is a "safe templates" engine.  It allows you to fill nested \
-templates, providing many of the advantages of Turing-complete \
-template engines, without without the downside of allowing arbitrary \
-code in the templates."
+DESCRIPTION = "WSAPI is an API that abstracts the web server from Lua web \
+applications. By coding against WSAPI your application can run on any of \
+the supported servers and interfaces (currently CGI, FastCGI and Xavante, \
+on Windows and UNIX-based systems)."
+SUMMARY = "WSAPI is an API that abstracts the web server from Lua web applications."
 SECTION = "lua"
-LICENSE = "CLOSED"
-PR = "r0"
+LICENSE = "MIT"
+LIC_FILES_CHKSUM = "file://doc/us/license.html;md5=7c303fa69c61ad25e6a04ef328d650f0"
+PR = "r1"
 
 
 SRC_URI = "git://github.com/keplerproject/wsapi.git;protocol=http \
@@ -12,13 +14,13 @@ SRC_URI = "git://github.com/keplerproject/wsapi.git;protocol=http \
 SRCREV = "v${PV}"
 S = "${WORKDIR}/git"
 
-DEPENDS = "lua5.1"
+DEPENDS = "lua5.1 fcgi"
 
 inherit autotools-brokensep
 CLEANBROKEN = "1"
+INSANE_SKIP_${PN} = "ldflags"
 
-EXTRA_OEMAKE += " PREFIX=/usr "
-CFLAGS += " -fPIC"
+EXTRA_OEMAKE += " PREFIX=/usr LD='${LD} -Wl,--hash-style=gnu' CC='${CC} -fPIC -Wl,--hash-style=gnu'"
 
 do_configure(){
 cat <<-EOF > config

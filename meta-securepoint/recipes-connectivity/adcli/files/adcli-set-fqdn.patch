@@ -1,0 +1,12 @@
+diff -up adcli-0.8.2/library/adenroll.c.fqdn adcli-0.8.2/library/adenroll.c
+--- adcli-0.8.2/library/adenroll.c.fqdn	2017-08-02 15:30:50.243523816 +0200
++++ adcli-0.8.2/library/adenroll.c	2017-08-02 15:32:49.613552276 +0200
+@@ -1318,7 +1318,7 @@ load_keytab_entry (krb5_context k5,
+ 
+ 		} else if (!enroll->host_fqdn && _adcli_str_has_prefix (name, "host/") && strchr (name, '.')) {
+ 			/* Skip host/ prefix */
+-			enroll->host_fqdn = name + 5;
++			_adcli_str_set(&enroll->host_fqdn, name + 5);
+ 			_adcli_info ("Found host qualified name in keytab: %s", name);
+ 			name = NULL;
+ 		}

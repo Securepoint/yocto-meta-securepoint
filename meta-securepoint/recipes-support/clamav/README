@@ -1,0 +1,4 @@
+To update the signatures login to build.intern.securepoint.de, chdir
+to /work/www/downloads/clamav-signatures and type
+
+  sh update.sh

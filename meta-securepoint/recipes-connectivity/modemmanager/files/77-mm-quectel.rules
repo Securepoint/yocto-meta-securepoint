@@ -1,0 +1,2 @@
+# Quectel EC25, make sure qmi_wwan gets loaded before option
+ATTRS{idVendor}=="2c7c", ATTRS{idProduct}=="0125", RUN{builtin}+="kmod load qmi_wwan option"

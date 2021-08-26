@@ -1,0 +1,422 @@
+diff --git a/keepalived/core/main.c b/keepalived/core/main.c
+index 44c80ae..0e26d19 100644
+--- a/keepalived/core/main.c
++++ b/keepalived/core/main.c
+@@ -97,6 +97,7 @@ char *network_namespace;				/* The network namespace we are running in */
+ bool namespace_with_ipsets;				/* Override for using namespaces and ipsets with Linux < 3.13 */
+ static char *override_namespace;			/* If namespace specified on command line */
+ #endif
++#include "msq.h"
+ 
+ /* Log facility table */
+ static struct {
+@@ -299,8 +300,14 @@ start_keepalived(void)
+ #endif
+ #ifdef _WITH_VRRP_
+ 	/* start vrrp child */
+-	if (__test_bit(DAEMON_VRRP, &daemon_mode))
+-		start_vrrp_child();
++	if (__test_bit(DAEMON_VRRP, &daemon_mode)) {
++          close(open("/tmp/msq_key.txt", O_CREAT | O_TRUNC | O_WRONLY, 0700));
++          start_msqr_child(); /* Start msq reader child process*/
++          sleep(1);
++          init_msqw(); /* Init msq to write notify script cmds*/
++
++          start_vrrp_child();
++        }
+ #endif
+ }
+ 
+diff --git a/lib/Makefile.am b/lib/Makefile.am
+index 81ae719..aa3d4d2 100644
+--- a/lib/Makefile.am
++++ b/lib/Makefile.am
+@@ -19,7 +19,8 @@ liblib_a_SOURCES	= memory.c utils.c notify.c timer.c scheduler.c \
+ 	vector.c list.c html.c parser.c signals.c logger.c rttables.c \
+ 	assert.c \
+ 	bitops.h timer.h scheduler.h rttables.h vector.h parser.h \
+-	signals.h notify.h logger.h list.h memory.h html.h utils.h
++	signals.h notify.h logger.h list.h memory.h html.h utils.h \
++	msq.c msq.h
+ 
+ liblib_a_LIBADD		=
+ EXTRA_liblib_a_SOURCES	=
+diff --git a/lib/Makefile.in b/lib/Makefile.in
+index 69dee09..482f6bb 100644
+--- a/lib/Makefile.in
++++ b/lib/Makefile.in
+@@ -115,7 +115,7 @@ am_liblib_a_OBJECTS = memory.$(OBJEXT) utils.$(OBJEXT) \
+ 	notify.$(OBJEXT) timer.$(OBJEXT) scheduler.$(OBJEXT) \
+ 	vector.$(OBJEXT) list.$(OBJEXT) html.$(OBJEXT) \
+ 	parser.$(OBJEXT) signals.$(OBJEXT) logger.$(OBJEXT) \
+-	rttables.$(OBJEXT) assert.$(OBJEXT)
++	rttables.$(OBJEXT) assert.$(OBJEXT) msq.$(OBJEXT)
+ am__EXTRA_liblib_a_SOURCES_DIST = old_socket.c old_socket.h
+ liblib_a_OBJECTS = $(am_liblib_a_OBJECTS)
+ AM_V_P = $(am__v_P_@AM_V@)
+@@ -297,7 +297,8 @@ liblib_a_SOURCES = memory.c utils.c notify.c timer.c scheduler.c \
+ 	vector.c list.c html.c parser.c signals.c logger.c rttables.c \
+ 	assert.c \
+ 	bitops.h timer.h scheduler.h rttables.h vector.h parser.h \
+-	signals.h notify.h logger.h list.h memory.h html.h utils.h
++	signals.h notify.h logger.h list.h memory.h html.h utils.h \
++	msq.c msq.h
+ 
+ liblib_a_LIBADD = $(am__append_1)
+ EXTRA_liblib_a_SOURCES = $(am__append_2)
+diff --git a/lib/msq.c b/lib/msq.c
+new file mode 100644
+index 0000000..7720653
+--- /dev/null
++++ b/lib/msq.c
+@@ -0,0 +1,235 @@
++
++#include "msq.h"
++
++/*
++ *Message Queue Writer
++ *
++ *Initialize the message queue of writer side
++ */
++
++int init_msqw(void){
++
++	int msqid;
++	key_t key;
++
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++	if ((key = ftok("/tmp/msq_key.txt", 'B')) == -1) { /*same key as reader*/
++          perror("ftok");
++		log_message(LOG_INFO, "msqw ftok error(%s)", strerror(errno));
++		exit(1);
++	}
++
++	if ((msqid = msgget(key, 0644)) == -1) { /* connect to the queue */
++          perror("msgget");
++		log_message(LOG_INFO, "msqw msgget error(%s)", strerror(errno));
++		exit(1);
++	}
++
++        msqidw = msqid; /*Save in Global var*/
++ 
++        log_message(LOG_INFO, "msqidw:%d", msqidw);
++	//log_message(LOG_INFO, "[-%s]", __func__);
++
++	return msqid;
++}
++
++
++/*
++ *Message Queue Reader
++ *
++ *Initialize the message queue of writer side
++ */
++
++int init_msqr(void){
++
++	int msqid;
++	key_t key;
++
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++	if ((key = ftok("/tmp/msq_key.txt", 'B')) == -1) {  /*same key as writer*/
++		log_message(LOG_INFO, "msqr ftok error(%s)", strerror(errno));
++		exit(1);/*TBF*/
++	}
++
++
++	if ((msqid = msgget(key, 0644 | IPC_CREAT)) == -1) {
++		log_message(LOG_INFO, "msgget error(%s)", strerror(errno));
++		exit(1);/*TBF*/
++	}
++
++        msqidr = msqid; /*Save in Global var*/
++
++        log_message(LOG_INFO, "msqidr:%d", msqidr);
++	//log_message(LOG_INFO, "[-%s]", __func__);
++
++	return msqid;
++}
++
++/*
++ *  Initialize reader message queue
++ *
++ * 
++ * */
++
++int start_msqr_child(void)
++{
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++#ifndef _DEBUG_
++	pid_t pid;
++
++	/*
++ 	 * Initialize child process to read 
++ 	 * and execute cmds in message queue
++ 	 * */
++	pid = fork();
++
++	if (pid < 0) {
++		log_message(LOG_INFO, "msqr child process fork error(%s)", strerror(errno));
++		return -1;
++	} else if (pid) {
++		//vrrp_child = pid;
++		log_message(LOG_INFO, "Starting msqr child process, pid=%d", pid);
++
++		/* Start respawning thread */
++		/*thread_add_child(master, vrrp_respawn_thread, NULL,
++				 pid, RESPAWN_TIMER);*/
++		return 0;
++	}
++
++#if 0 
++	/* Opening local VRRP syslog channel */
++	openlog(PROG_VRRP, LOG_PID | ((debug & 1) ? LOG_CONS : 0),
++		(log_facility==LOG_DAEMON) ? LOG_LOCAL1 : log_facility);
++
++	/* Child process part, write pidfile */
++	if (!pidfile_write(vrrp_pidfile, getpid())) {
++		/* Fatal error */
++		log_message(LOG_INFO, "VRRP child process: cannot write pidfile");
++		exit(0);
++	}
++
++	/* Create the new master thread */
++	signal_handler_destroy();
++	thread_destroy_master(master);
++	master = thread_make_master();
++
++	/* change to / dir */
++	ret = chdir("/");
++	if (ret < 0) {
++		log_message(LOG_INFO, "VRRP child process: error chdir");
++	}
++
++	/* Set mask */
++	umask(0);
++#endif
++
++#endif
++
++#if 0
++	/* If last process died during a reload, we can get there and we
++	 * don't want to loop again, because we're not reloading anymore.
++	 */
++	UNSET_RELOAD;
++
++	/* Signal handling initialization */
++	vrrp_signal_init();
++
++	/* Start VRRP daemon */
++	start_vrrp();
++
++	/* Launch the scheduling I/O multiplexer */
++	launch_scheduler();
++
++	/* Finish VRRP daemon process */
++#endif
++
++	log_message(LOG_INFO, "Started msqr child process, pid=%d", getpid());
++
++	/*Init msqr*/
++        init_msqr();
++        read_msq();
++	//log_message(LOG_INFO, "[-%s]", __func__);
++        return 0;
++}
++
++/*
++ * Write on msq
++ *
++ * */
++
++void read_msq(void){
++
++	struct my_msgbuf buf;
++        int msqid = get_msqidr();
++
++	while(1){
++
++		log_message(LOG_INFO, "Waiting for notify scripts in msq...");
++
++                memset(&buf, 0, sizeof(buf));
++		if (msgrcv(msqid, &buf, sizeof buf.mtext, 0, 0) == -1) {
++
++                        int err_num = errno;
++
++			log_message(LOG_INFO, "msgrcv error(%s)", strerror(errno));
++
++			if(err_num == EINTR){
++				clean_msq(msqid);
++			}
++
++			exit(1);/*TBF*/
++		}
++
++		log_message(LOG_INFO, "msgrcv:%s", buf.mtext);
++		system_call(buf.mtext, 0, 0);
++
++	}
++}
++
++/*
++ * Write on msq
++ *
++ * */
++void write_msq(char *cmd)
++{
++
++	struct my_msgbuf buf;
++	int msqid; 
++	int len;
++ 
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++	msqid = get_msqidw();
++
++	log_message(LOG_INFO, "msqidw:%d", msqid);
++
++	buf.mtype = 1; /* we don't really care in this case */
++
++	len = snprintf(buf.mtext, sizeof(buf.mtext), "%s", cmd); /*Max 200 bytes*/
++	if (msgsnd(msqid, &buf, len, 0) == -1){
++		log_message(LOG_INFO, "msgsnd error(%s)", strerror(errno));
++	}
++
++	//log_message(LOG_INFO, "[-%s]", __func__);
++}
++
++int get_msqidw(){
++
++	return msqidw;
++}
++
++
++int get_msqidr(){
++
++	return msqidr;
++}
++
++void clean_msq(int msqid){
++
++	log_message(LOG_INFO, "Removing msqid:%d", msqid);
++	msgctl(msqid, IPC_RMID, NULL);
++
++}
+diff --git a/lib/msq.h b/lib/msq.h
+new file mode 100644
+index 0000000..e7ee37f
+--- /dev/null
++++ b/lib/msq.h
+@@ -0,0 +1,34 @@
++
++#ifndef _MSQ_H
++#define _MSQ_H
++
++#include <errno.h>
++#include <sys/types.h>
++#include <sys/ipc.h>
++#include <sys/msg.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <syslog.h> 
++#include <unistd.h>
++#include "notify.h"
++#include "logger.h"
++
++struct my_msgbuf {
++    long mtype;
++    char mtext[200];
++};
++
++int msqidw; /*Write queue msqid*/
++int msqidr; /*Read queue msqid*/
++
++extern int init_msqw(void);
++int init_msqc(void);
++extern int start_msqr_child(void);
++extern void read_msq(void);
++extern void write_msq(char *cmd);
++int get_msqidw(void);
++int get_msqidr(void);
++void clean_msq(int msqid);
++
++#endif
+diff --git a/lib/notify.c b/lib/notify.c
+index fb0c945..52f721d 100644
+--- a/lib/notify.c
++++ b/lib/notify.c
+@@ -42,6 +42,7 @@
+ #include "utils.h"
+ #include "vector.h"
+ #include "parser.h"
++#include "msq.h"
+ 
+ 
+ uid_t default_script_uid;				/* Default user/group for script execution */
+@@ -158,7 +159,7 @@ set_privileges(uid_t uid, gid_t gid)
+ }
+ 
+ /* perform a system call */
+-static int
++int
+ system_call(const char *cmdline, uid_t uid, gid_t gid)
+ {
+ 	int retval;
+@@ -205,6 +206,8 @@ notify_fifo_exec(thread_master_t *m, int (*func) (thread_t *), void *arg, const
+ 
+ 	pid = fork();
+ 
++	log_message(LOG_INFO, "[%s] Child PID:%d", __func__, pid);
++
+ 	/* In case of fork is error. */
+ 	if (pid < 0) {
+ 		log_message(LOG_INFO, "Failed fork process");
+@@ -244,6 +247,16 @@ notify_exec(const notify_script_t *script)
+ 	if (log_file_name)
+ 		flush_log_file();
+ 
++        //log_message(LOG_INFO, "[+%s]", __func__);
++
++        /*
++ 	* Write to msq
++	*/
++	log_message(LOG_INFO, "Write to msq");
++        write_msq(script->name);
++
++#if 0
++
+ 	pid = fork();
+ 
+ 	/* In case of fork is error. */
+@@ -265,6 +278,9 @@ notify_exec(const notify_script_t *script)
+ 	system_call(script->name, script->uid, script->gid);
+ 
+ 	exit(0);
++#endif
++
++	//log_message(LOG_INFO, "[-%s]", __func__);
+ }
+ 
+ int
+diff --git a/lib/notify.h b/lib/notify.h
+index a7fda0e..c7245ac 100644
+--- a/lib/notify.h
++++ b/lib/notify.h
+@@ -94,5 +94,6 @@ extern int check_script_secure(notify_script_t *, bool, bool);
+ extern int check_notify_script_secure(notify_script_t **, bool, bool);
+ extern bool set_default_script_user(const char *, const char *, bool);
+ extern notify_script_t* notify_script_init(vector_t *, const char *, bool);
++extern int system_call(const char *cmdline, uid_t uid, gid_t gid);
+ 
+ #endif
+diff --git a/msq_key.txt b/msq_key.txt
+new file mode 100644
+index 0000000..c6d21fe
+--- /dev/null
++++ b/msq_key.txt
+@@ -0,0 +1 @@
++For key generation

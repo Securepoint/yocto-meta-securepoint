@@ -1,0 +1,7 @@
+FILESEXTRAPATHS_prepend := "${THISDIR}/files:"
+
+SRC_URI += "file://etc_protocols"
+
+do_install_append () {
+	install -m 0644 ${WORKDIR}/etc_protocols ${D}${sysconfdir}/protocols
+}

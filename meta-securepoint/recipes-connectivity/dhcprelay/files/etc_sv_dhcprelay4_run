@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/sbin/dhcprelay $(cat /etc/dhcp/dhcprelay4_args.conf)

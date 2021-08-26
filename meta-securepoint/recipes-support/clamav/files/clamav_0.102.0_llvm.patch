@@ -1,0 +1,26 @@
+From 75cc41bc43a2b679d72c3449560bedb442b94518 Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Thu, 4 Aug 2016 16:20:12 +0200
+
+---
+ configure.ac               | 2 +-
+ libclamav/c++/configure.ac | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/libclamav/c++/configure.ac b/libclamav/c++/configure.ac
+index e08959c..d3cb922 100644
+--- a/libclamav/c++/configure.ac
++++ b/libclamav/c++/configure.ac
+@@ -128,9 +128,9 @@ dnl patch does not affect clamav source (yet)
+ llvmver_int=${llvmver_major}${llvmver_minor}
+ AC_SUBST([LLVM_VERSION], [$llvmver_int])
+ 
+-AC_ARG_ENABLE([llvm],AC_HELP_STRING([-enable-llvm],
+-				    [Enable 'llvm' JIT/verifier support @<:@default=auto@:>@]),
+-				    [enable_llvm=$enableval], [enable_llvm="auto"])
++dnl AC_ARG_ENABLE([llvm],AC_HELP_STRING([-enable-llvm],
++dnl 				    [Enable 'llvm' JIT/verifier support @<:@default=auto@:>@]),
++dnl 				    [enable_llvm=$enableval], [enable_llvm="auto"])
+ 
+ AC_ARG_ENABLE(optimized, AC_HELP_STRING([-enable-optimized],
+ 	      [Compile with optimizations enabled (default is YES)]),

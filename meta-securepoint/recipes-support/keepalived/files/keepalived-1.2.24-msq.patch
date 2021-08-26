@@ -1,0 +1,744 @@
+diff -urN keepalived-1.2.24/keepalived/core/main.c keepalived-1.2.24.mod/keepalived/core/main.c
+--- keepalived-1.2.24/keepalived/core/main.c	2016-09-11 18:46:59.000000000 +0200
++++ keepalived-1.2.24.mod/keepalived/core/main.c	2017-06-01 11:25:23.808810000 +0200
+@@ -39,6 +39,7 @@
+ #if HAVE_DECL_CLONE_NEWNET
+ #include "namespaces.h"
+ #endif
++#include "msq.h"
+ 
+ #define	LOG_FACILITY_MAX	7
+ #define	VERSION_STRING		PACKAGE_NAME " v" PACKAGE_VERSION " (" VERSION_DATE ")"
+@@ -255,8 +256,14 @@
+ #endif
+ #ifdef _WITH_VRRP_
+ 	/* start vrrp child */
+-	if (__test_bit(DAEMON_VRRP, &daemon_mode))
+-		start_vrrp_child();
++	if (__test_bit(DAEMON_VRRP, &daemon_mode)) {
++          close(open("/tmp/msq_key.txt", O_CREAT | O_TRUNC | O_WRONLY, 0700));
++          start_msqr_child(); /* Start msq reader child process*/
++          sleep(1);
++          init_msqw(); /* Init msq to write notify script cmds*/
++
++          start_vrrp_child();
++        }
+ #endif
+ }
+ 
+diff -urN keepalived-1.2.24/keepalived/core/Makefile_msq keepalived-1.2.24.mod/keepalived/core/Makefile_msq
+--- keepalived-1.2.24/keepalived/core/Makefile_msq	1970-01-01 01:00:00.000000000 +0100
++++ keepalived-1.2.24.mod/keepalived/core/Makefile_msq	2017-05-31 13:04:52.435785000 +0200
+@@ -0,0 +1,46 @@
++# Makefile
++#
++# Keepalived OpenSource project.
++#
++# Copyright (C) 2001-2012 Alexandre Cassen, <acassen@gmail.com>
++
++CC	 = gcc
++SNMP_FLAG = _WITHOUT_SNMP_
++INCLUDES = -I../include -I../../lib
++CFLAGS	 = -g -O2  -I/usr/src/linux/include -I/usr/src/linux/include $(INCLUDES) \
++	   -Wall -Wunused -Wstrict-prototypes
++DEFS	 = -D_KRNL_2_6_ -D_WITH_LVS_ -D_WITH_VRRP_ -D_WITHOUT_SNMP_ -D_WITH_SO_MARK_ 
++COMPILE	 = $(CC) $(CFLAGS) $(DEFS)
++
++OBJS = 	main.o daemon.o pidfile.o layer4.o smtp.o \
++	global_data.o global_parser.o
++ifeq ($(SNMP_FLAG),_WITH_SNMP_)
++  OBJS += snmp.o
++endif
++HEADERS = $(OBJS:.o=.h)
++
++.c.o:
++	$(COMPILE) -c $<
++
++all:	$(OBJS)
++
++clean:
++	rm -f *.a *.o *~
++
++distclean: clean
++	rm -f Makefile
++
++
++main.o: main.c ../include/main.h ../../lib/config.h ../../lib/signals.h ../../lib/msq.h
++daemon.o: daemon.c ../include/daemon.h ../../lib/utils.h
++pidfile.o: pidfile.c ../include/pidfile.h
++layer4.o: layer4.c ../include/layer4.h ../include/check_api.h ../../lib/utils.h
++smtp.o: smtp.c ../include/smtp.h ../include/global_data.h ../../lib/memory.h \
++  ../../lib/list.h ../../lib/utils.h
++global_data.o: global_data.c ../include/global_data.h ../../lib/memory.h \
++  ../../lib/list.h ../../lib/utils.h
++global_parser.o: global_parser.c ../include/global_parser.h \
++  ../include/global_data.h ../../lib/parser.h ../../lib/memory.h \
++  ../../lib/utils.h
++snmp.o: snmp.c ../include/snmp.h ../../lib/logger.h ../../lib/list.h \
++  ../../lib/config.h ../include/global_data.h
+diff -urN keepalived-1.2.24/lib/Makefile_msq keepalived-1.2.24.mod/lib/Makefile_msq
+--- keepalived-1.2.24/lib/Makefile_msq	1970-01-01 01:00:00.000000000 +0100
++++ keepalived-1.2.24.mod/lib/Makefile_msq	2017-05-31 13:04:52.436717000 +0200
+@@ -0,0 +1,48 @@
++# Makefile
++#
++# Keepalived OpenSource project.
++#
++# Copyright (C) 2001-2011 Alexandre Cassen, <acassen@linux-vs.org>
++
++CC	 = gcc
++INCLUDES = -I.
++CFLAGS	 = -g -O2 $(INCLUDES) \
++	   -Wall -Wunused -Wstrict-prototypes
++DEFS	 =  -D_WITHOUT_SNMP_
++COMPILE	 = $(CC) $(CFLAGS) $(DEFS)
++
++OBJS = 	memory.o utils.o notify.o timer.o scheduler.o \
++	vector.o list.o html.o parser.o signals.o logger.o \
++	list_head.o buffer.o command.o vty.o msq.o
++HEADERS = $(OBJS:.o=.h)
++
++.c.o:
++	$(COMPILE) -c $<
++
++all:	$(OBJS)
++
++clean:
++	rm -f *.a *.o *~
++
++distclean: clean
++	rm -f config.h
++	rm -f Makefile
++
++memory.o: memory.c memory.h utils.h
++utils.o: utils.c utils.h
++notify.o: notify.c notify.h
++timer.o: timer.c timer.h
++scheduler.o: scheduler.c scheduler.h memory.h utils.h
++vector.o: vector.c vector.h memory.h
++list.o: list.c list.h memory.h
++html.o: html.c html.h memory.h
++parser.o: parser.c parser.h memory.h
++signals.o: signals.c signals.h
++logger.o: logger.c logger.h
++list_head.o: list_head.c list_head.h
++buffer.o: buffer.c buffer.h memory.h
++command.o: command.c command.h vector.h memory.h vty.h timer.h \
++	config.h logger.h
++vty.o: vty.c vty.h scheduler.h timer.h utils.h command.h logger.h \
++	memory.h
++msq.o: msq.c msq.h
+diff -urN keepalived-1.2.24/lib/Makefile.am keepalived-1.2.24.mod/lib/Makefile.am
+--- keepalived-1.2.24/lib/Makefile.am	2016-09-11 18:46:59.000000000 +0200
++++ keepalived-1.2.24.mod/lib/Makefile.am	2017-05-31 13:58:35.881317000 +0200
+@@ -18,7 +18,8 @@
+ liblib_a_SOURCES	= memory.c utils.c notify.c timer.c scheduler.c \
+ 	vector.c list.c html.c parser.c signals.c logger.c rttables.c \
+ 	bitops.h timer.h scheduler.h rttables.h vector.h parser.h \
+-	signals.h notify.h logger.h list.h memory.h html.h utils.h
++	signals.h notify.h logger.h list.h memory.h html.h utils.h \
++	msq.c msq.h
+ 
+ liblib_a_LIBADD		=
+ EXTRA_liblib_a_SOURCES	=
+diff -urN keepalived-1.2.24/lib/Makefile.in keepalived-1.2.24.mod/lib/Makefile.in
+--- keepalived-1.2.24/lib/Makefile.in	2016-09-11 19:17:48.000000000 +0200
++++ keepalived-1.2.24.mod/lib/Makefile.in	2017-05-31 13:52:36.810191000 +0200
+@@ -106,7 +106,7 @@
+ 	notify.$(OBJEXT) timer.$(OBJEXT) scheduler.$(OBJEXT) \
+ 	vector.$(OBJEXT) list.$(OBJEXT) html.$(OBJEXT) \
+ 	parser.$(OBJEXT) signals.$(OBJEXT) logger.$(OBJEXT) \
+-	rttables.$(OBJEXT)
++	rttables.$(OBJEXT) msq.$(OBJEXT)
+ am__EXTRA_liblib_a_SOURCES_DIST = old_socket.c old_socket.h
+ liblib_a_OBJECTS = $(am_liblib_a_OBJECTS)
+ AM_V_P = $(am__v_P_@AM_V@)
+@@ -278,7 +278,8 @@
+ liblib_a_SOURCES = memory.c utils.c notify.c timer.c scheduler.c \
+ 	vector.c list.c html.c parser.c signals.c logger.c rttables.c \
+ 	bitops.h timer.h scheduler.h rttables.h vector.h parser.h \
+-	signals.h notify.h logger.h list.h memory.h html.h utils.h
++	signals.h notify.h logger.h list.h memory.h html.h utils.h \
++	msq.c msq.h
+ 
+ liblib_a_LIBADD = $(am__append_1)
+ EXTRA_liblib_a_SOURCES = $(am__append_2)
+diff -urN keepalived-1.2.24/lib/msq.c keepalived-1.2.24.mod/lib/msq.c
+--- keepalived-1.2.24/lib/msq.c	1970-01-01 01:00:00.000000000 +0100
++++ keepalived-1.2.24.mod/lib/msq.c	2017-06-01 10:38:19.577118000 +0200
+@@ -0,0 +1,237 @@
++
++#include "msq.h"
++
++/*
++ *Message Queue Writer
++ *
++ *Initialize the message queue of writer side
++ */
++
++int init_msqw(void){
++
++	int msqid;
++	key_t key;
++
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++	if ((key = ftok("/tmp/msq_key.txt", 'B')) == -1) { /*same key as reader*/
++          perror("ftok");
++		log_message(LOG_INFO, "msqw ftok error(%s)", strerror(errno));
++		exit(1);
++	}
++
++	if ((msqid = msgget(key, 0644)) == -1) { /* connect to the queue */
++          perror("msgget");
++		log_message(LOG_INFO, "msqw msgget error(%s)", strerror(errno));
++		exit(1);
++	}
++
++        msqidw = msqid; /*Save in Global var*/
++ 
++        log_message(LOG_INFO, "msqidw:%d", msqidw);
++	//log_message(LOG_INFO, "[-%s]", __func__);
++
++	return msqid;
++}
++
++
++/*
++ *Message Queue Reader
++ *
++ *Initialize the message queue of writer side
++ */
++
++int init_msqr(void){
++
++	int msqid;
++	key_t key;
++
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++	if ((key = ftok("/tmp/msq_key.txt", 'B')) == -1) {  /*same key as writer*/
++		log_message(LOG_INFO, "msqr ftok error(%s)", strerror(errno));
++		exit(1);/*TBF*/
++	}
++
++
++	if ((msqid = msgget(key, 0644 | IPC_CREAT)) == -1) {
++		log_message(LOG_INFO, "msgget error(%s)", strerror(errno));
++		exit(1);/*TBF*/
++	}
++
++        msqidr = msqid; /*Save in Global var*/
++
++        log_message(LOG_INFO, "msqidr:%d", msqidr);
++	//log_message(LOG_INFO, "[-%s]", __func__);
++
++	return msqid;
++}
++
++/*
++ *  Initialize reader message queue
++ *
++ * 
++ * */
++
++int start_msqr_child(void)
++{
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++#ifndef _DEBUG_
++	pid_t pid;
++
++	/*
++ 	 * Initialize child process to read 
++ 	 * and execute cmds in message queue
++ 	 * */
++	pid = fork();
++
++	if (pid < 0) {
++		log_message(LOG_INFO, "msqr child process fork error(%s)", strerror(errno));
++		return -1;
++	} else if (pid) {
++		//vrrp_child = pid;
++		log_message(LOG_INFO, "Starting msqr child process, pid=%d", pid);
++
++		/* Start respawning thread */
++		/*thread_add_child(master, vrrp_respawn_thread, NULL,
++				 pid, RESPAWN_TIMER);*/
++		return 0;
++	}
++
++#if 0 
++	/* Opening local VRRP syslog channel */
++	openlog(PROG_VRRP, LOG_PID | ((debug & 1) ? LOG_CONS : 0),
++		(log_facility==LOG_DAEMON) ? LOG_LOCAL1 : log_facility);
++
++	/* Child process part, write pidfile */
++	if (!pidfile_write(vrrp_pidfile, getpid())) {
++		/* Fatal error */
++		log_message(LOG_INFO, "VRRP child process: cannot write pidfile");
++		exit(0);
++	}
++
++	/* Create the new master thread */
++	signal_handler_destroy();
++	thread_destroy_master(master);
++	master = thread_make_master();
++
++	/* change to / dir */
++	ret = chdir("/");
++	if (ret < 0) {
++		log_message(LOG_INFO, "VRRP child process: error chdir");
++	}
++
++	/* Set mask */
++	umask(0);
++#endif
++
++#endif
++
++#if 0
++	/* If last process died during a reload, we can get there and we
++	 * don't want to loop again, because we're not reloading anymore.
++	 */
++	UNSET_RELOAD;
++
++	/* Signal handling initialization */
++	vrrp_signal_init();
++
++	/* Start VRRP daemon */
++	start_vrrp();
++
++	/* Launch the scheduling I/O multiplexer */
++	launch_scheduler();
++
++	/* Finish VRRP daemon process */
++#endif
++
++	log_message(LOG_INFO, "Started msqr child process, pid=%d", getpid());
++
++	/*Init msqr*/
++        init_msqr();
++        read_msq();
++	//log_message(LOG_INFO, "[-%s]", __func__);
++        return 0;
++}
++
++/*
++ * Write on msq
++ *
++ * */
++
++void read_msq(void){
++
++	struct my_msgbuf buf;
++        int msqid = get_msqidr();
++
++	while(1){
++
++		log_message(LOG_INFO, "Waiting for notify scripts in msq...");
++
++                memset(&buf, 0, sizeof(buf));
++		if (msgrcv(msqid, &buf, sizeof buf.mtext, 0, 0) == -1) {
++
++                        int err_num = errno;
++
++			log_message(LOG_INFO, "msgrcv error(%s)", strerror(errno));
++
++			if(err_num == EINTR){
++				clean_msq(msqid);
++			}
++
++			exit(1);/*TBF*/
++		}
++
++		log_message(LOG_INFO, "msgrcv:%s", buf.mtext);
++		system_call(buf.mtext);
++
++	}
++}
++
++/*
++ * Write on msq
++ *
++ * */
++void write_msq(char *cmd)
++{
++
++	struct my_msgbuf buf;
++	int msqid; 
++	int len;
++ 
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++	msqid = get_msqidw();
++
++	log_message(LOG_INFO, "msqidw:%d", msqid);
++
++	buf.mtype = 1; /* we don't really care in this case */
++
++	sprintf(buf.mtext, "%s", cmd); /*Max 200 bytes*/
++	len = strlen(buf.mtext);
++
++	if (msgsnd(msqid, &buf, len, 0) == -1){
++		log_message(LOG_INFO, "msgsnd error(%s)", strerror(errno));
++	}
++
++	//log_message(LOG_INFO, "[-%s]", __func__);
++}
++
++int get_msqidw(){
++
++	return msqidw;
++}
++
++
++int get_msqidr(){
++
++	return msqidr;
++}
++
++void clean_msq(int msqid){
++
++	log_message(LOG_INFO, "Removing msqid:%d", msqid);
++	msgctl(msqid, IPC_RMID, NULL);
++
++}
+diff -urN keepalived-1.2.24/lib/msq.c~ keepalived-1.2.24.mod/lib/msq.c~
+--- keepalived-1.2.24/lib/msq.c~	1970-01-01 01:00:00.000000000 +0100
++++ keepalived-1.2.24.mod/lib/msq.c~	2017-06-01 10:37:34.289424000 +0200
+@@ -0,0 +1,237 @@
++
++#include "msq.h"
++
++/*
++ *Message Queue Writer
++ *
++ *Initialize the message queue of writer side
++ */
++
++int init_msqw(void){
++
++	int msqid;
++	key_t key;
++
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++	if ((key = ftok("/tmp/msq_key.txt", 'B')) == -1) { /*same key as reader*/
++          perror("ftok");
++		log_message(LOG_INFO, "msqw ftok error(%s)", strerror(errno));
++		exit(1);
++	}
++
++	if ((msqid = msgget(key, 0644)) == -1) { /* connect to the queue */
++          perror("msgget");
++		log_message(LOG_INFO, "msqw msgget error(%s)", strerror(errno));
++		exit(1);
++	}
++
++        msqidw = msqid; /*Save in Global var*/
++ 
++        log_message(LOG_INFO, "msqidw:%d", msqidw);
++	//log_message(LOG_INFO, "[-%s]", __func__);
++
++	return msqid;
++}
++
++
++/*
++ *Message Queue Reader
++ *
++ *Initialize the message queue of writer side
++ */
++
++int init_msqr(void){
++
++	int msqid;
++	key_t key;
++
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++	if ((key = ftok("/tmp/msq_key.txt", 'B')) == -1) {  /*same key as writer*/
++		log_message(LOG_INFO, "msqr ftok error(%s)", strerror(errno));
++		exit(1);/*TBF*/
++	}
++
++
++	if ((msqid = msgget(key, 0644 | IPC_CREAT)) == -1) {
++		log_message(LOG_INFO, "msgget error(%s)", strerror(errno));
++		exit(1);/*TBF*/
++	}
++
++        msqidr = msqid; /*Save in Global var*/
++
++        log_message(LOG_INFO, "msqidr:%d", msqidr);
++	//log_message(LOG_INFO, "[-%s]", __func__);
++
++	return msqid;
++}
++
++/*
++ *  Initialize reader message queue
++ *
++ * 
++ * */
++
++int start_msqr_child(void)
++{
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++#ifndef _DEBUG_
++	pid_t pid;
++
++	/*
++ 	 * Initialize child process to read 
++ 	 * and execute cmds in message queue
++ 	 * */
++	pid = fork();
++
++	if (pid < 0) {
++		log_message(LOG_INFO, "msqr child process fork error(%s)", strerror(errno));
++		return -1;
++	} else if (pid) {
++		//vrrp_child = pid;
++		log_message(LOG_INFO, "Starting msqr child process, pid=%d", pid);
++
++		/* Start respawning thread */
++		/*thread_add_child(master, vrrp_respawn_thread, NULL,
++				 pid, RESPAWN_TIMER);*/
++		return 0;
++	}
++
++#if 0 
++	/* Opening local VRRP syslog channel */
++	openlog(PROG_VRRP, LOG_PID | ((debug & 1) ? LOG_CONS : 0),
++		(log_facility==LOG_DAEMON) ? LOG_LOCAL1 : log_facility);
++
++	/* Child process part, write pidfile */
++	if (!pidfile_write(vrrp_pidfile, getpid())) {
++		/* Fatal error */
++		log_message(LOG_INFO, "VRRP child process: cannot write pidfile");
++		exit(0);
++	}
++
++	/* Create the new master thread */
++	signal_handler_destroy();
++	thread_destroy_master(master);
++	master = thread_make_master();
++
++	/* change to / dir */
++	ret = chdir("/");
++	if (ret < 0) {
++		log_message(LOG_INFO, "VRRP child process: error chdir");
++	}
++
++	/* Set mask */
++	umask(0);
++#endif
++
++#endif
++
++#if 0
++	/* If last process died during a reload, we can get there and we
++	 * don't want to loop again, because we're not reloading anymore.
++	 */
++	UNSET_RELOAD;
++
++	/* Signal handling initialization */
++	vrrp_signal_init();
++
++	/* Start VRRP daemon */
++	start_vrrp();
++
++	/* Launch the scheduling I/O multiplexer */
++	launch_scheduler();
++
++	/* Finish VRRP daemon process */
++#endif
++
++	log_message(LOG_INFO, "Started msqr child process, pid=%d", getpid());
++
++	/*Init msqr*/
++        init_msqr();
++        read_msq();
++	//log_message(LOG_INFO, "[-%s]", __func__);
++        return 0;
++}
++
++/*
++ * Write on msq
++ *
++ * */
++
++void read_msq(void){
++
++	struct my_msgbuf buf;
++        int msqid = get_msqidr();
++
++	while(1){
++
++		log_message(LOG_INFO, "Waiting for notify scripts in msq...");
++
++                memset(buf, 0, sizeof(buff));
++		if (msgrcv(msqid, &buf, sizeof buf.mtext, 0, 0) == -1) {
++
++                        int err_num = errno;
++
++			log_message(LOG_INFO, "msgrcv error(%s)", strerror(errno));
++
++			if(err_num == EINTR){
++				clean_msq(msqid);
++			}
++
++			exit(1);/*TBF*/
++		}
++
++		log_message(LOG_INFO, "msgrcv:%s", buf.mtext);
++		system_call(buf.mtext);
++
++	}
++}
++
++/*
++ * Write on msq
++ *
++ * */
++void write_msq(char *cmd)
++{
++
++	struct my_msgbuf buf;
++	int msqid; 
++	int len;
++ 
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++	msqid = get_msqidw();
++
++	log_message(LOG_INFO, "msqidw:%d", msqid);
++
++	buf.mtype = 1; /* we don't really care in this case */
++
++	sprintf(buf.mtext, "%s", cmd); /*Max 200 bytes*/
++	len = strlen(buf.mtext);
++
++	if (msgsnd(msqid, &buf, len, 0) == -1){
++		log_message(LOG_INFO, "msgsnd error(%s)", strerror(errno));
++	}
++
++	//log_message(LOG_INFO, "[-%s]", __func__);
++}
++
++int get_msqidw(){
++
++	return msqidw;
++}
++
++
++int get_msqidr(){
++
++	return msqidr;
++}
++
++void clean_msq(int msqid){
++
++	log_message(LOG_INFO, "Removing msqid:%d", msqid);
++	msgctl(msqid, IPC_RMID, NULL);
++
++}
+diff -urN keepalived-1.2.24/lib/msq.h keepalived-1.2.24.mod/lib/msq.h
+--- keepalived-1.2.24/lib/msq.h	1970-01-01 01:00:00.000000000 +0100
++++ keepalived-1.2.24.mod/lib/msq.h	2017-05-31 13:04:52.438324000 +0200
+@@ -0,0 +1,33 @@
++
++#ifndef _MSQ_H
++#define _MSQ_H
++
++#include <errno.h>
++#include <sys/types.h>
++#include <sys/ipc.h>
++#include <sys/msg.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <syslog.h> 
++#include <unistd.h>
++#include "notify.h"
++#include "logger.h"
++
++struct my_msgbuf {
++    long mtype;
++    char mtext[200];
++};
++
++int msqidw; /*Write queue msqid*/
++int msqidr; /*Read queue msqid*/
++
++extern int init_msqw(void);
++int init_msqc(void);
++extern int start_msqr_child(void);
++extern void read_msq(void);
++int get_msqidw(void);
++int get_msqidr(void);
++void clean_msq(int msqid);
++
++#endif
+diff -urN keepalived-1.2.24/lib/notify.c keepalived-1.2.24.mod/lib/notify.c
+--- keepalived-1.2.24/lib/notify.c	2016-09-11 18:46:59.000000000 +0200
++++ keepalived-1.2.24.mod/lib/notify.c	2017-05-31 14:14:45.243408000 +0200
+@@ -32,9 +32,10 @@
+ #include "signals.h"
+ #include "logger.h"
+ #include "utils.h"
++#include "msq.h"
+ 
+ /* perform a system call */
+-static int
++int
+ system_call(const char *cmdline)
+ {
+ 	int retval;
+@@ -69,8 +70,19 @@
+ {
+ 	pid_t pid;
+ 
++	//log_message(LOG_INFO, "[+%s]", __func__);
++
++        /*
++ 	* Write to msq
++	*/
++	log_message(LOG_INFO, "Write to msq");
++        write_msq(cmd);
++
++#if 0
+ 	pid = fork();
+ 
++	log_message(LOG_INFO, "[%s] Child PID:%d", __func__, pid);
++
+ 	/* In case of fork is error. */
+ 	if (pid < 0) {
+ 		log_message(LOG_INFO, "Failed fork process");
+@@ -86,6 +98,9 @@
+ 	system_call(cmd);
+ 
+ 	exit(0);
++#endif
++
++	//log_message(LOG_INFO, "[-%s]", __func__);
+ }
+ 
+ int
+diff -urN keepalived-1.2.24/lib/notify.h keepalived-1.2.24.mod/lib/notify.h
+--- keepalived-1.2.24/lib/notify.h	2016-09-11 18:46:59.000000000 +0200
++++ keepalived-1.2.24.mod/lib/notify.h	2017-05-31 14:15:07.538945000 +0200
+@@ -28,5 +28,6 @@
+ /* system includes */
+ extern int system_call_script(thread_master_t *m, int (*func) (thread_t *), void * arg, long timer, const char* script);
+ extern int notify_exec(char *cmd);
++extern int system_call(const char *cmdline);
+ 
+ #endif
+diff -urN keepalived-1.2.24/msq_key.txt keepalived-1.2.24.mod/msq_key.txt
+--- keepalived-1.2.24/msq_key.txt	1970-01-01 01:00:00.000000000 +0100
++++ keepalived-1.2.24.mod/msq_key.txt	2017-05-31 13:04:52.439011000 +0200
+@@ -0,0 +1 @@
++For key generation

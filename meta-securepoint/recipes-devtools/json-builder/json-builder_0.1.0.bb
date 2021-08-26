@@ -17,7 +17,7 @@ SRC_URI[sha256sum] = "9945755591ec1825a8db75bf6d029f037904c0dfd60a8e2516f32a8309
 SRCREV = "19c739f64d1da157789c35a06911b865486e6c2e"
 S = "${WORKDIR}/git"
 
-REQUIRES = "json-parser"
+DEPENDS = "json-parser"
 
 inherit cmake
 

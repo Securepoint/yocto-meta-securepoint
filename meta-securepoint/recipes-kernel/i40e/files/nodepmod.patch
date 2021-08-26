@@ -1,0 +1,15 @@
+diff -ur i40e-1.5.25.orig/src/common.mk i40e-1.5.25/src/common.mk
+--- i40e-1.5.25.orig/src/common.mk	2016-10-20 23:41:44.000000000 +0200
++++ i40e-1.5.25/src/common.mk	2017-01-11 12:00:06.946634000 +0100
+@@ -48,9 +48,7 @@
+ # depmod Macro #
+ ################
+ 
+-cmd_depmod = /sbin/depmod $(if ${SYSTEM_MAP_FILE},-e -F ${SYSTEM_MAP_FILE}) \
+-                          $(if $(strip ${INSTALL_MOD_PATH}),-b ${INSTALL_MOD_PATH}) \
+-                          -a ${KVER}
++cmd_depmod = echo
+ 
+ ################
+ # dracut Macro #
+Only in i40e-1.5.25/src: common.mk~

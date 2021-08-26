@@ -1,0 +1,12 @@
+--- csprng-1.1.3/utils/random_interface_linux.c.fix	2021-04-28 16:41:23.420539470 +0200
++++ csprng-1.1.3/utils/random_interface_linux.c	2021-04-28 16:41:16.557711481 +0200
+@@ -228,8 +228,7 @@
+ 
+   random_mode->read_wakeup_threshold = get_proc_value("/proc/sys/kernel/random/read_wakeup_threshold");
+   if ( random_mode->read_wakeup_threshold < 0 ) {
+-    fprintf(stderr, "ERROR: get_proc_value(\"/proc/sys/kernel/random/read_wakeup_threshold\") has failed!\n");
+-    return -1;
++    random_mode->read_wakeup_threshold = 64;
+   }
+ 
+   if ( random_mode->upper_limit <=  random_mode->read_wakeup_threshold ) {

@@ -1,0 +1,56 @@
+diff --git a/libopendmarc/dmarc.h b/libopendmarc/dmarc.h
+index 93abcef..9e12e97 100644
+--- a/libopendmarc/dmarc.h
++++ b/libopendmarc/dmarc.h
+@@ -142,6 +142,7 @@ OPENDMARC_STATUS_T opendmarc_policy_fetch_sp(DMARC_POLICY_T *pctx, int *sp);
+ u_char **	   opendmarc_policy_fetch_rua(DMARC_POLICY_T *pctx, u_char *list_buf, size_t size_of_buf, int constant);
+ u_char **	   opendmarc_policy_fetch_ruf(DMARC_POLICY_T *pctx, u_char *list_buf, size_t size_of_buf, int constant);
+ OPENDMARC_STATUS_T opendmarc_policy_fetch_utilized_domain(DMARC_POLICY_T *pctx, u_char *buf, size_t buflen);
++OPENDMARC_STATUS_T opendmarc_policy_fetch_from_domain(DMARC_POLICY_T *pctx, u_char *buf, size_t buflen);
+ OPENDMARC_STATUS_T opendmarc_policy_query_dmarc_xdomain(DMARC_POLICY_T *pctx, u_char *uri);
+ OPENDMARC_STATUS_T opendmarc_get_policy_token_used(DMARC_POLICY_T *pctx);
+ 
+diff --git a/libopendmarc/opendmarc_policy.c b/libopendmarc/opendmarc_policy.c
+index 862c449..2189343 100644
+--- a/libopendmarc/opendmarc_policy.c
++++ b/libopendmarc/opendmarc_policy.c
+@@ -1483,6 +1483,39 @@ opendmarc_policy_fetch_utilized_domain(DMARC_POLICY_T *pctx, u_char *buf, size_t
+ 	return DMARC_PARSE_OKAY;
+ }
+ 
++/**************************************************************************************************
++** OPENDMARC_POLICY_FETCH_FROM_DOMAIN -- Return domain parsed from stored From: domain
++**	Arguments
++**		pctx	-- Address of a policy context
++**		buf	-- Where to scribble result
++**		buflen	-- Size of buffer
++**	Returns
++**		DMARC_PARSE_OKAY		-- On success
++**		DMARC_PARSE_ERROR_NULL_CTX	-- If context NULL
++**		DMARC_PARSE_ERROR_EMPTY 	-- If buf null or buflen 0 sized
++**		DMARC_PARSE_ERROR_NO_DOMAIN 	-- If neigher address is available
++**/
++OPENDMARC_STATUS_T
++opendmarc_policy_fetch_from_domain(DMARC_POLICY_T *pctx, u_char *buf, size_t buflen)
++{
++	u_char *which = NULL;
++
++	if (pctx == NULL)
++		return DMARC_PARSE_ERROR_NULL_CTX;
++	if (buf == NULL || buflen == 0)
++		return DMARC_PARSE_ERROR_EMPTY;
++
++	if (pctx->from_domain != NULL)
++		which = pctx->from_domain;
++	if (which == NULL)
++		return DMARC_PARSE_ERROR_NO_DOMAIN;
++# if HAVE_STRLCPY
++	(void) strlcpy((char *)buf, (char *)which, buflen);
++# else
++	(void) strncpy((char *)buf, (char *)which, buflen);
++# endif
++	return DMARC_PARSE_OKAY;
++}
+ /**************************************************************************
+ ** OPENDMARC_GET_POLICY_TOKEN_USED -- Which policy was actually used
+ **

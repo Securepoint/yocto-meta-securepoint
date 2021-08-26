@@ -1,0 +1,12 @@
+diff -up stonestepswebalizer/Makefile.gnu++17 stonestepswebalizer/Makefile
+--- stonestepswebalizer/Makefile.gnu++17	2019-09-24 11:38:15.008170893 +0200
++++ stonestepswebalizer/Makefile	2019-09-24 11:38:29.525225435 +0200
+@@ -110,7 +110,7 @@ CCFLAGS  = -DHAVE_CXX_STDHEADERS \
+      -DETCDIR=\"$(ETCDIR)\" \
+      -fexceptions \
+      -Wno-multichar -Winvalid-pch \
+-     -std=c++11 \
++     -std=gnu++11 \
+      $(MYCCFLAGS)
+ 
+ # turn on optimization for non-debug builds

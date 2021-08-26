@@ -7,7 +7,7 @@ BBFILES ?= ""
 
 BBLAYERS ?= " \
   ##OEROOT##/meta \
-  ##OEROOT##/meta-yocto \
+  ##OEROOT##/meta-poky \
   ##OEROOT##/meta-yocto-bsp \
   ##OEROOT##/meta-oe/meta-oe \
   ##OEROOT##/meta-oe/meta-networking \
@@ -17,5 +17,5 @@ BBLAYERS ?= " \
   "
 BBLAYERS_NON_REMOVABLE ?= " \
   ##OEROOT##/meta \
-  ##OEROOT##/meta-yocto \
+  ##OEROOT##/meta-poky \
   "

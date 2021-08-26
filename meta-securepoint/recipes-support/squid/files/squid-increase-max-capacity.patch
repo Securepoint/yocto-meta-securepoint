@@ -1,0 +1,21 @@
+From d1c5dc2022ae8c9e12ee40e089ec66f9239ef309 Mon Sep 17 00:00:00 2001
+From: Jacob Luckhardt <Jacob.Luckhardt@securepoint.de>
+Date: Fri, 13 Apr 2018 12:04:02 +0200
+
+---
+ src/BodyPipe.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/BodyPipe.h b/src/BodyPipe.h
+index 43a432b..e798527 100644
+--- a/src/BodyPipe.h
++++ b/src/BodyPipe.h
+@@ -97,7 +97,7 @@ public:
+     typedef BodyConsumer Consumer;
+     typedef BodyPipeCheckout Checkout;
+ 
+-    enum { MaxCapacity = 64*1024 };
++    enum { MaxCapacity = 3*64*1024 };
+ 
+     friend class BodyPipeCheckout;
+ 

@@ -9,7 +9,9 @@ SECTION = "lualibs"
 DEPENDS = "yajl lua5.1"
 PR = "r0"
 
-SRC_URI = "git://github.com/brimworks/lua-yajl;protocol=https"
+SRC_URI = "git://github.com/brimworks/lua-yajl;protocol=https \
+file://yajl-rettype.patch \
+"
 SRCREV = "v${PV}"
 S = "${WORKDIR}/git"
 

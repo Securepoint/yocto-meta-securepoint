@@ -1,4 +1,4 @@
 #!/bin/sh
-exec 2>&1
-svwaitup -s 3 /var/service/syslog || exit 1
+exec 2>/dev/null
+sv start syslog || exit 1
 exec /usr/sbin/collectd -f

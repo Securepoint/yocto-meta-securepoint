@@ -1,0 +1,42 @@
+diff -ur keepalived-1.2.24.orig/keepalived/vrrp/vrrp.c keepalived-1.2.24/keepalived/vrrp/vrrp.c
+--- keepalived-1.2.24.orig/keepalived/vrrp/vrrp.c	2017-01-12 09:30:45.840427000 +0100
++++ keepalived-1.2.24/keepalived/vrrp/vrrp.c	2017-01-24 12:52:36.016320000 +0100
+@@ -2138,38 +2138,6 @@
+ 
+ 	base_ifp = base_if_get_by_ifp(vrrp->ifp);
+ 
+-	/* Make sure we have an IP address as needed */
+-	if (vrrp->saddr.ss_family == AF_UNSPEC) {
+-		/* Check the physical interface has a suitable address we can use.
+-		 * We don't need an IPv6 address on the underlying interface if it is
+-		 * a VMAC since we can create our own. */
+-		bool addr_missing = false;
+-
+-		if (vrrp->family == AF_INET) {
+-			if (!base_ifp->sin_addr.s_addr)
+-				addr_missing = true;
+-		}
+-#ifdef _HAVE_VRRP_VMAC_
+-		else if (!__test_bit(VRRP_VMAC_BIT, &vrrp->vmac_flags)) {
+-			if (!base_ifp->sin6_addr.s6_addr32[0])
+-				addr_missing = true;
+-		}
+-#endif
+-
+-		if (addr_missing) {
+-			log_message(LOG_INFO, "(%s): Cannot find an IP address to use for interface %s", vrrp->iname, base_ifp->ifname);
+-			return 0;
+-		}
+-
+-		if (vrrp->family == AF_INET) {
+-			inet_ip4tosockaddr(&base_ifp->sin_addr, &vrrp->saddr);
+-		} else if (vrrp->family == AF_INET6) {
+-			inet_ip6tosockaddr(&base_ifp->sin6_addr, &vrrp->saddr);
+-			/* IPv6 use-case: Binding to link-local address requires an interface */
+-			inet_ip6scopeid(IF_INDEX(vrrp->ifp), &vrrp->saddr);
+-		}
+-	}
+-
+ #ifdef _HAVE_VRRP_VMAC_
+ 	if (__test_bit(VRRP_VMAC_XMITBASE_BIT, &vrrp->vmac_flags) &&
+ 	    !__test_bit(VRRP_VMAC_BIT, &vrrp->vmac_flags)) {

@@ -1,0 +1,32 @@
+From 33ffff85c849bf4beefe5e8cd143f6c2275c8c87 Mon Sep 17 00:00:00 2001
+From: James Fuge <james.fuge@securepoint.de>
+Date: Thu, 2 Feb 2017 16:34:21 +0100
+Subject: [PATCH] Makefile changes: compile with -fPIC and -lm flags.
+
+---
+ Makefile.in | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile.in b/Makefile.in
+index 68e0b33..de66e70 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -29,13 +29,13 @@ libjsonparser.a: $(OBJS)
+ 	$(AR) rcs libjsonparser.a json.o
+ 
+ libjsonparser.so: $(OBJS)
+-	$(CC) -shared -Wl,-soname,$(SO_NAME) -o libjsonparser.so $^
++	$(CC) $(LDFLAGS) -shared -fPIC -Wl,-soname,$(SO_NAME) -o libjsonparser.so $^ -lm
+ 
+ libjsonparser.dylib: $(OBJS)
+ 	$(CC) -dynamiclib json.o -o libjsonparser.dylib
+ 
+ %.o: %.c
+-	$(CC) $(CFLAGS) -c $^
++	$(CC) $(CFLAGS) -c -fPIC $^
+ 
+ clean:
+ 	rm -f libjsonparser.$(SO_EXT) libjsonparser.a json.o
+-- 
+2.7.4
+

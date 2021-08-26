@@ -1,2 +1,3 @@
 #!/bin/sh
+sv start syslog
 exec logger -t "ntpd" -p "daemon.info"

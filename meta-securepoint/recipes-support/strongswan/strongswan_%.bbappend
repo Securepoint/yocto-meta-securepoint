@@ -1,27 +1,26 @@
 FILESEXTRAPATHS_prepend := "${THISDIR}/files:"
 
-inherit runit
+require strongswan-version.inc
+
+inherit runit pkgconfig
+
 RUNIT_SERVICES = "ipsec"
+DEPENDS += " libpam"
+
+PACKAGECONFIG = "charon openssl stroke swanctl"
 
 EXTRA_OECONF = "\
-    --disable-curl \
-    --disable-soup \
-    --disable-ldap \
-    --disable-gmp \
-    --disable-mysql \
-    --disable-sqlite \
-    --enable-nat-transport \
     --enable-af-alg \
-    --enable-openssl"
+    --enable-openssl \
+    --enable-eap-gtc \
+    --enable-xauth-pam \
+"
 
-PACKAGES += " ${PN}-plugins-staticdev "
-FILES_${PN}-plugins = "${libdir}/ipsec/plugins/*.so"
-FILES_${PN}-plugins-staticdev = "${libdir}/ipsec/plugins/*.a ${libdir}/ipsec/plugins/*.la"
+FILES_${PN}-dbg += " ${sbindir}/.debug"
 
 SRC_URI += "\
     file://etc_sv_ipsec_down \
     file://etc_sv_ipsec_run \
-    file://multi_psk_essential.patch \
-    file://strongswan-5.0.0-5.5.2_asn1_choice.patch \
+    file://libressl_5.6.1.patch \
+    file://charon_timeout_5.6.2.patch \
 "
-

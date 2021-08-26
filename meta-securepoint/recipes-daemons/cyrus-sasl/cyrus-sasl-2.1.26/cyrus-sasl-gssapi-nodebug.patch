@@ -1,0 +1,23 @@
+diff -up cyrus-sasl-2.1.26/plugins/gssapi.c.nodebug cyrus-sasl-2.1.26/plugins/gssapi.c
+--- cyrus-sasl-2.1.26/plugins/gssapi.c.nodebug	2014-06-17 13:37:42.785327004 +0200
++++ cyrus-sasl-2.1.26/plugins/gssapi.c	2014-06-17 13:37:57.111450923 +0200
+@@ -1258,9 +1258,6 @@ gssapi_server_mech_step(void *conn_conte
+ 
+     if (text == NULL) return SASL_BADPROT;
+ 
+-    params->utils->log(NULL, SASL_LOG_DEBUG,
+-		       "GSSAPI server step %d\n", text->state);
+-
+     switch (text->state) {
+ 
+     case SASL_GSSAPI_STATE_AUTHNEG:
+@@ -1490,9 +1487,6 @@ static int gssapi_client_mech_step(void
+     *clientout = NULL;
+     *clientoutlen = 0;
+     
+-    params->utils->log(NULL, SASL_LOG_DEBUG,
+-		       "GSSAPI client step %d", text->state);
+-
+     switch (text->state) {
+ 
+     case SASL_GSSAPI_STATE_AUTHNEG:

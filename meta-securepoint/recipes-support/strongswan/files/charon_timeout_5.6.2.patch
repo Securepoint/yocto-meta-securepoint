@@ -1,0 +1,85 @@
+diff -up strongswan-5.6.2/src/starter/invokecharon.c.timeout strongswan-5.6.2/src/starter/invokecharon.c
+--- strongswan-5.6.2/src/starter/invokecharon.c.timeout	2018-09-11 17:05:56.969401610 +0200
++++ strongswan-5.6.2/src/starter/invokecharon.c	2018-09-11 17:11:24.250082748 +0200
+@@ -113,7 +113,7 @@ int starter_stop_charon (void)
+ }
+ 
+ 
+-int starter_start_charon (starter_config_t *cfg, bool no_fork, bool attach_gdb)
++int starter_start_charon (starter_config_t *cfg, bool no_fork, bool attach_gdb, time_t timeout)
+ {
+ 	struct stat stb;
+ 	int pid, i;
+@@ -201,6 +201,7 @@ int starter_start_charon (starter_config
+ 		default:
+ 			/* father */
+ 			_charon_pid = pid;
++			int tries = timeout * 1000 * 1000 / 20000; 
+ 			while (attach_gdb)
+ 			{
+ 				/* wait indefinitely if gdb is attached */
+@@ -210,9 +211,9 @@ int starter_start_charon (starter_config
+ 					return 0;
+ 				}
+ 			}
+-			for (i = 0; i < 500 && _charon_pid; i++)
++			for (i = 0; i < tries && _charon_pid; i++)
+ 			{
+-				/* wait for charon for a maximum of 500 x 20 ms = 10 s */
++				/* wait for charon for a maximum of 'timeout' seconds */
+ 				usleep(20000);
+ 				if (stat(pid_file, &stb) == 0)
+ 				{
+diff -up strongswan-5.6.2/src/starter/invokecharon.h.timeout strongswan-5.6.2/src/starter/invokecharon.h
+--- strongswan-5.6.2/src/starter/invokecharon.h.timeout	2018-09-11 17:06:06.781392060 +0200
++++ strongswan-5.6.2/src/starter/invokecharon.h	2018-09-11 17:06:42.109357686 +0200
+@@ -23,7 +23,7 @@
+ extern void starter_charon_sigchild (pid_t pid, int status);
+ extern pid_t starter_charon_pid (void);
+ extern int starter_stop_charon (void);
+-extern int starter_start_charon(struct starter_config *cfg, bool no_fork, bool attach_gdb);
++extern int starter_start_charon(struct starter_config *cfg, bool no_fork, bool attach_gdb, time_t timeout);
+ 
+ #endif /* _STARTER_CHARON_H_ */
+ 
+diff -up strongswan-5.6.2/src/starter/starter.c.timeout strongswan-5.6.2/src/starter/starter.c
+--- strongswan-5.6.2/src/starter/starter.c.timeout	2018-09-11 16:58:48.223818755 +0200
++++ strongswan-5.6.2/src/starter/starter.c	2018-09-11 17:14:05.578925455 +0200
+@@ -335,6 +335,7 @@ static void cleanup()
+ static void usage(char *name)
+ {
+ 	fprintf(stderr, "Usage: starter [--nofork] [--auto-update <sec>]\n"
++			"               [--timeout <sec 10-120>]\n"
+ 			"               [--debug|--debug-more|--debug-all|--nolog]\n"
+ 			"               [--attach-gdb] [--daemon <name>]\n"
+ 			"               [--conf <path to ipsec.conf>]\n");
+@@ -356,6 +357,7 @@ int main (int argc, char **argv)
+ 	struct timespec ts;
+ 	unsigned long auto_update = 0;
+ 	time_t last_reload;
++	time_t timeout = 30;
+ 	bool no_fork = FALSE;
+ 	bool attach_gdb = FALSE;
+ 	bool load_warning = FALSE;
+@@ -410,6 +412,12 @@ int main (int argc, char **argv)
+ 		{
+ 			conftest = TRUE;
+ 		}
++		else if (streq(argv[i], "--timeout") && i+1 < argc)
++		{
++			timeout = atoi(argv[++i]);
++			if (timeout < 10 || timeout > 120)
++				usage(argv[0]);
++		}
+ 		else
+ 		{
+ 			usage(argv[0]);
+@@ -775,7 +783,7 @@ int main (int argc, char **argv)
+ 			if (!starter_charon_pid())
+ 			{
+ 				DBG2(DBG_APP, "Attempting to start %s...", daemon_name);
+-				if (starter_start_charon(cfg, no_fork, attach_gdb))
++				if (starter_start_charon(cfg, no_fork, attach_gdb, timeout))
+ 				{
+ 					/* schedule next try */
+ 					alarm(CHARON_RESTART_DELAY);

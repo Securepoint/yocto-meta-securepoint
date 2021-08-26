@@ -1,0 +1,685 @@
+diff --git a/include/openvpn-plugin.h.in b/include/openvpn-plugin.h.in
+index a604f1c1..bf920f0d 100644
+--- a/include/openvpn-plugin.h.in
++++ b/include/openvpn-plugin.h.in
+@@ -150,6 +150,7 @@ typedef void *openvpn_plugin_handle_t;
+ #define OPENVPN_PLUGIN_FUNC_SUCCESS  0
+ #define OPENVPN_PLUGIN_FUNC_ERROR    1
+ #define OPENVPN_PLUGIN_FUNC_DEFERRED 2
++#define OPENVPN_PLUGIN_FUNC_CHALLENGE 3
+ 
+ /*
+  * For Windows (needs to be modified for MSVC)
+diff --git a/src/openvpn/multi.c b/src/openvpn/multi.c
+index 28c3b886..3400ea70 100644
+--- a/src/openvpn/multi.c
++++ b/src/openvpn/multi.c
+@@ -1453,6 +1453,34 @@ multi_select_virtual_addr(struct multi_context *m, struct multi_instance *mi)
+      * If ifconfig addresses were set by dynamic config file,
+      * release pool addresses, otherwise keep them.
+      */
++
++  /* XXX XXX XXX */
++  if (*mi->context.c2.tls_multi->session[TM_ACTIVE].framedip)
++  {
++    mi->context.options.push_ifconfig_defined=1;
++    mi->context.options.push_ifconfig_local =
++      getaddr (GETADDR_HOST_ORDER,
++	  mi->context.c2.tls_multi->session[TM_ACTIVE].framedip, 0, NULL, NULL);
++    mi->context.options.push_ifconfig_remote_netmask = mi->context.c1.tuntap->remote_netmask;
++  }
++  if (*mi->context.c2.tls_multi->session[TM_ACTIVE].framedipv6)
++  {
++    struct addrinfo *res = NULL;
++    openvpn_getaddrinfo(GETADDR_PASSIVE,
++        mi->context.c2.tls_multi->session[TM_ACTIVE].framedipv6,
++        "80", 1, NULL, AF_INET6, &res);
++    if (res) {
++      mi->context.options.push_ifconfig_ipv6_defined = 1;
++      mi->context.options.ifconfig_ipv6_pool_defined = 0; /* disable ipv6-pool here */
++      mi->context.options.push_ifconfig_ipv6_local = ((struct sockaddr_in6*)res->ai_addr)->sin6_addr;
++      mi->context.options.push_ifconfig_ipv6_remote = mi->context.c1.tuntap->local_ipv6;
++      mi->context.options.push_ifconfig_ipv6_netbits = mi->context.c1.tuntap->netbits_ipv6;
++
++      freeaddrinfo(res);
++    }
++  }
++  /* XXX XXX XXX */
++
+     if (mi->context.options.push_ifconfig_defined)
+     {
+         /* ifconfig addresses were set statically,
+diff --git a/src/openvpn/plugin.c b/src/openvpn/plugin.c
+index 0ab99ab5..6905d3dc 100644
+--- a/src/openvpn/plugin.c
++++ b/src/openvpn/plugin.c
+@@ -810,6 +810,7 @@ plugin_call_ssl(const struct plugin_list *pl,
+         bool success = false;
+         bool error = false;
+         bool deferred = false;
++        bool challenge = false;
+ 
+         setenv_del(es, "script_type");
+         envp = make_env_array(es, false, &gc);
+@@ -837,6 +838,10 @@ plugin_call_ssl(const struct plugin_list *pl,
+                     deferred = true;
+                     break;
+ 
++                case OPENVPN_PLUGIN_FUNC_CHALLENGE:
++                    challenge = true;
++                    break;
++
+                 default:
+                     error = true;
+                     break;
+@@ -862,6 +867,10 @@ plugin_call_ssl(const struct plugin_list *pl,
+         {
+             return OPENVPN_PLUGIN_FUNC_DEFERRED;
+         }
++        else if (challenge)
++        {
++            return OPENVPN_PLUGIN_FUNC_CHALLENGE;
++        }
+     }
+ 
+     return OPENVPN_PLUGIN_FUNC_SUCCESS;
+diff --git a/src/openvpn/ssl_common.h b/src/openvpn/ssl_common.h
+index c7565d8c..80cf5b45 100644
+--- a/src/openvpn/ssl_common.h
++++ b/src/openvpn/ssl_common.h
+@@ -386,6 +386,10 @@ struct tls_session
+     /* const options and config info */
+     struct tls_options *opt;
+ 
++  /* framed ip (returned from auth-plugin(v2)) */
++  char framedip[52];
++  char framedipv6[64];
++
+     /* during hard reset used to control burst retransmit */
+     bool burst;
+ 
+diff --git a/src/openvpn/ssl_verify.c b/src/openvpn/ssl_verify.c
+index c7e595e4..a07541da 100644
+--- a/src/openvpn/ssl_verify.c
++++ b/src/openvpn/ssl_verify.c
+@@ -838,7 +838,7 @@ cleanup:
+ 
+ #ifdef MANAGEMENT_DEF_AUTH
+ void
+-man_def_auth_set_client_reason(struct tls_multi *multi, const char *client_reason)
++man_def_auth_set_client_reason(struct tls_multi *multi, const char *client_reason, ...)
+ {
+     if (multi->client_reason)
+     {
+@@ -848,7 +848,10 @@ man_def_auth_set_client_reason(struct tls_multi *multi, const char *client_reaso
+     if (client_reason && strlen(client_reason))
+     {
+         /* FIXME: Last alloc will never be freed */
+-        multi->client_reason = string_alloc(client_reason, NULL);
++        va_list ap;
++        va_start(ap, client_reason);
++        vasprintf(&multi->client_reason, client_reason, ap);
++        va_end(ap);
+     }
+ }
+ 
+@@ -1166,7 +1169,8 @@ done:
+  * Verify the username and password using a plugin
+  */
+ static int
+-verify_user_pass_plugin(struct tls_session *session, const struct user_pass *up, const char *raw_username)
++verify_user_pass_plugin(struct tls_session *session, const struct user_pass *up, const char *raw_username,
++    const char *state_id)
+ {
+     int retval = OPENVPN_PLUGIN_FUNC_ERROR;
+ #ifdef PLUGIN_DEF_AUTH
+@@ -1183,6 +1187,9 @@ verify_user_pass_plugin(struct tls_session *session, const struct user_pass *up,
+         /* setenv incoming cert common name for script */
+         setenv_str(session->opt->es, "common_name", session->common_name);
+ 
++        /* setenv state_id */
++        setenv_str (session->opt->es, "state_id", state_id);
++
+         /* setenv client real IP address */
+         setenv_untrusted(session);
+ 
+@@ -1196,8 +1203,27 @@ verify_user_pass_plugin(struct tls_session *session, const struct user_pass *up,
+         }
+ #endif
+ 
++        struct plugin_return pr;
++        plugin_return_init(&pr);
++
+         /* call command */
+-        retval = plugin_call(session->opt->plugins, OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY, NULL, NULL, session->opt->es);
++        retval = plugin_call (session->opt->plugins, OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY, NULL, &pr, session->opt->es);
++
++        do{
++ 	    int i;
++            struct openvpn_plugin_string_list* l;
++            for(i=0;i<pr.n;++i){
++                for( l = pr.list[i]; l; l=l->next){
++                    if(!strcmp(l->name,"framedip")){
++                        strncpy(session->framedip,l->value,sizeof(session->framedip));
++                    } else if(!strcmp(l->name, "framedipv6")) {
++                        strncpy(session->framedipv6, l->value, sizeof(session->framedipv6));
++                    }
++                }
++            }
++        }while(0);
++
++        plugin_return_free(&pr);
+ 
+ #ifdef PLUGIN_DEF_AUTH
+         /* purge auth control filename (and file itself) for non-deferred returns */
+@@ -1289,6 +1315,7 @@ verify_user_pass(struct user_pass *up, struct tls_multi *multi,
+ 
+ #ifdef MANAGEMENT_DEF_AUTH
+     int man_def_auth = KMDA_UNDEF;
++    char state_id[128] = "";
+ 
+     if (management_enable_def_auth(management))
+     {
+@@ -1377,7 +1404,33 @@ verify_user_pass(struct user_pass *up, struct tls_multi *multi,
+ #endif
+     if (plugin_defined(session->opt->plugins, OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY))
+     {
+-        s1 = verify_user_pass_plugin(session, up, raw_username);
++       if(!strncmp(up->password,"CRV1:",5)){
++	   char new_password[128]="";
++	   char *str;
++	   char *str_ptr=up->password;
++	   printf("-> got '%s'\n",up->password);
++	   /* CRV1  */str=strsep(&str_ptr,":");
++	   /* flags */str=strsep(&str_ptr,":");
++	   if((str=strsep(&str_ptr,":"))){
++	     strcpy(state_id,str);
++	   }
++	   /* user */str=strsep(&str_ptr,":");
++	   if(str_ptr){
++	     strcpy(new_password,str_ptr);
++	   }
++	   strcpy(up->password,new_password);
++	   printf("user: %s\n",up->username);
++	   printf("password: %s\n",up->password);
++	   s1 = verify_user_pass_plugin (session, up, raw_username, state_id);
++       }else{
++	   char *new_state_id=NULL;
++	   char state_id_buff[32];
++	   prng_bytes (state_id_buff, sizeof(state_id_buff));
++	   openvpn_base64_encode(state_id_buff,sizeof(state_id_buff),&new_state_id);
++	   strcpy(state_id,new_state_id);
++	   free(new_state_id);
++	   s1 = verify_user_pass_plugin (session, up, raw_username, state_id);
++       }
+     }
+     if (session->opt->auth_user_pass_verify_script)
+     {
+@@ -1459,6 +1512,19 @@ verify_user_pass(struct user_pass *up, struct tls_multi *multi,
+     else
+     {
+         msg(D_TLS_ERRORS, "TLS Auth Error: Auth Username/Password verification failed for peer");
++        /* XXX */
++        fprintf(stderr,"GOT %d AS AUTH-RESULT\n",s1);
++        if(s1 == OPENVPN_PLUGIN_FUNC_CHALLENGE)
++        {
++            char* b64_username=NULL;
++            openvpn_base64_encode(up->username, strlen(up->username), &b64_username);
++            man_def_auth_set_client_reason (multi,
++            "CRV1:R,E:%s:%s:Please enter token PIN",
++            state_id,
++            b64_username);
++            free(b64_username);
++        }
++        /* XXX */
+     }
+ 
+ done:
+diff --git a/src/openvpn/ssl_verify.h b/src/openvpn/ssl_verify.h
+index 3e2267ae..31dded91 100644
+--- a/src/openvpn/ssl_verify.h
++++ b/src/openvpn/ssl_verify.h
+@@ -226,7 +226,7 @@ struct x509_track
+ #ifdef MANAGEMENT_DEF_AUTH
+ bool tls_authenticate_key(struct tls_multi *multi, const unsigned int mda_key_id, const bool auth, const char *client_reason);
+ 
+-void man_def_auth_set_client_reason(struct tls_multi *multi, const char *client_reason);
++void man_def_auth_set_client_reason(struct tls_multi *multi, const char *client_reason, ...);
+ 
+ #endif
+ 
+diff --git a/src/plugins/auth-pam/auth-pam.c b/src/plugins/auth-pam/auth-pam.c
+index 5ba4dc4c..54c3ce15 100644
+--- a/src/plugins/auth-pam/auth-pam.c
++++ b/src/plugins/auth-pam/auth-pam.c
+@@ -43,6 +43,7 @@
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <sys/wait.h>
++#include <time.h>
+ #include <fcntl.h>
+ #include <signal.h>
+ #include <syslog.h>
+@@ -61,6 +62,7 @@
+ #define RESPONSE_INIT_FAILED      11
+ #define RESPONSE_VERIFY_SUCCEEDED 12
+ #define RESPONSE_VERIFY_FAILED    13
++#define RESPONSE_VERIFY_CHALLENGE 14
+ 
+ /* Pointers to functions exported from openvpn */
+ static plugin_secure_memzero_t plugin_secure_memzero = NULL;
+@@ -113,8 +115,24 @@ struct user_pass {
+     char common_name[128];
+ 
+     const struct name_value_list *name_value_list;
++    char state_id[128];
++    char framedip[128];
++    char framedipv6[128];
++    int passwd_cnt;
++    int fd;
+ };
+ 
++struct challenge_list {
++  struct challenge_list *next;
++  char *state_id;
++  char *username;
++  pid_t pid;
++  int fd;
++  time_t timestamp;
++};
++
++static struct challenge_list *challenges = NULL;
++
+ /* Background process function */
+ static void pam_server(int fd, const char *service, int verb, const struct name_value_list *name_value_list);
+ 
+@@ -442,7 +460,7 @@ error:
+ }
+ 
+ OPENVPN_EXPORT int
+-openvpn_plugin_func_v1(openvpn_plugin_handle_t handle, const int type, const char *argv[], const char *envp[])
++openvpn_plugin_func_v2(openvpn_plugin_handle_t handle, const int type, const char *argv[], const char *envp[], void* per_client_ctx, struct openvpn_plugin_string_list** return_list)
+ {
+     struct auth_pam_context *context = (struct auth_pam_context *) handle;
+ 
+@@ -452,13 +470,21 @@ openvpn_plugin_func_v1(openvpn_plugin_handle_t handle, const int type, const cha
+         const char *username = get_env("username", envp);
+         const char *password = get_env("password", envp);
+         const char *common_name = get_env("common_name", envp) ? get_env("common_name", envp) : "";
++        const char *state_id = get_env("state_id", envp);
++        char framedip[128];
++
++        if (!state_id)
++        {
++          state_id = "";
++        }
+ 
+         if (username && strlen(username) > 0 && password)
+         {
+             if (send_control(context->foreground_fd, COMMAND_VERIFY) == -1
+                 || send_string(context->foreground_fd, username) == -1
+                 || send_string(context->foreground_fd, password) == -1
+-                || send_string(context->foreground_fd, common_name) == -1)
++                || send_string(context->foreground_fd, common_name) == -1
++                || send_string(context->foreground_fd, state_id) == -1)
+             {
+                 fprintf(stderr, "AUTH-PAM: Error sending auth info to background process\n");
+             }
+@@ -467,8 +493,29 @@ openvpn_plugin_func_v1(openvpn_plugin_handle_t handle, const int type, const cha
+                 const int status = recv_control(context->foreground_fd);
+                 if (status == RESPONSE_VERIFY_SUCCEEDED)
+                 {
++                    /* may receive FramedIP */
++                    memset(framedip, 0, sizeof(framedip));
++		    recv_string(context->foreground_fd,framedip,sizeof(framedip));
++		    if(*framedip){
++		        (*return_list) = calloc(1,sizeof(**return_list));
++		        (*return_list)->name = strdup("framedip");
++		        (*return_list)->value = strdup(framedip);
++                        return_list = &(*return_list)->next;
++		    }
++                    memset(framedip, 0, sizeof(framedip));
++                    /* recv ipv6 framed ip (optional) */
++                    recv_string(context->foreground_fd,framedip,sizeof(framedip));
++                    if (*framedip) {
++                        (*return_list) = calloc(1, sizeof(**return_list));
++                        (*return_list)->name = strdup("framedipv6");
++                        (*return_list)->value = strdup(framedip);
++                    }
+                     return OPENVPN_PLUGIN_FUNC_SUCCESS;
+                 }
++                if (status == RESPONSE_VERIFY_CHALLENGE)
++                {
++                    return OPENVPN_PLUGIN_FUNC_CHALLENGE;
++                }
+                 if (status == -1)
+                 {
+                     fprintf(stderr, "AUTH-PAM: Error receiving auth confirmation from background process\n");
+@@ -524,6 +571,20 @@ openvpn_plugin_abort_v1(openvpn_plugin_handle_t handle)
+     }
+ }
+ 
++#include <netdb.h>
++
++static int get_addr_family(const char *addr_string)
++{
++    struct addrinfo *info = NULL;
++    int ret = -1;
++
++    if (!getaddrinfo(addr_string, "telnet", NULL, &info)) {
++      ret = info->ai_family;
++      freeaddrinfo(info);
++    }
++    return ret;
++}
++
+ /*
+  * PAM conversation function
+  */
+@@ -531,10 +592,11 @@ static int
+ my_conv(int n, const struct pam_message **msg_array,
+         struct pam_response **response_array, void *appdata_ptr)
+ {
+-    const struct user_pass *up = ( const struct user_pass *) appdata_ptr;
++    struct user_pass *up = ( struct user_pass *) appdata_ptr;
+     struct pam_response *aresp;
+     int i;
+     int ret = PAM_SUCCESS;
++    char challenge_buff[256];
+ 
+     *response_array = NULL;
+ 
+@@ -623,15 +685,43 @@ my_conv(int n, const struct pam_message **msg_array,
+             switch (msg->msg_style)
+             {
+                 case PAM_PROMPT_ECHO_OFF:
+-                    aresp[i].resp = strdup(up->password);
+-                    if (aresp[i].resp == NULL)
++                    if (up->passwd_cnt++)
+                     {
+-                        ret = PAM_CONV_ERR;
++                      /* second time = challenge */
++                      if (-1 == send_control(up->fd, RESPONSE_VERIFY_CHALLENGE))
++                      {
++                        /* */
++                      } else if (-1 == recv_string(up->fd, challenge_buff, sizeof(challenge_buff)))
++                      {
++                        fprintf(stderr, "AUTH-PAM: BACKGROUND: recv challenge failed\n");
++                      } else if (strlen(challenge_buff)){
++                        aresp[i].resp = strdup(challenge_buff);
++                      }
++                    } else
++                    {
++                      aresp[i].resp = strdup(up->password);
++                      if (aresp[i].resp == NULL)
++                      {
++                          ret = PAM_CONV_ERR;
++                      }
+                     }
+                     break;
+ 
+                 case PAM_PROMPT_ECHO_ON:
+-                    aresp[i].resp = strdup(up->username);
++                    if ( -1 == send_control(up->fd, RESPONSE_VERIFY_CHALLENGE))
++                    {
++                      /* */
++                    } else if (-1 == recv_string(up->fd, challenge_buff, sizeof(challenge_buff)))
++                    {
++                      /* */
++                    } else if (!strlen(challenge_buff))
++                    {
++                      /* */
++                    } else
++                    {
++                      aresp[i].resp = strdup(challenge_buff);
++                    }
++                    //aresp[i].resp = strdup(up->username);
+                     if (aresp[i].resp == NULL)
+                     {
+                         ret = PAM_CONV_ERR;
+@@ -639,9 +729,20 @@ my_conv(int n, const struct pam_message **msg_array,
+                     break;
+ 
+                 case PAM_ERROR_MSG:
++	      break;
+                 case PAM_TEXT_INFO:
+-                    break;
+-
++                    /* handle text-info only if it's an ip(v6)address */
++                    switch (get_addr_family(msg->msg)) {
++                      case AF_INET:
++                        strncpy(up->framedip, msg->msg, sizeof(up->framedip) - 1);
++                        break;
++                      case AF_INET6:
++                        strncpy(up->framedipv6, msg->msg, sizeof(up->framedipv6) - 1);
++                        break;
++                      default:
++                        break;
++                    }
++                break;
+                 default:
+                     ret = PAM_CONV_ERR;
+                     break;
+@@ -661,18 +762,13 @@ my_conv(int n, const struct pam_message **msg_array,
+     return ret;
+ }
+ 
+-/*
+- * Return 1 if authenticated and 0 if failed.
+- * Called once for every username/password
+- * to be authenticated.
+- */
+-static int
+-pam_auth(const char *service, const struct user_pass *up)
++static void
++pam_auth_bg(const char *service, const struct user_pass *up)
+ {
+     struct pam_conv conv;
+     pam_handle_t *pamh = NULL;
+     int status = PAM_SUCCESS;
+-    int ret = 0;
++    int ret = RESPONSE_VERIFY_FAILED;
+     const int name_value_list_provided = (up->name_value_list && up->name_value_list->len > 0);
+ 
+     /* Initialize PAM */
+@@ -689,11 +785,11 @@ pam_auth(const char *service, const struct user_pass *up)
+         }
+         if (status == PAM_SUCCESS)
+         {
+-            ret = 1;
++            ret = RESPONSE_VERIFY_SUCCEEDED;
+         }
+ 
+         /* Output error message if failed */
+-        if (!ret)
++        if (ret == RESPONSE_VERIFY_FAILED)
+         {
+             fprintf(stderr, "AUTH-PAM: BACKGROUND: user '%s' failed to authenticate: %s\n",
+                     up->username,
+@@ -703,7 +799,130 @@ pam_auth(const char *service, const struct user_pass *up)
+         /* Close PAM */
+         pam_end(pamh, status);
+     }
++    send_control(up->fd, ret);
++    if(ret == RESPONSE_VERIFY_SUCCEEDED){
++        /* append (optional) framedip */
++        send_string(up->fd,up->framedip);
++        /* ... and (optional) ipv6 */
++        send_string(up->fd,up->framedipv6);
++    }
++}
+ 
++/*
++ * Return 1 if authenticated and 0 if failed.
++ * Called once for every username/password
++ * to be authenticated.
++ */
++static int pam_auth(const char* service, struct user_pass* up)
++{
++    pid_t pid;
++    int fds[2];
++    int my_fd;
++    int status;
++    int ret=0;
++    time_t now=time(NULL);
++    struct challenge_list **my_challenge_ptr;
++    struct challenge_list *my_challenge;
++
++    /* remove old stuff */
++    my_challenge_ptr=&challenges;
++    while(*my_challenge_ptr)
++      {
++        if(now - (*my_challenge_ptr)->timestamp > 120)
++          {
++            send_string((*my_challenge_ptr)->fd,"");
++            recv_control((*my_challenge_ptr)->fd);
++            close((*my_challenge_ptr)->fd);
++            fprintf(stderr,"AUTH-PAM: BACKGROUND: waitpid() ...\n");
++            waitpid((*my_challenge_ptr)->pid,&status,0);
++            fprintf(stderr,"AUTH-PAM: BACKGROUND: waitpid() OK\n");
++            free((*my_challenge_ptr)->username);
++            free((*my_challenge_ptr)->state_id);
++            my_challenge=(*my_challenge_ptr);
++            (*my_challenge_ptr)=my_challenge->next;
++            free(my_challenge);
++          }
++        else
++          {
++            my_challenge_ptr=&(*my_challenge_ptr)->next;
++          }
++      }
++
++    /* try to find state_id in challenge - list */
++    my_challenge_ptr=&challenges;
++    while(*my_challenge_ptr)
++      {
++        if(!strcmp((*my_challenge_ptr)->state_id,up->state_id)
++            && !strcmp((*my_challenge_ptr)->username,up->username))
++        {
++          break;
++        }
++        my_challenge_ptr=&(*my_challenge_ptr)->next;
++      }
++
++    if(!(*my_challenge_ptr))
++      {
++        if (socketpair (PF_UNIX, SOCK_DGRAM, 0, fds) == -1)
++          {
++            return RESPONSE_VERIFY_FAILED;
++          }
++        up->fd = fds[0];
++        my_fd  = fds[1];
++        fcntl (fds[1], F_SETFD, FD_CLOEXEC);
++        if(!(pid = fork()))
++          {
++            pam_auth_bg(service,up);
++            close(up->fd);
++            exit(0);
++          }
++        close(up->fd);
++      }
++    else
++      {
++        /* fill out fd and pid ... */
++        my_fd=(*my_challenge_ptr)->fd;
++        pid=(*my_challenge_ptr)->pid;
++        /* ... send challenge response */
++        send_string(my_fd,up->password); /* XXX check for error */
++        /* and remove challenge-list entry */
++        free((*my_challenge_ptr)->state_id);
++        free((*my_challenge_ptr)->username);
++        my_challenge=(*my_challenge_ptr);
++        (*my_challenge_ptr)=my_challenge->next;
++        free(my_challenge);
++      }
++    switch((ret=recv_control(my_fd)))
++      {
++        case RESPONSE_VERIFY_FAILED:
++        case RESPONSE_VERIFY_SUCCEEDED:
++          fprintf(stderr,"AUTH-PAM: BACKGROUND: received auth result\n");
++          if(ret == RESPONSE_VERIFY_SUCCEEDED){
++              /* read 'optional' ip-addr from background process */
++              recv_string(my_fd, up->framedip,sizeof(up->framedip));
++              /* read 'optionnal' ipv6-addr from background process */
++              recv_string(my_fd, up->framedipv6, sizeof(up->framedipv6));
++          }
++          close(my_fd);
++          waitpid(pid,&status,0);
++          break;
++        case RESPONSE_VERIFY_CHALLENGE:
++          fprintf(stderr,"AUTH-PAM: BACKGROUND: received challenge request\n");
++          my_challenge=calloc(1,sizeof(struct challenge_list));
++          my_challenge->pid=pid;
++          my_challenge->state_id=strdup(up->state_id);
++          my_challenge->username=strdup(up->username);
++          my_challenge->fd=my_fd;
++          my_challenge->timestamp=time(NULL);
++          my_challenge->next=challenges;
++          challenges=my_challenge;
++          break;
++        default:
++          fprintf(stderr,"AUTH-PAM: BACKEND: unknown\n");
++          close(my_fd);
++          waitpid(pid,&status,0);
++          ret=RESPONSE_VERIFY_FAILED;
++          break;
++      }
+     return ret;
+ }
+ 
+@@ -753,6 +972,7 @@ pam_server(int fd, const char *service, int verb, const struct name_value_list *
+      */
+     while (1)
+     {
++        int auth_result;
+         memset(&up, 0, sizeof(up));
+         up.verb = verb;
+         up.name_value_list = name_value_list;
+@@ -770,7 +990,8 @@ pam_server(int fd, const char *service, int verb, const struct name_value_list *
+             case COMMAND_VERIFY:
+                 if (recv_string(fd, up.username, sizeof(up.username)) == -1
+                     || recv_string(fd, up.password, sizeof(up.password)) == -1
+-                    || recv_string(fd, up.common_name, sizeof(up.common_name)) == -1)
++                    || recv_string(fd, up.common_name, sizeof(up.common_name)) == -1
++                    || recv_string(fd, up.state_id, sizeof(up.state_id)) == -1)
+                 {
+                     fprintf(stderr, "AUTH-PAM: BACKGROUND: read error on command channel: code=%d, exiting\n",
+                             command);
+@@ -787,21 +1008,14 @@ pam_server(int fd, const char *service, int verb, const struct name_value_list *
+ #endif
+                 }
+ 
+-                if (pam_auth(service, &up)) /* Succeeded */
++                if (send_control (fd, (auth_result = pam_auth(service, &up))) == -1)
+                 {
+-                    if (send_control(fd, RESPONSE_VERIFY_SUCCEEDED) == -1)
+-                    {
+-                        fprintf(stderr, "AUTH-PAM: BACKGROUND: write error on response socket [2]\n");
+-                        goto done;
+-                    }
++                  fprintf(stderr, "AUTH-PAM: BACKGROUND: write error on response socket\n");
+                 }
+-                else /* Failed */
+-                {
+-                    if (send_control(fd, RESPONSE_VERIFY_FAILED) == -1)
+-                    {
+-                        fprintf(stderr, "AUTH-PAM: BACKGROUND: write error on response socket [3]\n");
+-                        goto done;
+-                    }
++                /* check for result ... if success send also up->framedip */
++                if(auth_result == RESPONSE_VERIFY_SUCCEEDED){
++                    send_string(fd,up.framedip);
++                    send_string(fd,up.framedipv6);
+                 }
+                 plugin_secure_memzero(up.password, sizeof(up.password));
+                 break;
+diff --git a/src/plugins/auth-pam/auth-pam.exports b/src/plugins/auth-pam/auth-pam.exports
+index 597e33f6..416846d4 100644
+--- a/src/plugins/auth-pam/auth-pam.exports
++++ b/src/plugins/auth-pam/auth-pam.exports
+@@ -1,4 +1,4 @@
+ openvpn_plugin_open_v3
+-openvpn_plugin_func_v1
++openvpn_plugin_func_v2
+ openvpn_plugin_close_v1
+ openvpn_plugin_abort_v1

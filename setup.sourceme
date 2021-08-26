@@ -7,12 +7,12 @@ exiterror(){
 }
 
 help(){
-	echo "cant find meta(s)"
+	echo "cant find meta(s) ROOT=$MYROOT"
 	echo "meta-securepoint has to be in meta-yocto"
-	echo "# git clone -b fido git://git.yoctoproject.org/poky.git"
+	echo "# git clone -b ${branch} git://git.yoctoproject.org/poky.git"
 	echo "# cd poky"
-	echo "# git clone -b fido git://git.openembedded.org/meta-openembedded meta-oe"
-	echo "# git clone git://github.com/Securepoint/yocto-meta-securepoint meta-securepoint-public"
+	echo "# git clone -b ${branch} git://git.openembedded.org/meta-openembedded meta-oe"
+	echo "# git clone -b ${branch} git://github.com/Securepoint/yocto-meta-securepoint meta-securepoint-public"
 	echo "then come again"
 	error=1
 }
@@ -35,12 +35,12 @@ else
    MYROOT=`readlink -f "$MYROOT"`
 fi
 
-if [ ! -r ${MYROOT}/../oe-init-build-env ]; then
+if [ ! -r ${MYROOT}/../poky/oe-init-build-env ]; then
 	help
 else
 	export TEMPLATECONF=${MYROOT}/conf/
 	cd ${MYROOT}/..
 fi
 if [ ! -d meta-oe ] || [ ! -d meta-securepoint-public ];then help ;fi
-[ -r oe-init-build-env ] || exiterror 'cant find "oe-init-build-env"'
-[ $error -eq 0 ] && source ./oe-init-build-env $1
+#[ -r oe-init-build-env ] || exiterror 'cant find "oe-init-build-env"'
+[ $error -eq 0 ] && source ./poky/oe-init-build-env $1

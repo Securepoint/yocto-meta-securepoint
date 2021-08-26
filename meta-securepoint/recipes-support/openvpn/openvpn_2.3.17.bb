@@ -3,7 +3,7 @@ HOMEPAGE = "http://openvpn.sourceforge.net"
 SECTION = "console/network"
 LICENSE = "GPLv2"
 LIC_FILES_CHKSUM = "file://COPYING;md5=e9b64491ec98eb6c6493ac5e4118f107"
-DEPENDS = "lzo openssl libpam"
+DEPENDS = "lzo openssl "
 
 inherit autotools
 

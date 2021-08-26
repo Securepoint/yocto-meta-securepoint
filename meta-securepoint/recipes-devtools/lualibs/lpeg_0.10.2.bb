@@ -1,9 +1,9 @@
-DESCRIPTION = "Cosmo is a "safe templates" engine.  It allows you to fill nested \
-templates, providing many of the advantages of Turing-complete \
-template engines, without without the downside of allowing arbitrary \
-code in the templates."
+DESCRIPTION = "LPeg is a new pattern-matching library for Lua, based \
+on Parsing Expression Grammars (PEGs)."
+SUMMARY = "Parsing Expression Grammars For Lua"
 SECTION = "lua"
-LICENSE = "CLOSED"
+LICENSE = "MIT"
+LIC_FILES_CHKSUM = "file://lpeg.html;beginline=1377;endline=1408;md5=8d10b429628704c1e04f0bd79c632b7b"
 PR = "r0"
 
 SRC_URI = "http://www.inf.puc-rio.br/~roberto/lpeg/lpeg-${PV}.tar.gz"
@@ -14,9 +14,10 @@ DEPENDS = "lua5.1"
 
 inherit autotools-brokensep
 
-EXTRA_OEMAKE += " PREFIX=/usr LD='${LD}' CC='${CC} -fPIC'"
+EXTRA_OEMAKE += " PREFIX=/usr CC='${CC} ${CFLAGS} ${LDFLAGS} -Wl,--hash-style=gnu -fPIC' LD='${CC} -Wl,--hash-style=gnu'"
 
 CLEANBROKEN = "1"
+INSANE_SKIP_${PN} = "ldflags"
 
 do_install(){
     install -d ${D}${libdir}/lua/5.1/
@@ -24,5 +25,5 @@ do_install(){
     install -m 444 -o root lpeg.so ${D}${libdir}/lua/5.1/
     install -m 444 -o root re.lua ${D}/usr/share/lua/5.1/
 }
-FILES_${PN}-dbg = "${libdir}/lua/5.1/.debug"
+FILES_${PN}-dbg += "${libdir}/lua/5.1/.debug"
 FILES_${PN} += "${libdir}/lua/5.1/ /usr/share/lua/5.1/"

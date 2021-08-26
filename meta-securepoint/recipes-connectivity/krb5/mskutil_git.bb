@@ -5,7 +5,7 @@ DESCRIPTION = "Active Directory Keytab Management"
 HOMEPAGE = "http://sourceforge.net/projects/msktutil/"
 LICENSE = "GPLv2"
 SECTION = "base"
-DEPENDS = "krb5"
+DEPENDS = "krb5 openldap cyrus-sasl"
 PR = "r0"
 
 SRC_URI = "git://github.com/3van/msktutil.git;protocol=http"

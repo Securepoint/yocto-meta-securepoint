@@ -18,8 +18,9 @@ PR = "r0"
 SRC_URI = "\
     http://dl.sourceforge.net/sourceforge/poptop/pptpd-1.3.4.tar.gz \
     file://pptpd-install.patch \
-    file://etc_sv_pptpd_run \ 
-    file://etc_sv_pptpd_down \ 
+    file://etc_sv_pptpd_run \
+    file://etc_sv_pptpd_down \
+    file://out-of-scope-pointer.patch \
 "
 SRC_URI[md5sum] = "b38df9c431041922c997c1148bedf591"
 SRC_URI[sha256sum] = "c23a9bdd219a0a36ae7ca20e7c9749f2efdcdbf108aabeeeb5066ba442ec88b6"
@@ -27,6 +28,7 @@ SRC_URI[sha256sum] = "c23a9bdd219a0a36ae7ca20e7c9749f2efdcdbf108aabeeeb5066ba442
 inherit autotools-brokensep runit
 
 RUNIT_SERVICES = "pptpd"
+CC_append = " ${LDFLAGS}"
 
 do_configure_append () {
     # remove hardcoded gcc dependency to fix cross copiling issue

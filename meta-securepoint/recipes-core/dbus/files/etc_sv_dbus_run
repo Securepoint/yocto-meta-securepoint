@@ -1,3 +1,9 @@
 #!/bin/sh
-mkdir -p /var/run/dbus
+RUNDIR=/var/run/
+PIDFILE=${RUNDIR}/messagebus.pid
+mkdir -p ${RUNDIR}/dbus
+if [ -f ${PIDFILE} ]; then
+  logger -t dbus-daemon -p daemon.info "removing stale pid file ${PIDFILE}"
+  rm -f ${PIDFILE}
+fi
 exec dbus-daemon --system --nofork

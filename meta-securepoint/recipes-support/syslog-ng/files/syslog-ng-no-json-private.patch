@@ -1,0 +1,11 @@
+diff -up syslog-ng-3.8.1/modules/json/json-parser.c.syslog-json syslog-ng-3.8.1/modules/json/json-parser.c
+--- syslog-ng-3.8.1/modules/json/json-parser.c.syslog-json	2019-03-08 15:17:17.398117433 +0100
++++ syslog-ng-3.8.1/modules/json/json-parser.c	2019-03-08 15:23:31.540235816 +0100
+@@ -28,7 +28,6 @@
+ #include <ctype.h>
+ 
+ #include <json.h>
+-#include <json_object_private.h>
+ 
+ typedef struct _JSONParser
+ {

@@ -20,6 +20,8 @@ SRC_URI = "\
     http://www.keepalived.org/software/keepalived-${PV}.tar.gz \
     file://nosystemd.patch \
     file://nosnmp.patch \
+    file://remove-ip-check.patch \
+    file://keepalived-1.2.24-msq.patch \
 "
 
 SRC_URI[md5sum] = "e878312095b7dcab91ad06e257822247"
@@ -33,7 +35,7 @@ CPPFLAGS_append = " -I=/usr/include/libnl3"
 EXTRA_OEMAKE += " STRIP=/bin/true"
 EXTRA_OECONF += " --disable-snmp --disable-snmp-keepalived --disable-snmp-checker --disable-snmp-rfc -disable-snmp-rfcv2 --disable-snmp-rfcv3 --disable-snmp-reply-v3-for-v2"
 
-#DEPENDS += "libnl"
+DEPENDS += " openssl"
 
 do_install_append() {
     install -d ${D}${datadir}/doc/${PN}-${PV}

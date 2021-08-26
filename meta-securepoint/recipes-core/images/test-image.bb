@@ -11,7 +11,7 @@
 
 inherit extrausers
 EXTRA_USERS_PARAMS = "\
- usermod -P insecure root; \
+ usermod -P mypass root; \
 "
 
 IMAGE_FEATURES += "ssh-server-dropbear"
@@ -47,10 +47,15 @@ IMAGE_INSTALL_append = "\
     hddtemp \
     util-linux-getopt \
     kernel-module-tun \
-    krb5-workstation \
-    pam-krb5 \
     mskutil \
     cifs-utils kernel-module-cifs \
+    hostap-daemon iw\
+    openntpd \
+    modemmanager \
+    keepalived \
+    iptables \
+    ppp ppp-oe \
+    iproute2-tc \
     "
-IMAGE_FSTYPES = "ext3 vmdk"
+IMAGE_FSTYPES = "ext3 "
 inherit core-image

@@ -10,7 +10,8 @@ DEPENDS = "dovecot"
 PR = "r0"
 
 SRC_URI = "http://pigeonhole.dovecot.org/releases/2.2/dovecot-2.2-pigeonhole-${PV}.tar.gz \
-           file://pigeonhole-defaultfolder.patch"
+"
+
 SRC_URI[md5sum] = "7e6f55da44500b59b832b3d44dd0cbcb"
 SRC_URI[sha256sum] = "dd871bb57fad22795460f613f3c9484a8bf229272ac00956d837a34444f1c3a9"
 
@@ -20,7 +21,7 @@ S = "${WORKDIR}/dovecot-2.2-pigeonhole-${PV}"
 
 inherit autotools-brokensep
 
-EXTRA_OECONF = "--with-dovecot=${S} --disable-static"
+EXTRA_OECONF = "--with-dovecot=${S} --disable-static --without-managesieve"
 
 do_configure_prepend(){
     #copy over file from dovecot and modify paths in place
@@ -30,13 +31,14 @@ do_configure_prepend(){
 
 }
 
+# plugins dont have versioning for .so
+INSANE_SKIP_${PN} += " dev-so "
 FILES_${PN} = " ${bindir} \
-                ${libdir}/dovecot/libdovecot-sieve.so.* \
+                ${libdir}/dovecot/lib* \
+                ${libdir}/dovecot/*/lib* \
                 ${prefix}/libexec/dovecot/*"
 FILES_${PN}-dev = "${includedir} \
                 /usr/src \
-                ${libdir}/dovecot/*.so \ 
-                ${libdir}/dovecot/*/*.so \ 
                 ${libdir}/dovecot/*.la \
                 ${libdir}/dovecot/*/*.la \
                 /usr/share/aclocal \

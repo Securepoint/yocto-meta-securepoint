@@ -1,0 +1,12 @@
+diff -ur igb-5.3.5.10.orig/src/Makefile igb-5.3.5.10/src/Makefile
+--- igb-5.3.5.10.orig/src/Makefile	2017-08-16 15:45:44.006873000 +0200
++++ igb-5.3.5.10/src/Makefile	2017-08-16 15:45:57.006741000 +0200
+@@ -129,8 +129,6 @@
+ 	@install -D -m 644 ${DRIVER}.${MANSECTION}.gz ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz
+ 	@echo "Installing modules..."
+ 	@+$(call devkernelbuild,modules_install)
+-	@echo "Running depmod..."
+-	@$(call cmd_depmod)
+ 
+ # Target used by rpmbuild spec file
+ rpm: default manfile

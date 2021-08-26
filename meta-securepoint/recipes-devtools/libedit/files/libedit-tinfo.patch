@@ -1,0 +1,22 @@
+Don't link libncurses if tgetent is in libtinfo
+
+diff -up libedit-20170329-3.1/configure.ac.tinfo libedit-20170329-3.1/configure.ac
+--- libedit-20170329-3.1/configure.ac.tinfo	2017-03-29 20:18:18.000000000 +0200
++++ libedit-20170329-3.1/configure.ac	2018-10-09 16:03:20.604825037 +0200
+@@ -46,10 +46,12 @@ AC_PROG_LN_S
+ AC_PROG_AWK
+ EL_MANTYPE
+ 
+-AC_CHECK_LIB(ncurses, tgetent,,
+-  [AC_CHECK_LIB(curses, tgetent,,
+-    [AC_CHECK_LIB(termcap, tgetent,,
+-      [AC_MSG_ERROR([libncurses, libcurses, or libtermcap is required!])]
++AC_CHECK_LIB(tinfo, tgetent,,
++  [AC_CHECK_LIB(ncurses, tgetent,,
++    [AC_CHECK_LIB(curses, tgetent,,
++      [AC_CHECK_LIB(termcap, tgetent,,
++        [AC_MSG_ERROR([libtinfo, libncurses, libcurses, or libtermcap is required!])]
++      )]
+     )]
+   )]
+ )

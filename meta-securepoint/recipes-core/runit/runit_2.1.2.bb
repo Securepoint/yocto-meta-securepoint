@@ -10,6 +10,7 @@ SRC_URI = "http://smarden.org/runit/runit-${PV}.tar.gz \
            file://cross-compile.patch;patch=1;pnum=1 \
            file://build-svwait.patch;patch=1;pnum=1 \
            file://forced_reboot.patch;patch=1;pnum=1 \
+           file://docker.patch;patch=1;pnum=1 \
            file://sbin \
            file://etc"
 
@@ -48,4 +49,5 @@ do_install() {
     ln -sf shutdown.sh ${D}/sbin/reboot
     ln -sf shutdown.sh ${D}/sbin/halt
     ln -sf shutdown.sh ${D}/sbin/shutdown
+    ln -sf shutdown.sh ${D}/sbin/poweroff
 }

@@ -1,5 +1,5 @@
 dnl Some defaults
 APPENDDEF(`confFORCE_RMAIL')
-APPENDDEF(`confMAPDEF', `-DNEWDB')
+APPENDDEF(`confMAPDEF', `-DNDBM')
 dnl Disable NIS support
 APPENDDEF(`confENVDEF', `-UNIS')

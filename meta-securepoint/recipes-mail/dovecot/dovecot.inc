@@ -5,7 +5,7 @@ DESCRIPTION = "A secure IMAP server"
 HOMEPAGE = "http://www.dovecot.org"
 LICENSE = "MIT"
 SECTION = "mail"
-DEPENDS = "openldap krb5 openssl libpam"
+DEPENDS = "openldap krb5 openssl xz zlib bzip2 libcap icu"
 PR = "r0"
 
 inherit autotools-brokensep pkgconfig runit useradd
@@ -20,20 +20,7 @@ GROUPADD_PARAM_${PN} = "\
 
 RUNIT_SERVICES = "${PN}"
 
-EXTRA_OECONF = ' \
-i_cv_epoll_works="yes" \
-i_cv_inotify_works="yes" \
-i_cv_posix_fallocate_works="no" \
-i_cv_signed_size_t="no" \
-i_cv_gmtime_max_time_t="40" \
-i_cv_signed_time_t="yes" \
-i_cv_fd_passing="yes" \
-i_cv_c99_vsnprintf="yes" \
-i_cv_mmap_plays_with_write="yes" \
-i_cv_gssapi_spnego="yes" \
-lib_cv_va_copy="yes" \
-lib_cv___va_copy="yes" \
-lib_cv_va_val_copy="yes" \
+EXTRA_OECONF += ' \
 --libexecdir=/usr/libexec \
 --without-nss \
 --without-shadow \
@@ -50,16 +37,21 @@ lib_cv_va_val_copy="yes" \
 --without-solr \
 \
 --with-ssl=openssl \
---with-storages=maildir \
---with-pam=yes \
+--with-pam=no \
 --with-ldap=plugin \
 --with-gssapi=plugin \
 '
+
 
 FILES_${PN} = " ${bindir}/ \
                 ${sbindir}/ \
                 ${libdir}/libdovecot.so \
                 ${libdir}/dovecot/*.so.* \
+                ${libdir}/dovecot/lib* \
+                ${libdir}/dovecot/doveadm/*.so \
+                ${libdir}/dovecot/auth/*.so / \
+                ${libdir}/dovecot/stats/*.so \
+                ${libdir}/dovecot/dict/*.so \
                 ${prefix}/libexec/dovecot/* \
                 ${libdir}/dovecot/doveadm/*.so.* \
                 ${libdir}/dovecot/auth/*.so.* \
@@ -73,6 +65,7 @@ FILES_${PN}-dbg = " ${bindir}/.debug \
                 ${libdir}/dovecot/doveadm/.debug \
                 ${libdir}/dovecot/auth/.debug/ \
                 ${libdir}/dovecot/stats/.debug \
+                ${libdir}/dovecot/dict/.debug \
 "
 FILES_${PN}-staticdev = "${libdir}/dovecot/*.a \
                 ${libdir}/dovecot/doveadm/*.a \
@@ -80,11 +73,10 @@ FILES_${PN}-staticdev = "${libdir}/dovecot/*.a \
                 ${libdir}/dovecot/*.la \
                 ${libdir}/*/*/*.la \
                 ${libdir}/dovecot/stats/*.a \
+                ${libdir}/dovecot/dict/*.a \
 "
 FILES_${PN}-dev = "/usr/src \
                 /usr/include \
-                ${libdir}/*/*.so \
-                ${libdir}/*/*/*.so \
                 ${libdir}/dovecot/dovecot-config \
                 /etc/dovecot \
 "

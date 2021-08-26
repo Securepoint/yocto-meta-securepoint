@@ -1,0 +1,21 @@
+diff -up backports-5.10.34-1/net/wireless/Kconfig.gt backports-5.10.34-1/net/wireless/Kconfig
+--- backports-5.10.34-1/net/wireless/Kconfig.gt	2021-05-27 12:29:17.820258665 +0200
++++ backports-5.10.34-1/net/wireless/Kconfig	2021-05-27 12:30:53.569851983 +0200
+@@ -75,7 +75,7 @@ config CFG80211_CERTIFICATION_ONUS
+ config CFG80211_REQUIRE_SIGNED_REGDB
+ 	depends on !KERNEL_3_13
+ 	bool "require regdb signature" if CFG80211_CERTIFICATION_ONUS
+-	default y
++	default n
+ 	select BPAUTO_SYSTEM_DATA_VERIFICATION
+ 	help
+ 	  Require that in addition to the "regulatory.db" file a
+@@ -145,7 +145,7 @@ config CFG80211_REG_RELAX_NO_IR
+ 
+ config CFG80211_DEFAULT_PS
+ 	bool "enable powersave by default"
+-	default y
++	default n
+ 	help
+ 	  This option enables powersave mode by default.
+ 

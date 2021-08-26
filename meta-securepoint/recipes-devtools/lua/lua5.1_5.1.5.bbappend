@@ -5,4 +5,4 @@
 
 FILESEXTRAPATHS_prepend := "${THISDIR}/files:"
 
-RDEPENDS_${PN} += "luabitop"
+#RDEPENDS_${PN} += "luabitop"

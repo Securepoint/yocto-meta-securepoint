@@ -10,14 +10,17 @@ LIC_FILES_CHKSUM = "\
 "
 SECTION = "net"
 DEPENDS = "file libecap"
-PR = "r0"
 
-SRC_URI = "git://github.com/Securepoint/squid-ecap-av.git;protocol=https \
+SQUIDECAPAV_BRANCH ?= "master"
+SQUIDECAPAV_SRCREV ?= "${AUTOREV}"
+
+SRC_URI = "git://github.com/Securepoint/squid-ecap-av.git;protocol=https;branch=${SQUIDECAPAV_BRANCH} \
            file://custom-style.patch \
 "
 S = "${WORKDIR}/git"
-SRCREV = "${AUTOREV}"
-PV = "git${SRCPV}"
+SRCREV = "${SQUIDECAPAV_SRCREV}"
+PV = "${SRCREV}+git${SRCPV}"
+PR = "r1"
 
 inherit cmake
 

@@ -1,0 +1,3 @@
+#!/bin/sh
+# use the same group the webserver runs under
+exec /usr/bin/spawn-fcgi -n -s /run/portal/portal.sock -u proxy -g nobody -M 0660 -f /usr/sbin/fcgiwrap

@@ -5,9 +5,9 @@ SECTION = "net"
 PRIORITY = "optional"
 LICENSE = "Sendmail"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=f18794e9db4c7f74936569f283150e38"
-PR = "r1"
+PR = "r2"
 
-SRC_URI = "ftp://ftp.sendmail.org/pub/sendmail/sendmail.${PV}.tar.gz \
+SRC_URI = "http://ftp.sendmail.org/sendmail.${PV}.tar.gz \
 	  file://sendmail-8.14.3-milterfdleaks.patch;patch=1;pnum=1 \
 	  file://sendmail-8.14.3-sharedmilter.patch;patch=1;pnum=1 \
 	  file://sendmail-8.14.7-qos.patch;patch=1;pnum=1 \
@@ -18,7 +18,8 @@ SRC_URI = "ftp://ftp.sendmail.org/pub/sendmail/sendmail.${PV}.tar.gz \
 SRC_URI[md5sum] = "6a3bdceffa592316f830be289a4bd783"
 SRC_URI[sha256sum] = "f5a497151abd8f341cca0736c3f9bd703d574d93146b2989689dff6d7a445d75"
 
-DEPENDS = "db openssl cyrus-sasl openldap"
+DEPENDS = "gdbm openssl cyrus-sasl openldap"
+
 
 inherit siteinfo
 
@@ -35,7 +36,7 @@ do_configure() {
   cp -f ${WORKDIR}/site.config.m4 devtools/Site/
 
   do_define    "confCC"         "${TARGET_PREFIX}gcc -Wl,--hash-style=gnu ${TARGET_CC_ARCH} --sysroot=${STAGING_DIR_TARGET}"
-  do_define    "confLIBS"       "-lrt -ldb -lresolv"
+  do_define    "confLIBS"       "-lrt -lresolv"
   do_define    "confLIBSEARCH"  ""
   do_define    "confMANROOTMAN" "${mandir}/man"
   do_define    "confMANROOT"    "${mandir}/man"
@@ -71,6 +72,14 @@ do_configure() {
 
   ### MILTER
   do_appenddef "confENVDEF" "-DMILTER"
+
+  ### GDBM
+  do_appenddef "confMAPDEF" "-DNDBM"
+  do_appenddef "confLIBS" "-lgdbm_compat"
+
+  ### BDB
+  # do_appenddef "confMAPDEF" "-DNEWDB"
+  # do_appenddef "confLIBS" "-ldb"
 }
 
 do_compile () {
@@ -89,10 +98,11 @@ do_install () {
   oe_runmake -C ${OBJDIR}/libmilter DESTDIR=${D} MANDIR=${mandir} install
 }
 
-PACKAGES += "${PN}-libmilter"
+PACKAGES_prepend = "${PN}-libmilter-dev ${PN}-libmilter "
 
 FILES_${PN} = "/usr/bin /usr/sbin /etc /var"
 FILES_${PN}-libmilter = "/usr/lib/libmilter*"
+FILES_${PN}-libmilter-dev = "/usr/lib/libmilter.so /usr/include/libmilter"
 FILES_${PN}-dbg += "/usr/.debug"
 
-RDEPENDS_${PN} += "m4"
+RDEPENDS_${PN} += "m4 cyrus-sasl-bin-saslauthd cyrus-sasl-plugin-plain cyrus-sasl-plugin-login"

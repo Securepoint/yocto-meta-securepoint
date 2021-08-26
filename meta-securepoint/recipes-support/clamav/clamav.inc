@@ -19,16 +19,15 @@ LIC_FILES_CHKSUM = "\
 "
 
 SECTION = "Applications/File"
-DEPENDS = "libxml2 zlib bzip2 openssl pcre"
+DEPENDS = "libxml2 zlib bzip2 openssl pcre libtool curl"
 PR = "r0"
 
 SRC_URI = "\
     https://www.clamav.net/downloads/production/${PN}-${PV}.tar.gz \
-    file://clamav_xml2_check.patch \
-    file://clamav_pcre_check.patch \
+    file://pcre.m4 \
+    file://curl.m4 \
     file://clamav_fdpassing.patch \
-    file://clamav_0.99.2_subdir-objets.patch \
-    file://clamav_0.99.2_llvm.patch \
+    file://clamav_0.102.0_llvm.patch \
     file://etc_sv_clamd_run \
     file://etc_sv_clamd_down \
 "
@@ -42,19 +41,20 @@ USERADD_PACKAGES += "${PN}-common"
 USERADD_PARAM_${PN}-common = "-r -d /var/empty -g clamav -s /bin/false clamav;"
 GROUPADD_PARAM_${PN}-common = "-r -f clamav;"
 
-export LDFLAGS='-Wl,--as-needed'
+# export LDFLAGS='-Wl,--as-needed'
 export FRESHCLAM_LIBS='-lz'
 # IPv6 check is buggy and does not work when there are no IPv6 interface on build machine
 export have_cv_ipv6='yes'
 
-# curl is only required for 'clamsubmit' so disable it
+# curl/json is only required for 'clamsubmit' so disable it
 EXTRA_OECONF = "\
     --program-prefix='' \
-    --disable-clamav \
     --disable-static \
     --disable-rpath \
     --disable-clamdtop \
+    --disable-clamonacc \
     --disable-llvm \
+    --disable-fanotify \
     --with-included-ltdl \
     --with-xml=${STAGING_LIBDIR}/.. \
     --with-libcheck-prefix=${STAGING_LIBDIR}/.. \
@@ -62,7 +62,9 @@ EXTRA_OECONF = "\
     --with-zlib=${STAGING_LIBDIR}/.. \
     --with-openssl=${STAGING_LIBDIR}/.. \
     --with-pcre=${STAGING_LIBDIR}/.. \
-    --without-libcurl \
+    --without-libjson \
+    --without-iconv \
+    --disable-zlib-vcheck \
     CPPFLAGS=-I${STAGING_LIBDIR}/../include/libxml2 \
     have_cv_gai=yes \
     ac_cv_c_mmap_private=yes \
@@ -71,8 +73,11 @@ EXTRA_OECONF = "\
 "
 
 do_configure_prepend() {
-    cp -f ${WORKDIR}/pcre.m4 ${S}/m4/reorganization/libs/
-} 
+    # remove the autoconf crap to avoid version mismatches
+    cp -f ${WORKDIR}/pcre.m4 ${WORKDIR}/curl.m4 ${S}/m4/reorganization/libs/
+    echo "dnl emptied by yocto receipe" > ${S}/m4/reorganization/llvm.m4
+    find ${S} -name configure -o -name ltversion.m4 -o -name ltmain.sh -o -name aclocal.m4 | xargs rm -f
+}
 
 do_configure_append() {
     # configure can't detect this if cross compiling
@@ -83,6 +88,12 @@ do_install_prepend() {
     # remove last standing rpath
     sed -i -e 's|^relink_command=.*||' libclamav/libclamunrar_iface.la libclamav/.libs/libclamunrar_iface.la
     install -d ${D}/var/empty
+}
+
+# INSANE_SKIP += "unknown-configure-option" doesn't work
+# so we have to use this bloody hack
+do_qa_configure() {
+	echo ""
 }
 
 FILES_${PN}-libs       = "${libdir}/libclam*.so.*"

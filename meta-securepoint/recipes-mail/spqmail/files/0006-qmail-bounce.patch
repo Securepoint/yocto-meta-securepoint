@@ -1,0 +1,45 @@
+Here is a little patch by Frank DENIS aka Jedi/Sector One <j@4u.net> to
+limit the size of bounces.
+The default limit for bounces is 50000 bytes, but you can create a file in
+/var/qmail/crontrol/bouncemaxbytes (or wherever your control directory is)
+in order to change that number.
+
+diff -u ../qmail-1.03/qmail-send.c ./qmail-send.c
+--- ../qmail-1.03/qmail-send.c	Mon Jun 15 12:53:16 1998
++++ ./qmail-send.c	Wed Jun 24 20:06:29 1998
+@@ -44,6 +44,8 @@
+ 
+ int lifetime = 604800;
+ 
++int bouncemaxbytes = 50000;
++
+ stralloc percenthack = {0};
+ struct constmap mappercenthack;
+ stralloc locals = {0};
+@@ -740,9 +742,17 @@
+      qmail_fail(&qqt);
+    else
+     {
++     int bytestogo = bouncemaxbytes;
++     int bytestoget = (bytestogo < sizeof buf) ? bytestogo : sizeof buf;
+      substdio_fdbuf(&ssread,read,fd,inbuf,sizeof(inbuf));
+-     while ((r = substdio_get(&ssread,buf,sizeof(buf))) > 0)
++     while (bytestoget > 0 && (r = substdio_get(&ssread,buf,bytestoget)) > 0) {
+        qmail_put(&qqt,buf,r);
++       bytestogo -= bytestoget;
++       bytestoget = (bytestogo < sizeof buf) ? bytestogo : sizeof buf;
++     }
++     if (r > 0) {
++       qmail_puts(&qqt,"\n\n--- End of message stripped.\n");
++     }
+      close(fd);
+      if (r == -1)
+        qmail_fail(&qqt);
+@@ -1442,6 +1452,7 @@
+ /* this file is too long ---------------------------------------------- MAIN */
+ 
+ int getcontrols() { if (control_init() == -1) return 0;
++ if (control_readint(&bouncemaxbytes,"control/bouncemaxbytes") == -1) return 0;   
+  if (control_readint(&lifetime,"control/queuelifetime") == -1) return 0;
+  if (control_readint(&concurrency[0],"control/concurrencylocal") == -1) return 0;
+  if (control_readint(&concurrency[1],"control/concurrencyremote") == -1) return 0;

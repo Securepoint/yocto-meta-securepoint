@@ -1,0 +1,21 @@
+diff -up kernel-source/tools/hv/hv_kvp_daemon.c.fix kernel-source/tools/hv/hv_kvp_daemon.c
+--- kernel-source/tools/hv/hv_kvp_daemon.c.fix	2019-09-23 14:41:19.035468435 +0200
++++ kernel-source/tools/hv/hv_kvp_daemon.c	2019-09-23 14:45:47.883576712 +0200
+@@ -660,7 +660,7 @@ static char *kvp_mac_to_if_name(char *ma
+ 	if (dir == NULL)
+ 		return NULL;
+ 
+-	snprintf(dev_id, sizeof(dev_id), kvp_net_dir);
++	snprintf(dev_id, sizeof(dev_id), "%s", kvp_net_dir);
+ 	q = dev_id + strlen(kvp_net_dir);
+ 
+ 	while ((entry = readdir(dir)) != NULL) {
+@@ -1105,7 +1105,7 @@ static int process_ip_string(FILE *f, ch
+ 	int i = 0;
+ 	int j = 0;
+ 	char str[256];
+-	char sub_str[10];
++	char sub_str[128];
+ 	int offset = 0;
+ 
+ 	memset(addr, 0, sizeof(addr));

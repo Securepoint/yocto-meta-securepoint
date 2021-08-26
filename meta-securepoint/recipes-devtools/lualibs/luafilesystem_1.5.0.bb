@@ -15,7 +15,8 @@ SRCREV = "v${PV}"
 
 S = "${WORKDIR}/git"
 
-CFLAGS += " -fPIC"
+inherit autotools-brokensep
+EXTRA_OEMAKE += " PREFIX=/usr CC='${CC} ${CFLAGS} ${LDFLAGS} -fPIC' LUA_INC='${D}/${includedir}'"
 
 do_install(){
     install -d ${D}${libdir}/lua/5.1/

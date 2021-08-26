@@ -1,0 +1,17 @@
+diff -up dhcprelay-1.2.orig/dhcprelay.c dhcprelay-1.2/dhcprelay.c
+--- dhcprelay-1.2.orig/dhcprelay.c	2021-06-28 12:48:26.414010000 +0200
++++ dhcprelay-1.2/dhcprelay.c	2021-06-28 13:31:21.951755000 +0200
+@@ -416,8 +416,11 @@ int process_bootps_server(int msgbuf_len,u_char *msgbu
+ 
+     {
+ 	eh=(struct ether_header *)(packet+packet_offset);
+-	memcpy(eh->ether_dhost,msgbuf+28,ETHER_ADDR_LEN);
+-	memcpy(eh->ether_shost,&(interfaces->mac),ETHER_ADDR_LEN);
++	if (r->broadcast)
++		memset(eh->ether_dhost,0xff,ETHER_ADDR_LEN);
++	else
++		memcpy(eh->ether_dhost,msgbuf+28,ETHER_ADDR_LEN);
++	memcpy(eh->ether_shost,&(interface->mac),ETHER_ADDR_LEN);
+ 	eh->ether_type=htons(ETHERTYPE_IP);
+ 
+ 	eh_len=ETHER_HDR_LEN;

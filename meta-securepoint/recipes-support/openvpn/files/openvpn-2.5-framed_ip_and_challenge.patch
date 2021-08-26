@@ -1,0 +1,594 @@
+diff --git a/configure.ac b/configure.ac
+index fdd2fd3f..0fe0261f 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1322,10 +1322,10 @@ if test "${enable_plugin_auth_pam}" = "yes"; then
+ 	PLUGIN_AUTH_PAM_CFLAGS="${LIBPAM_CFLAGS}"
+ 	if test "${enable_pam_dlopen}" = "yes"; then
+ 		AC_DEFINE([USE_PAM_DLOPEN], [1], [dlopen libpam])
+-		PLUGIN_AUTH_PAM_LIBS="${DL_LIBS}"
++		PLUGIN_AUTH_PAM_LIBS="${DL_LIBS} -lrt"
+ 	else
+ 		test -z "${LIBPAM_LIBS}" && AC_MSG_ERROR([libpam required but missing])
+-		PLUGIN_AUTH_PAM_LIBS="${LIBPAM_LIBS}"
++		PLUGIN_AUTH_PAM_LIBS="${LIBPAM_LIBS} -lrt"
+ 	fi
+ fi
+ 
+diff --git a/src/openvpn/multi.c b/src/openvpn/multi.c
+index 66f5ada5..5f1b751d 100644
+--- a/src/openvpn/multi.c
++++ b/src/openvpn/multi.c
+@@ -1440,6 +1440,31 @@ multi_select_virtual_addr(struct multi_context *m, struct multi_instance *mi)
+ {
+     struct gc_arena gc = gc_new();
+ 
++    if (*mi->context.c2.tls_multi->session[TM_ACTIVE].framed_ip)
++    {
++      mi->context.options.push_ifconfig_defined=1;
++      mi->context.options.push_ifconfig_local =
++        getaddr (GETADDR_HOST_ORDER,
++           mi->context.c2.tls_multi->session[TM_ACTIVE].framed_ip, 0, NULL, NULL);
++      mi->context.options.push_ifconfig_remote_netmask = mi->context.c1.tuntap->remote_netmask;
++    }
++    if (*mi->context.c2.tls_multi->session[TM_ACTIVE].framed_ipv6)
++    {
++      struct addrinfo *res = NULL;
++      openvpn_getaddrinfo(GETADDR_PASSIVE,
++          mi->context.c2.tls_multi->session[TM_ACTIVE].framed_ipv6,
++          "80", 1, NULL, AF_INET6, &res);
++      if (res) {
++        mi->context.options.push_ifconfig_ipv6_defined = 1;
++        mi->context.options.ifconfig_ipv6_pool_defined = 0; /* disable ipv6-pool here */
++        mi->context.options.push_ifconfig_ipv6_local = ((struct sockaddr_in6*)res->ai_addr)->sin6_addr;
++        mi->context.options.push_ifconfig_ipv6_remote = mi->context.c1.tuntap->local_ipv6;
++        mi->context.options.push_ifconfig_ipv6_netbits = mi->context.c1.tuntap->netbits_ipv6;
++
++        freeaddrinfo(res);
++      }
++    }
++
+     /*
+      * If ifconfig addresses were set by dynamic config file,
+      * release pool addresses, otherwise keep them.
+diff --git a/src/openvpn/ssl_common.h b/src/openvpn/ssl_common.h
+index 74faf687..c3e06b51 100644
+--- a/src/openvpn/ssl_common.h
++++ b/src/openvpn/ssl_common.h
+@@ -440,6 +440,8 @@ struct tls_session
+     struct link_socket_actual untrusted_addr;
+ 
+     struct key_state key[KS_SIZE];
++    char framed_ip[64];
++    char framed_ipv6[64];
+ };
+ 
+ /** @addtogroup control_processor
+diff --git a/src/openvpn/ssl_verify.c b/src/openvpn/ssl_verify.c
+index 4f3b61d6..241cdd42 100644
+--- a/src/openvpn/ssl_verify.c
++++ b/src/openvpn/ssl_verify.c
+@@ -876,7 +876,7 @@ key_state_gen_auth_control_file(struct key_state *ks, const struct tls_options *
+ }
+ 
+ static unsigned int
+-key_state_test_auth_control_file(struct key_state *ks)
++key_state_test_auth_control_file(struct key_state *ks, char **framed_ip, char **framed_ipv6, char **reason)
+ {
+     if (ks && ks->auth_control_file)
+     {
+@@ -886,14 +886,39 @@ key_state_test_auth_control_file(struct key_state *ks)
+             FILE *fp = fopen(ks->auth_control_file, "r");
+             if (fp)
+             {
++              char tmp_str[128];
+                 const int c = fgetc(fp);
+                 if (c == '1')
+                 {
+                     ret = ACF_SUCCEEDED;
++                    char *r = NULL;
++                    memset(tmp_str, 0, sizeof(tmp_str));
++                    if (fgets(tmp_str, sizeof(tmp_str), fp)) {
++                      if ((r = strchr(tmp_str, '\n'))) {
++                        *r = '\0';
++                      }
++                      if (*tmp_str) {
++                        *framed_ip = strdup(tmp_str);
++                      }
++                    }
++                    memset(tmp_str, 0, sizeof(tmp_str));
++                    if (fgets(tmp_str, sizeof(tmp_str), fp)) {
++                      if ((r = strchr(tmp_str, '\n'))) {
++                        *r = '\0';
++                      }
++                      if (*tmp_str) {
++                        *framed_ipv6 = strdup(tmp_str);
++                      }
++                    }
+                 }
+                 else if (c == '0')
+                 {
+                     ret = ACF_FAILED;
++                    memset(tmp_str, 0, sizeof(tmp_str));
++                    fgets(tmp_str, sizeof(tmp_str), fp);
++                    if (*tmp_str) {
++                      *reason = strdup(tmp_str);
++                    }
+                 }
+                 fclose(fp);
+                 ks->auth_control_status = ret;
+@@ -997,7 +1022,10 @@ tls_authentication_status(struct tls_multi *multi, const int latency)
+                     unsigned int s1 = ACF_DISABLED;
+                     unsigned int s2 = ACF_DISABLED;
+ #ifdef PLUGIN_DEF_AUTH
+-                    s1 = key_state_test_auth_control_file(ks);
++                    char *framed_ip = NULL;
++                    char *framed_ipv6 = NULL;
++                    char *reason = NULL;
++                    s1 = key_state_test_auth_control_file(ks, &framed_ip, &framed_ipv6, &reason); /* XXX add CRV1 result string */
+ #endif /* PLUGIN_DEF_AUTH */
+ #ifdef MANAGEMENT_DEF_AUTH
+                     s2 = man_def_auth_test(ks);
+@@ -1013,6 +1041,13 @@ tls_authentication_status(struct tls_multi *multi, const int latency)
+                             {
+                                 ssl_session_fully_authenticated(multi,
+                                                                 &multi->session[TM_ACTIVE]);
++#ifdef PLUGIN_DEF_AUTH
++                                if (framed_ip) {
++                                  strncpy(multi->session[TM_ACTIVE].framed_ip,
++                                      framed_ip,
++                                      sizeof(multi->session[TM_ACTIVE].framed_ip));
++                                }
++#endif
+                             }
+                             ks->authenticated = KS_AUTH_TRUE;
+                             break;
+@@ -1026,11 +1061,21 @@ tls_authentication_status(struct tls_multi *multi, const int latency)
+ 
+                         case ACF_FAILED:
+                             ks->authenticated = KS_AUTH_FALSE;
++#ifdef PLUGIN_DEF_AUTH
++                            if (reason) {
++                              auth_set_client_reason(multi, reason);
++                            }
++#endif
+                             break;
+ 
+                         default:
+                             ASSERT(0);
+                     }
++#ifdef PLUGIN_DEF_AUTH
++                    free(framed_ip);
++                    free(framed_ipv6);
++                    free(reason);
++#endif
+ #else /* !ENABLE_DEF_AUTH */
+                     success = true;
+ #endif /* ENABLE_DEF_AUTH */
+diff --git a/src/plugins/auth-pam/auth-pam.c b/src/plugins/auth-pam/auth-pam.c
+index 235610af..cea72052 100644
+--- a/src/plugins/auth-pam/auth-pam.c
++++ b/src/plugins/auth-pam/auth-pam.c
+@@ -44,11 +44,14 @@
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <sys/wait.h>
++#include <sys/mman.h>
++#include <semaphore.h>
+ #include <fcntl.h>
+ #include <signal.h>
+ #include <syslog.h>
+ #include "utils.h"
+ 
++
+ #include <openvpn-plugin.h>
+ 
+ #define DEBUG(verb) ((verb) >= 4)
+@@ -68,6 +71,7 @@
+ static plugin_log_t plugin_log = NULL;
+ static plugin_secure_memzero_t plugin_secure_memzero = NULL;
+ static plugin_base64_decode_t plugin_base64_decode = NULL;
++static plugin_base64_encode_t plugin_base64_encode = NULL;
+ 
+ /* module name for plugin_log() */
+ static char *MODULE = "AUTH-PAM";
+@@ -120,10 +124,26 @@ struct user_pass {
+     char password[128];
+     char common_name[128];
+     char response[128];
++    char state_id[128];
++    char ac_file_name[PATH_MAX];
+ 
+     const struct name_value_list *name_value_list;
+ };
+ 
++struct wait_for_response_entry {
++  int in_use;
++  char state_id[128];
++  char response[128];
++  char ac_file_name[PATH_MAX];
++  sem_t sem; /* use this semaphore to wait for or post response */
++};
++
++#define MAX_RESPONSE_WAIT_ENTRIES 10
++struct wait_for_response_list {
++  sem_t sem; /* use this semaphore when add/del an entry in the list */
++  struct wait_for_response_entry entries[MAX_RESPONSE_WAIT_ENTRIES];
++};
++
+ /* Background process function */
+ static void pam_server(int fd, const char *service, int verb, const struct name_value_list *name_value_list);
+ 
+@@ -285,6 +305,43 @@ name_value_match(const char *query, const char *match)
+     return strncasecmp(match, query, strlen(match)) == 0;
+ }
+ 
++/*
++ * Split and decode up->password in the form CRV1:<ignored>:state_id:<ignored>:PIN */
++static void
++split_crv1_password(struct user_pass *up)
++{
++  const int skip = strlen("CRV1:");
++  if (strncmp(up->password, "CRV1:", skip) != 0)
++  {
++    return;
++  }
++
++  char *tmp = strdup(up->password);
++  if (!tmp) {
++    plugin_log(PLOG_ERR, MODULE, "out of memory parsing dynamic challenge response");
++    return;
++  }
++  char *resp = tmp + skip;
++  char *para;
++  for (int i = 0; i < 4 && (para = strsep(&resp, ":")); ++i) {
++    switch (i) {
++      case 0:
++        break;
++      case 1:
++        /* state id */
++        memset(up->state_id, 0, sizeof(up->state_id));
++        strncpy(up->state_id, para, sizeof(up->state_id) - 1);
++        break;
++      case 2:
++        break;
++      case 3:
++        memset(up->response, 0, sizeof(up->response));
++        strncpy(up->response, para, sizeof(up->response) - 1);
++        break;
++    }
++  }
++  free(tmp);
++}
+ /*
+  * Split and decode up->password in the form SCRV1:base64_pass:base64_response
+  * into pass and response and save in up->password and up->response.
+@@ -345,6 +402,8 @@ out:
+     }
+ }
+ 
++char shm_file_name[128] = "";
++
+ OPENVPN_EXPORT int
+ openvpn_plugin_open_v3(const int v3structver,
+                        struct openvpn_plugin_args_open_in const *args,
+@@ -387,6 +446,7 @@ openvpn_plugin_open_v3(const int v3structver,
+     plugin_log = args->callbacks->plugin_log;
+     plugin_secure_memzero = args->callbacks->plugin_secure_memzero;
+     plugin_base64_decode = args->callbacks->plugin_base64_decode;
++    plugin_base64_encode = args->callbacks->plugin_base64_encode;
+ 
+     /*
+      * Make sure we have two string arguments: the first is the .so name,
+@@ -444,6 +504,33 @@ openvpn_plugin_open_v3(const int v3structver,
+         goto error;
+     }
+ 
++
++    /* create shared memory for challenge-response functionality */
++    snprintf(shm_file_name, sizeof(shm_file_name), "/openvpn_%d", getpid());
++    int shm_fd = shm_open(shm_file_name, O_RDWR | O_CREAT, 0600);
++    if (shm_fd < 0) {
++      plugin_log(PLOG_ERR|PLOG_ERRNO, MODULE, "shm_open failed");
++      goto error;
++    }
++    if (ftruncate(shm_fd, sizeof(struct wait_for_response_list))) {
++      plugin_log(PLOG_ERR|PLOG_ERRNO, MODULE, "ftruncate on shm-fd failed");
++      close(shm_fd);
++      goto error;
++    }
++    struct wait_for_response_list *list = mmap(NULL, sizeof(*list), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
++    if (list == MAP_FAILED) {
++      plugin_log(PLOG_ERR|PLOG_ERRNO, MODULE, "mmap on shm-fd failed");
++      close(shm_fd);
++      goto error;
++    }
++    close(shm_fd);
++    memset(list, 0, sizeof(*list));
++    sem_init(&list->sem, 1, 1);
++    for (int i = 0; i < MAX_RESPONSE_WAIT_ENTRIES; ++i) {
++      sem_init(&list->entries[i].sem, 1, 0);
++    }
++    munmap(list, sizeof(*list));
++
+     /*
+      * Fork off the privileged process.  It will remain privileged
+      * even after the foreground process drops its privileges.
+@@ -607,6 +694,7 @@ openvpn_plugin_close_v1(openvpn_plugin_handle_t handle)
+     }
+ 
+     free(context);
++    shm_unlink(shm_file_name);
+ }
+ 
+ OPENVPN_EXPORT void
+@@ -623,6 +711,72 @@ openvpn_plugin_abort_v1(openvpn_plugin_handle_t handle)
+     }
+ }
+ 
++static void
++do_dynamic_challenge_response(struct user_pass *up)
++{
++  int shm_fd = shm_open(shm_file_name, O_RDWR, 0);
++  struct wait_for_response_list *list = MAP_FAILED;
++  struct wait_for_response_entry *list_entry = NULL;
++  if (-1 == shm_fd) {
++    /* */
++  } else if (MAP_FAILED == (list = mmap(NULL, sizeof(*list), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0))) {
++    /* */
++  } else {
++    /* lock list */
++    sem_wait(&list->sem);
++    for (int i = 0; i < MAX_RESPONSE_WAIT_ENTRIES; ++i) {
++      if (!list->entries[i].in_use) {
++        list_entry = &list->entries[i];
++        list_entry->in_use = 1;
++        snprintf(list_entry->state_id, sizeof(list_entry->state_id), "%i", getpid());
++        break;
++      }
++    }
++    /* unlock list */
++    sem_post(&list->sem);
++  }
++
++  if (list_entry) {
++    FILE *ac_fd = fopen(up->ac_file_name, "w");
++    char *b64_username = NULL;
++    plugin_base64_encode(up->username, strlen(up->username), &b64_username);
++    fprintf(ac_fd, "0CRV1:R,E:%s:%s:%s", list_entry->state_id, b64_username, "Please enter PIN: ");
++    free(b64_username);
++    fclose(ac_fd);
++    /* wait for challenge response, but not longer than 120 sec*/
++    struct timespec timeout;
++    clock_gettime(CLOCK_REALTIME, &timeout);
++    timeout.tv_sec += 120;
++    if (-1 == sem_timedwait(&list_entry->sem, &timeout)) {
++      plugin_log(PLOG_NOTE, MODULE, "BACKGROUND: timeout waiting for challenge response");
++    }
++    /* update response entry */
++    memset(up->response, 0, sizeof(up->response));
++    strncpy(up->response, list_entry->response, sizeof(up->response) - 1);
++    /* update ac_file_name */
++    memset(up->ac_file_name, 0, sizeof(up->ac_file_name));
++    strncpy(up->ac_file_name, list_entry->ac_file_name, sizeof(up->ac_file_name) - 1);
++    /* lock list */
++    sem_wait(&list->sem);
++    /* reset list_entry */
++    list_entry->in_use = 0;
++    memset(list_entry->state_id, 0, sizeof(list_entry->state_id));
++    memset(list_entry->response, 0, sizeof(list_entry->response));
++    memset(list_entry->ac_file_name, 0, sizeof(list_entry->ac_file_name));
++    /* release list */
++    sem_post(&list->sem);
++  } else {
++    plugin_log(PLOG_ERR, MODULE, "BACKGROUND: no free entry in challenge-response list");
++  }
++  if (list != MAP_FAILED) {
++    munmap(list, sizeof(*list));
++  }
++  if (shm_fd != -1) {
++    close(shm_fd);
++  }
++}
++
++
+ /*
+  * PAM conversation function
+  */
+@@ -630,7 +784,7 @@ static int
+ my_conv(int n, const struct pam_message **msg_array,
+         struct pam_response **response_array, void *appdata_ptr)
+ {
+-    const struct user_pass *up = ( const struct user_pass *) appdata_ptr;
++    struct user_pass *up = ( struct user_pass *) appdata_ptr;
+     struct pam_response *aresp;
+     int i;
+     int ret = PAM_SUCCESS;
+@@ -700,6 +854,10 @@ my_conv(int n, const struct pam_message **msg_array,
+                     }
+                     else if (strstr(match_value, "OTP"))
+                     {
++                        /* ask for dynamic challenge-response if resopnse is empty and we are in deferred auth mode */
++                        if (! *up->response && *up->ac_file_name) {
++                          do_dynamic_challenge_response(up);
++                        }
+                         aresp[i].resp = searchandreplace(match_value, "OTP", up->response);
+                     }
+                     else
+@@ -770,7 +928,7 @@ my_conv(int n, const struct pam_message **msg_array,
+  * to be authenticated.
+  */
+ static int
+-pam_auth(const char *service, const struct user_pass *up)
++pam_auth(const char *service, struct user_pass *up, char **framed_ip, char **framed_ipv6)
+ {
+     struct pam_conv conv;
+     pam_handle_t *pamh = NULL;
+@@ -801,6 +959,14 @@ pam_auth(const char *service, const struct user_pass *up)
+             plugin_log(PLOG_ERR, MODULE, "BACKGROUND: user '%s' failed to authenticate: %s",
+                     up->username,
+                     pam_strerror(pamh, status));
++        } else {
++          const char *ip;
++          if (framed_ip && (ip = pam_getenv(pamh, "framed-ip-address"))) {
++            *framed_ip = strdup(ip);
++          }
++          if (framed_ipv6 && (ip = pam_getenv(pamh, "framed-ipv6-address"))) {
++            *framed_ipv6 = strdup(ip);
++          }
+         }
+ 
+         /* Close PAM */
+@@ -810,6 +976,51 @@ pam_auth(const char *service, const struct user_pass *up)
+     return ret;
+ }
+ 
++static void
++do_continue_pam_auth(int fd, char *ac_file_name, struct user_pass *up)
++{
++  int shm_fd = shm_open(shm_file_name, O_RDWR, 0);
++  struct wait_for_response_list *list = MAP_FAILED;
++  struct wait_for_response_entry *list_entry = NULL;
++  if (-1 == shm_fd) {
++    /* XXX */
++  } else if (MAP_FAILED == (list = mmap(NULL, sizeof(*list), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0))) {
++    /* XXX */
++  } else {
++    /* lock list */
++    sem_wait(&list->sem);
++    for (int i = 0; i < MAX_RESPONSE_WAIT_ENTRIES; ++i) {
++      if (list->entries[i].in_use && !strcmp(up->state_id, list->entries[i].state_id)) {
++        list_entry = &list->entries[i];
++        break;
++      }
++    }
++    if (list_entry) {
++      if (send_control(fd, RESPONSE_DEFER) == -1) {
++        plugin_log(PLOG_ERR|PLOG_ERRNO, MODULE, "BACKGROUND: write error on response socket [4]");
++      } else {
++        strncpy(list_entry->response, up->response, sizeof(list_entry->response) - 1);
++        strncpy(list_entry->ac_file_name, ac_file_name, sizeof(list_entry->ac_file_name) - 1);
++        /* unlock waiting process */
++        sem_post(&list_entry->sem);
++      }
++    } else {
++      if (send_control(fd, RESPONSE_VERIFY_FAILED) == -1) {
++        plugin_log(PLOG_ERR|PLOG_ERRNO, MODULE, "BACKGROUND: write error on response socket [4]");
++      }
++    }
++    /* unlock list */
++    sem_post(&list->sem);
++    munmap(list, sizeof(*list));
++  }
++  if (list != MAP_FAILED) {
++    munmap(list, sizeof(*list));
++  }
++  if (shm_fd != -1) {
++    close(shm_fd);
++  }
++}
++
+ /*
+  * deferred auth handler
+  *   - fork() (twice, to avoid the need for async wait / SIGCHLD handling)
+@@ -822,7 +1033,7 @@ pam_auth(const char *service, const struct user_pass *up)
+ 
+ static void
+ do_deferred_pam_auth(int fd, const char *ac_file_name,
+-                     const char *service, const struct user_pass *up)
++                     const char *service, struct user_pass *up)
+ {
+     if (send_control(fd, RESPONSE_DEFER) == -1)
+     {
+@@ -863,24 +1074,45 @@ do_deferred_pam_auth(int fd, const char *ac_file_name,
+     plugin_log(PLOG_NOTE, MODULE, "BACKGROUND: deferred auth for '%s', pid=%d",
+                up->username, (int) getpid() );
+ 
+-    /* the rest is very simple: do PAM, write status byte to file, done */
+-    int ac_fd = open( ac_file_name, O_WRONLY );
+-    if (ac_fd < 0)
+-    {
+-        plugin_log(PLOG_ERR|PLOG_ERRNO, MODULE, "cannot open '%s' for writing",
+-                   ac_file_name );
+-        exit(1);
+-    }
+-    int pam_success = pam_auth(service, up);
++    memset(up->ac_file_name, 0, sizeof(up->ac_file_name));
++    strncpy(up->ac_file_name, ac_file_name, sizeof(up->ac_file_name) - 1);
+ 
+-    if (write( ac_fd, pam_success ? "1" : "0", 1 ) != 1)
+-    {
+-        plugin_log(PLOG_ERR|PLOG_ERRNO, MODULE, "cannot write to '%s'",
+-                   ac_file_name );
++    /* the rest is very simple: do PAM, write status byte to file, done */
++    char *framed_ip = NULL;
++    char *framed_ipv6 = NULL;
++
++    int pam_success = pam_auth(service, up, &framed_ip, &framed_ipv6);
++
++    if (! *up->ac_file_name) {
++      /* this means that we run into a timeout waiting for challenge-response */
++      /* we silently drop it */
++    } else {
++      int ac_fd = open( up->ac_file_name, O_WRONLY );
++      if (ac_fd < 0)
++      {
++          plugin_log(PLOG_ERR|PLOG_ERRNO, MODULE, "cannot open '%s' for writing",
++                     up->ac_file_name );
++          exit(1);
++      }
++
++      if (pam_success) {
++        dprintf(ac_fd, "x%s\n", framed_ip ? framed_ip : "");
++        dprintf(ac_fd, "%s\n", framed_ipv6 ? framed_ipv6 : "");
++      }
++
++      lseek(ac_fd, 0, SEEK_SET);
++
++      if (write( ac_fd, pam_success ? "1" : "0", 1 ) != 1)
++      {
++          plugin_log(PLOG_ERR|PLOG_ERRNO, MODULE, "cannot write to '%s'",
++                     up->ac_file_name );
++      }
++      free(framed_ip);
++      free(framed_ipv6);
++      close(ac_fd);
++      plugin_log(PLOG_NOTE, MODULE, "BACKGROUND: %s: deferred auth: PAM %s",
++                 up->username, pam_success ? "succeeded" : "rejected" );
+     }
+-    close(ac_fd);
+-    plugin_log(PLOG_NOTE, MODULE, "BACKGROUND: %s: deferred auth: PAM %s",
+-               up->username, pam_success ? "succeeded" : "rejected" );
+     exit(0);
+ }
+ 
+@@ -970,20 +1202,27 @@ pam_server(int fd, const char *service, int verb, const struct name_value_list *
+ 
+                 /* If password is of the form SCRV1:base64:base64 split it up */
+                 split_scrv1_password(&up);
++                split_crv1_password(&up);
+ 
+                 /* client wants deferred auth
+                  */
+                 if (strlen(ac_file_name) > 0)
+                 {
++                  if (strlen(up.state_id)) {
++                    // syslog(LOG_INFO, "DEBUG: do continue pam auth");
++                    do_continue_pam_auth(fd, ac_file_name, &up);
++                  } else {
++                    // syslog(LOG_INFO, "DEBUG: do deferred pam auth");
+                     do_deferred_pam_auth(fd, ac_file_name, service, &up);
+-                    break;
++                  }
++                  break;
+                 }
+ 
+ 
+                 /* non-deferred auth: wait for pam result and send
+                  * result back via control socketpair
+                  */
+-                if (pam_auth(service, &up)) /* Succeeded */
++                if (pam_auth(service, &up, NULL, NULL)) /* Succeeded */
+                 {
+                     if (send_control(fd, RESPONSE_VERIFY_SUCCEEDED) == -1)
+                     {

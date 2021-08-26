@@ -1,0 +1,48 @@
+diff -up src/kadmin/ktutil/ktutil_funcs.c.silence src/kadmin/ktutil/ktutil_funcs.c
+--- src/kadmin/ktutil/ktutil_funcs.c.silence	2016-12-14 13:35:37.177957563 +0100
++++ src/kadmin/ktutil/ktutil_funcs.c	2016-12-14 13:38:02.900440791 +0100
+@@ -64,7 +64,7 @@ krb5_error_code ktutil_delete(context, l
+     krb5_kt_list *list;
+     int idx;
+ {
+-    krb5_kt_list lp, prev;
++    krb5_kt_list lp, prev = *list;
+     int i;
+ 
+     for (lp = *list, i = 1; lp; prev = lp, lp = lp->next, i++) {
+diff -up src/lib/krad/packet.c.silence src/lib/krad/packet.c
+--- src/lib/krad/packet.c.silence	2014-08-12 00:46:27.000000000 +0200
++++ src/lib/krad/packet.c	2016-12-14 13:28:10.561490186 +0100
+@@ -253,7 +253,7 @@ krad_packet_new_request(krb5_context ctx
+ {
+     krb5_error_code retval;
+     krad_packet *pkt;
+-    uchar id;
++    uchar id = 0;
+     size_t attrset_len;
+ 
+     pkt = packet_new();
+diff -up src/plugins/preauth/pkinit/pkinit_crypto_openssl.c.silence src/plugins/preauth/pkinit/pkinit_crypto_openssl.c
+--- src/plugins/preauth/pkinit/pkinit_crypto_openssl.c.silence	2016-12-14 13:33:11.875516827 +0100
++++ src/plugins/preauth/pkinit/pkinit_crypto_openssl.c	2016-12-14 13:32:55.515778205 +0100
+@@ -3779,7 +3779,7 @@ pkinit_open_session(krb5_context context
+ {
+     CK_ULONG i, r;
+     unsigned char *cp;
+-    size_t label_len;
++    size_t label_len = 0;
+     CK_ULONG count = 0;
+     CK_SLOT_ID_PTR slotlist;
+     CK_TOKEN_INFO tinfo;
+diff -up src/util/profile/prof_file.c.maybe_uninitialized src/util/profile/prof_file.c
+--- src/util/profile/prof_file.c.maybe_uninitialized	2017-08-01 09:30:37.710312813 +0200
++++ src/util/profile/prof_file.c	2017-08-01 09:33:31.040817068 +0200
+@@ -309,7 +309,7 @@ errcode_t profile_update_file_data_locke
+     unsigned long frac;
+     time_t now;
+ #endif
+-    FILE *f;
++    FILE *f = NULL;
+     int isdir = 0;
+ 
+ #ifdef HAVE_STAT

@@ -1,0 +1,6 @@
+#!/bin/sh
+mkdir -p /var/state/saslauthd
+# start as soon as syslog were at least 3 seconds up and running
+svwaitup -s3 /var/service/syslog || exit 1
+exec 2>&1
+exec chpst -P012 saslauthd -d -a pam > /dev/null

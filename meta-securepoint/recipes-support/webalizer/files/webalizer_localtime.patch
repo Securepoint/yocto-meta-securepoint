@@ -1,0 +1,68 @@
+diff --git a/Makefile b/Makefile
+--- a/Makefile
++++ b/Makefile
+@@ -140,7 +140,7 @@
+ # build/webalizer
+ #
+ $(BLDDIR)/$(TARGET): $(OBJS)
+-	$(CC) -o $@ $(CC_LDFLAGS) $(LIBDIRS) $(LIBS) $(addprefix $(BLDDIR)/,$(OBJS))
++	$(CXX) -o $@ $(CC_LDFLAGS) $(LIBDIRS) $(addprefix $(BLDDIR)/,$(OBJS)) $(LIBS)
+ 
+ install:
+ 	@echo
+diff --git a/src/config.cpp b/src/config.cpp
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -1611,10 +1611,25 @@
+ 
+ int config_t::get_utc_offset(const tstamp_t& tstamp, tm_ranges_t::iterator& dst_iter) const
+ {
++  /* Original webalizer uses a strange combination of automatically getting the
++   * non-DST offset between system local time and UTC and "manually" configured
++   * DST tables, which also make the webalizer history databases invalid.
++   * We prefer that a change of the timezone is directly reflected 
++   */
++#if 0
+    if(dst_offset && dst_ranges.is_in_range(tstamp, dst_iter))
+       return utc_offset + dst_offset;
+ 
+    return utc_offset;
++#endif
++  struct tm result;
++  int ret;
++  time_t utc_stamp = tstamp.mktime();
++  struct tm *utctm = gmtime_r(&utc_stamp, &result);
++
++  utctm->tm_isdst = -1;
++  ret = (int) (utc_stamp - mktime(utctm)) / 60;
++  return ret;
+ }
+ 
+ void config_t::deprecated_p_option(void)
+diff --git a/src/webalizer.cpp b/src/webalizer.cpp
+--- a/src/webalizer.cpp
++++ b/src/webalizer.cpp
+@@ -1212,11 +1212,7 @@
+          /* GOOD RECORD, CHECK INCREMENTAL/TIMESTAMPS */
+          /*********************************************/
+ 
+-         // check if need to convert log time stamp to local time
+-         if(config.local_time)
+-            log_rec.tstamp.tolocal(config.get_utc_offset(log_rec.tstamp, dst_iter));
+-
+-         /* get current records timestamp (seconds since epoch) */
++        /* get current records timestamp (seconds since epoch) */
+          tstamp_t& rec_tstamp = log_rec.tstamp;
+ 
+          /* Do we need to check for duplicate records? (incremental mode)   */
+@@ -1263,6 +1259,10 @@
+             }
+          }
+ 
++         // check if need to convert log time stamp to local time
++         if(config.local_time)
++            log_rec.tstamp.tolocal(config.get_utc_offset(log_rec.tstamp, dst_iter));
++ 
+          // check for out of sequence records
+          if (rec_tstamp < state.totals.cur_tstamp) {
+             lrcnt.total_ignore++; 

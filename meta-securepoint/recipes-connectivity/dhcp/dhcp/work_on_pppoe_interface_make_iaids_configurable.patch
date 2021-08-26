@@ -1,0 +1,324 @@
+diff --git a/client/clparse.c b/client/clparse.c
+index 03190c3..ca7d96c 100644
+--- a/client/clparse.c
++++ b/client/clparse.c
+@@ -190,6 +190,7 @@ isc_result_t read_client_conf ()
+ 	 */
+ 	top_level_config.requested_lease = 7200;
+ 
++  log_debug("path_dhclient_script=%s", path_dhclient_script);
+ 	group_allocate (&top_level_config.on_receipt, MDL);
+ 	if (!top_level_config.on_receipt)
+ 		log_fatal ("no memory for top-level on_receipt group");
+diff --git a/client/dhc6.c b/client/dhc6.c
+index c00ec6a..d5bf25b 100644
+--- a/client/dhc6.c
++++ b/client/dhc6.c
+@@ -1706,6 +1706,7 @@ dhc6_create_iaid(struct client_state *client,
+ 		 unsigned len)
+ {
+ 	int start_idx, copy_len;
++  int iaid = client->interface->iaid;
+ 
+ 	memset(ia, 0, sizeof(*ia));
+ 	if (!buffer_allocate(&ia->buffer, 12, MDL)) {
+@@ -1714,23 +1715,35 @@ dhc6_create_iaid(struct client_state *client,
+ 	ia->data = ia->buffer->data;
+ 	ia->len = len;
+ 
+-	/*
+-	 * A simple IAID is the last 4 bytes
+-	 * of the hardware address.
+-	 */
+-	if (client->interface->hw_address.hlen > 4) {
+-		start_idx = client->interface->hw_address.hlen - 4;
+-		copy_len = 4;
+-	} else {
+-		start_idx = 0;
+-		copy_len = client->interface->hw_address.hlen;
+-	}
+-	memcpy(ia->buffer->data,
+-	       client->interface->hw_address.hbuf + start_idx,
+-	       copy_len);
++  if (iaid != -1) {
++    ia->buffer->data[3] = iaid & 0xFF;
++    ia->buffer->data[2] = (iaid >> 8) & 0xFF;
++    ia->buffer->data[1] = (iaid >> 16) & 0xFF;
++    ia->buffer->data[0] = (iaid >> 24) & 0xFF;
++    log_debug("iaid initialized with preset value %d", iaid);
++  } else {
++    /*
++     * A simple IAID is the last 4 bytes
++     * of the hardware address.
++     */
++    if (client->interface->hw_address.hlen > 4) {
++      start_idx = client->interface->hw_address.hlen - 4;
++      copy_len = 4;
++    } else {
++      start_idx = 0;
++      copy_len = client->interface->hw_address.hlen;
++    }
++    memcpy(ia->buffer->data,
++           client->interface->hw_address.hbuf + start_idx,
++           copy_len);
++    log_debug("iaid initialized from hw_addr");
++  }
++
+ 	if (idx)
+ 		ia->buffer->data[3] += idx;
+ 
++  char *iabuf = ia->buffer->data;
++  log_debug("iaid: 0x%02x 0x%02x 0x%02x 0x%02x", iabuf[0], iabuf[1], iabuf[2], iabuf[3]);
+ 	return (ISC_R_SUCCESS);
+ }
+ 
+diff --git a/client/dhclient.c b/client/dhclient.c
+index dcf3f1a..cea0279 100644
+--- a/client/dhclient.c
++++ b/client/dhclient.c
+@@ -202,6 +202,8 @@ main(int argc, char **argv) {
+ 	int no_dhclient_db = 0;
+ 	int no_dhclient_pid = 0;
+ 	int no_dhclient_script = 0;
++  int use_default_path_iaids = 1;
++  const char *path_dhclient_iaid = NULL;
+ #ifdef DHCPv6
+ 	int local_family_set = 0;
+ #ifdef DHCP4o6
+@@ -327,6 +329,11 @@ main(int argc, char **argv) {
+ 				usage(use_noarg, argv[i-1]);
+ 			path_dhclient_script = argv[i];
+ 			no_dhclient_script = 1;
++    } else if (!strcmp(argv[i], "-if")) {
++      if (++i == argc)
++        usage(use_noarg, argv[i-1]);
++      path_dhclient_iaid = argv[i];
++      use_default_path_iaids = 0;
+ 		} else if (!strcmp(argv[i], "-1")) {
+ 			onetry = 1;
+ 		} else if (!strcmp(argv[i], "-q")) {
+@@ -498,9 +505,53 @@ main(int argc, char **argv) {
+ 	if (!no_dhclient_pid && (s = getenv("PATH_DHCLIENT_PID"))) {
+ 		path_dhclient_pid = s;
+ 	}
++  if (use_default_path_iaids && (s = getenv("PATH_DHCLIENT_IAID"))) {
++    path_dhclient_iaid = s;
++  }
+ 	if (!no_dhclient_script && (s = getenv("PATH_DHCLIENT_SCRIPT"))) {
+ 		path_dhclient_script = s;
+-	}
++    log_debug("from env: %s", path_dhclient_script);
++	}
++
++  struct interface_info *tmp;
++  for (tmp = interfaces; tmp != NULL; tmp = tmp->next) {
++    tmp->iaid = -1;
++  }
++  log_debug("trying to read IAID file %s", path_dhclient_iaid);
++  if (path_dhclient_iaid != NULL) {
++    FILE *iaid_file;
++    const char *ifname;
++    const char *iaid_str;
++    char *saveptr;
++    unsigned int iaid;
++    if (NULL == (iaid_file = fopen(path_dhclient_iaid, "r"))) {
++      log_debug("error opening IAID file %s", path_dhclient_iaid);
++    } else {
++      char line[IFNAMSIZ + 16];
++      while(fgets(line, sizeof(line), iaid_file)) {
++        ifname = strtok_r(line, "\t ", &saveptr);
++        iaid_str = strtok_r(NULL, "\t\n ", &saveptr);
++        if (iaid_str == NULL) {
++          log_debug("parsed invalid line %s", line);
++          continue;
++        }
++        strtok_r(NULL, "\t\n ", &saveptr);
++        for (tmp = interfaces; tmp != NULL; tmp = tmp->next) {
++          if (0 == strcmp(tmp->name, line)) {
++            log_debug("checking interface %s against IAID@%s", tmp->name, iaid_str);
++            break;
++          }
++        }
++        if (tmp != NULL) {
++          tmp->iaid = strtol(iaid_str, NULL, 10);
++          log_debug("assigned IA_ID %d to interface %s", tmp->iaid, tmp->name);
++        }
++      }
++      fclose(iaid_file);
++    }
++  } else {
++    log_debug("no IAID file specifed");
++  }
+ 
+ 	/* Set up the initial dhcp option universe. */
+ 	initialize_common_option_spaces();
+@@ -532,6 +583,7 @@ main(int argc, char **argv) {
+ 		if (path_dhclient_script == NULL)
+ 			log_fatal("Failed to get realpath for %s: %s", old_path, strerror(errno));
+ 	}
++  log_debug("finally: %s", path_dhclient_script);
+ 
+ 	/*
+ 	 * See if we should  kill off any currently running client
+@@ -736,8 +788,9 @@ main(int argc, char **argv) {
+ 			if (default_duid.buffer != NULL)
+ 				data_string_forget(&default_duid, MDL);
+ 
+-			form_duid(&default_duid, MDL);
+-			write_duid(&default_duid);
++			if (form_duid(&default_duid, MDL) == ISC_R_SUCCESS) {
++        write_duid(&default_duid);
++      }
+ 		}
+ 	}
+ 
+@@ -3465,7 +3518,7 @@ write_options(struct client_state *client, struct option_state *options,
+  * is not how it is intended.  Upcoming rearchitecting the client should
+  * address this "one daemon model."
+  */
+-void
++isc_result_t
+ form_duid(struct data_string *duid, const char *file, int line)
+ {
+ 	struct interface_info *ip;
+@@ -3478,6 +3531,19 @@ form_duid(struct data_string *duid, const char *file, int line)
+ 	if (ip == NULL)
+ 		log_fatal("Impossible condition at %s:%d.", MDL);
+ 
++  while (ip && ip->hw_address.hbuf[0] == HTYPE_IPMP) {
++    /* Try other interfaces */
++    log_debug("Cannot form default DUID from interface %s.", ip->name);
++    ip = ip->next;
++  }
++
++  if (ip == NULL) {
++    log_debug("Found no interface for building a DUID");
++    return ISC_R_UNEXPECTED;
++  } else {
++    log_debug("Found interface %s for building a DUID", ip->name);
++  }
++
+ 	if ((ip->hw_address.hlen == 0) ||
+ 	    (ip->hw_address.hlen > sizeof(ip->hw_address.hbuf)))
+ 		log_fatal("Impossible hardware address length at %s:%d.", MDL);
+@@ -3523,6 +3589,7 @@ form_duid(struct data_string *duid, const char *file, int line)
+ 		log_info("Created duid %s.", str);
+ 		dfree(str, MDL);
+ 	}
++  return ISC_R_SUCCESS;
+ }
+ 
+ /* Write the default DUID to the lease store. */
+@@ -4127,11 +4194,13 @@ int script_go(struct client_state *client)
+ 	struct string_list *sp, *next;
+ 	int pid, wpid, wstatus;
+ 
++  log_debug("toplevel: %s client-cfg: %s", top_level_config.script_name, client->config->script_name);
+ 	if (client)
+ 		scriptName = client -> config -> script_name;
+ 	else
+ 		scriptName = top_level_config.script_name;
+ 
++  log_debug("executing %s", scriptName);
+ 	envp = dmalloc (((client ? client -> envc : 2) +
+ 			 client_env_count + 2) * sizeof (char *), MDL);
+ 	if (!envp) {
+@@ -4695,6 +4764,9 @@ isc_result_t dhcp_set_control_state (control_object_state_t oldstate,
+ #endif
+ 			    do_release (client);
+ 		    }
++        if (client->active_lease) {
++          unconfigure6(client, "STOP6");
++        }
+ 		    break;
+ 
+ 		  case server_hibernate:
+diff --git a/common/bpf.c b/common/bpf.c
+index 3419f51..0940032 100644
+--- a/common/bpf.c
++++ b/common/bpf.c
+@@ -625,6 +625,19 @@ get_hw_addr(const char *name, struct hardware *hw) {
+                         memcpy(&hw->hbuf[1], LLADDR(sa), sa->sdl_alen);
+                         break;
+ #endif /* IFT_FDDI */
++#if defined(IFT_PPP)
++                case IFT_PPP:
++                        hw->hlen = 0;
++                        hw->hbuf[0] = HTYPE_IPMP;
++                        /* 0xdeadbeef should never occur on the wire, and is a signature that
++                         * something went wrong.
++                         */
++                        hw->hbuf[1] = 0xde;
++                        hw->hbuf[2] = 0xad;
++                        hw->hbuf[3] = 0xbe;
++                        hw->hbuf[4] = 0xef;
++                        break;
++#endif
+                 default:
+                         log_fatal("Unsupported device type %d for \"%s\"",
+                                   sa->sdl_type, name);
+diff --git a/common/lpf.c b/common/lpf.c
+index e8dfcfe..affec34 100644
+--- a/common/lpf.c
++++ b/common/lpf.c
+@@ -588,10 +588,21 @@ get_hw_addr(const char *name, struct hardware *hw) {
+ 			hw->hbuf[0] = HTYPE_FDDI;
+ 			memcpy(&hw->hbuf[1], sa->sa_data, 6);
+ 			break;
+-        case ARPHRD_NONE:
+-            hw->hlen = 1;
+-            hw->hbuf[0] = HTYPE_PUREIP;
+-            break;
++      case ARPHRD_NONE:
++        hw->hlen = 1;
++        hw->hbuf[0] = HTYPE_PUREIP;
++        break;
++    case ARPHRD_PPP:
++      if (local_family != AF_INET6) {
++        log_fatal("PPP: Unsupported device type %d for \"%s\"", sa->sa_family, name);
++      }
++      hw->hbuf[0] = HTYPE_IPMP;
++      hw->hlen = 0;
++      hw->hbuf[1] = 0xde;
++      hw->hbuf[2] = 0xad;
++      hw->hbuf[3] = 0xbe;
++      hw->hbuf[4] = 0xef;
++      break;
+ 		default:
+ 			log_fatal("Unsupported device type %ld for \"%s\"",
+ 				  (long int)sa->sa_family, name);
+diff --git a/includes/dhcpd.h b/includes/dhcpd.h
+index eab09a6..f95998f 100644
+--- a/includes/dhcpd.h
++++ b/includes/dhcpd.h
+@@ -1360,6 +1360,7 @@ struct interface_info {
+ 					   interface. */
+ 	unsigned circuit_id_len;	/* Length of Circuit ID, if there
+ 					   is one. */
++  int iaid; /* used to preconfigure a IA_PD|IA_NA IAID */
+ 	u_int8_t *remote_id;		/* Remote ID associated with this
+ 					   interface (if any). */
+ 	unsigned remote_id_len;		/* Length of Remote ID. */
+@@ -2992,7 +2993,7 @@ void client_dns_remove(struct client_state *client, struct iaddr *addr);
+ 
+ void dhcpv4_client_assignments(void);
+ void dhcpv6_client_assignments(void);
+-void form_duid(struct data_string *duid, const char *file, int line);
++isc_result_t form_duid(struct data_string *duid, const char *file, int line);
+ 
+ void dhcp4o6_start(void);
+ 
+diff --git a/server/dhcpv6.c b/server/dhcpv6.c
+index 7448766..5e5a2d5 100644
+--- a/server/dhcpv6.c
++++ b/server/dhcpv6.c
+@@ -454,6 +454,9 @@ generate_new_server_duid(void) {
+ 		if (p->hw_address.hlen > 0) {
+ 			break;
+ 		}
++    if (p->next == NULL && p->hw_address.hbuf[0] == HTYPE_IPMP) {
++      log_error("Can not generate DUID from interfaces which do not have hardware addresses, please configure server-duid!");
++    }
+ 	}
+ 	if (p == NULL) {
+ 		return ISC_R_UNEXPECTED;

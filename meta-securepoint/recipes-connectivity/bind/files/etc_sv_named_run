@@ -1,4 +1,5 @@
 #!/bin/sh
+. /etc/spconfig.sh
 exec 2>&1
 if [ -f env/USE_IPV6 ]; then
   read useipv6 < env/USE_IPV6
@@ -6,4 +7,4 @@ if [ -f env/USE_IPV6 ]; then
     ARGS="-4"
   fi
 fi
-exec /usr/sbin/named $ARGS -t /tmp/namedb/ -c /named.conf -f
+exec /usr/sbin/named $ARGS -t ${SP_DNS_ROOT_DIR} -c /named.conf -f -u ${SP_DNS_USER}
