@@ -1,0 +1,11 @@
+# 
+# 80-mm-securepoint.rules: proud member of the securepoint hacks family
+#
+# Restart modemmanager if a modem gets plugged in
+# see #18447
+ACTION!="add|change|move|bind", GOTO="mm_securepoint_end"
+
+KERNEL=="cdc-wdm[0-9]*", SUBSYSTEM=="usbmisc", RUN+="/usr/sbin/sv restart modemmanager"
+
+LABEL="mm_securepoint_end"
+

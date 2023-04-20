@@ -1,0 +1,18 @@
+diff -up libspf2-1.2.9/src/libreplace/arpa_nameser.h.resolv libspf2-1.2.9/src/libreplace/arpa_nameser.h
+--- libspf2-1.2.9/src/libreplace/arpa_nameser.h.resolv	2022-04-14 13:53:59.814810684 +0200
++++ libspf2-1.2.9/src/libreplace/arpa_nameser.h	2022-04-14 13:54:50.338563130 +0200
+@@ -59,14 +59,6 @@
+ #  define __P(x) x
+ #endif
+ 
+-#if defined( HAVE_ARPA_NAMESER_H ) && defined( HAVE_NS_TYPE )
+-#define dn_expand		__dn_expand
+-int		dn_expand __P((const u_char *, const u_char *, const u_char *,
+-			       char *, int));
+-#endif
+-#define dn_skipname		__dn_skipname
+-int		dn_skipname __P((const u_char *, const u_char *));
+-
+ #include <sys/param.h>
+ #ifdef HAVE_SYS_TYPES_H
+ #include <sys/types.h>    /* types (u_char .. etc..) */

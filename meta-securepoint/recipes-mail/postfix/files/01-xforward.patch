@@ -1,0 +1,212 @@
+diff --git a/src/global/mail_proto.h b/src/global/mail_proto.h
+index 3b18333a..dcbb90a3 100644
+--- a/src/global/mail_proto.h
++++ b/src/global/mail_proto.h
+@@ -258,6 +258,7 @@ extern char *mail_pathname(const char *, const char *);
+ #define XFORWARD_DOMAIN		"SOURCE"/* origin type */
+ #define XFORWARD_DOM_LOCAL	"LOCAL"	/* local origin */
+ #define XFORWARD_DOM_REMOTE	"REMOTE"/* remote origin */
++#define XFORWARD_DAEMONADDR	"DAEMONADDR" /* local daemon addr */
+ 
+ #define XFORWARD_UNAVAILABLE	"[UNAVAILABLE]"	/* attribute unavailable */
+ 
+diff --git a/src/smtp/smtp.h b/src/smtp/smtp.h
+index 11beb440..300b2826 100644
+--- a/src/smtp/smtp.h
++++ b/src/smtp/smtp.h
+@@ -222,7 +222,7 @@ typedef struct SMTP_STATE {
+ #define SMTP_FEATURE_EARLY_TLS_MAIL_REPLY (1<<19)	/* CVE-2009-3555 */
+ #define SMTP_FEATURE_XFORWARD_IDENT	(1<<20)
+ #define SMTP_FEATURE_SMTPUTF8		(1<<21)	/* RFC 6531 */
+-
++#define SMTP_FEATURE_XFORWARD_DAEMONADDR (1<<22)
+  /*
+   * Features that passivate under the endpoint.
+   */
+diff --git a/src/smtp/smtp_proto.c b/src/smtp/smtp_proto.c
+index 15a15db1..a3a1586f 100644
+--- a/src/smtp/smtp_proto.c
++++ b/src/smtp/smtp_proto.c
+@@ -309,6 +309,7 @@ int     smtp_helo(SMTP_STATE *state)
+ 	XFORWARD_HELO, SMTP_FEATURE_XFORWARD_HELO,
+ 	XFORWARD_IDENT, SMTP_FEATURE_XFORWARD_IDENT,
+ 	XFORWARD_DOMAIN, SMTP_FEATURE_XFORWARD_DOMAIN,
++        XFORWARD_DAEMONADDR, SMTP_FEATURE_XFORWARD_DAEMONADDR,
+ 	0, 0,
+     };
+     const char *ehlo_words;
+@@ -1403,6 +1404,7 @@ static int smtp_loop(SMTP_STATE *state, NOCLOBBER int send_state,
+ #define CAN_FORWARD_CLIENT_ADDR	_ATTR_AVAIL_AND_KNOWN_
+ #define CAN_FORWARD_CLIENT_PORT	_ATTR_AVAIL_AND_KNOWN_
+ #define CAN_FORWARD_PROTO_NAME	_ATTR_AVAIL_AND_KNOWN_
++#define CAN_FORWARD_DAEMONADDR  _ATTR_AVAIL_AND_KNOWN_
+ #define CAN_FORWARD_HELO_NAME	DEL_REQ_ATTR_AVAIL
+ #define CAN_FORWARD_IDENT_NAME	DEL_REQ_ATTR_AVAIL
+ #define CAN_FORWARD_RWR_CONTEXT	DEL_REQ_ATTR_AVAIL
+diff --git a/src/smtpd/smtpd.c b/src/smtpd/smtpd.c
+index 7dc4b692..3891e751 100644
+--- a/src/smtpd/smtpd.c
++++ b/src/smtpd/smtpd.c
+@@ -1892,7 +1892,7 @@ static int ehlo_cmd(SMTPD_STATE *state, int argc, SMTPD_TOKEN *argv)
+ 			" " XFORWARD_NAME " " XFORWARD_ADDR
+ 			" " XFORWARD_PROTO " " XFORWARD_HELO
+ 			" " XFORWARD_DOMAIN " " XFORWARD_PORT
+-			" " XFORWARD_IDENT);
++			" " XFORWARD_DAEMONADDR " " XFORWARD_IDENT);
+ 	else if (xforward_hosts && xforward_hosts->error)
+ 	    cant_announce_feature(state, XFORWARD_CMD);
+     }
+@@ -4273,6 +4273,7 @@ static int xforward_cmd(SMTPD_STATE *state, int argc, SMTPD_TOKEN *argv)
+ 	XFORWARD_HELO, SMTPD_STATE_XFORWARD_HELO,
+ 	XFORWARD_IDENT, SMTPD_STATE_XFORWARD_IDENT,
+ 	XFORWARD_DOMAIN, SMTPD_STATE_XFORWARD_DOMAIN,
++        XFORWARD_DAEMONADDR, SMTPD_STATE_XFORWARD_DAEMONADDR,
+ 	0, 0,
+     };
+     static const char *context_name[] = {
+@@ -4474,6 +4475,16 @@ static int xforward_cmd(SMTPD_STATE *state, int argc, SMTPD_TOKEN *argv)
+ 	    UPDATE_STR(state->xforward.domain, context_name[context_code]);
+ 	    break;
+ 
++	case SMTPD_STATE_XFORWARD_DAEMONADDR:
++	    if (STREQ(attr_value, XFORWARD_UNAVAILABLE)) {
++		attr_value = SERVER_ADDR_UNKNOWN;
++	    } else {
++		neuter(attr_value, NEUTER_CHARACTERS, '?');
++	    }
++	    UPDATE_STR(state->xforward.dest_addr, attr_value);
++	    break;
++
++
+ 	    /*
+ 	     * Unknown attribute name. Complain.
+ 	     */
+diff --git a/src/smtpd/smtpd.h b/src/smtpd/smtpd.h
+index 4facfb08..5fcce2c0 100644
+--- a/src/smtpd/smtpd.h
++++ b/src/smtpd/smtpd.h
+@@ -62,6 +62,7 @@ typedef struct {
+     char   *helo_name;			/* helo/ehlo parameter */
+     char   *ident;			/* local message identifier */
+     char   *domain;			/* rewrite context */
++    char   *dest_addr;  /* forwarded {daemon_addr} */
+ } SMTPD_XFORWARD_ATTR;
+ 
+ typedef struct {
+@@ -208,11 +209,12 @@ typedef struct {
+ #define SMTPD_STATE_XFORWARD_IDENT (1<<5)	/* message identifier */
+ #define SMTPD_STATE_XFORWARD_DOMAIN (1<<6)	/* address context */
+ #define SMTPD_STATE_XFORWARD_PORT  (1<<7)	/* client port received */
++#define SMTPD_STATE_XFORWARD_DAEMONADDR (1<<8) /* server addr received */
+ 
+ #define SMTPD_STATE_XFORWARD_CLIENT_MASK \
+ 	(SMTPD_STATE_XFORWARD_NAME | SMTPD_STATE_XFORWARD_ADDR \
+ 	| SMTPD_STATE_XFORWARD_PROTO | SMTPD_STATE_XFORWARD_HELO \
+-	| SMTPD_STATE_XFORWARD_PORT)
++	| SMTPD_STATE_XFORWARD_PORT | SMTPD_STATE_XFORWARD_DAEMONADDR)
+ 
+ extern void smtpd_state_init(SMTPD_STATE *, VSTREAM *, const char *);
+ extern void smtpd_state_reset(SMTPD_STATE *);
+@@ -298,6 +300,7 @@ extern void smtpd_state_reset(SMTPD_STATE *);
+ #define IS_AVAIL_CLIENT_PROTO(v) IS_AVAIL_CLIENT_ATTR(v)
+ #define IS_AVAIL_CLIENT_IDENT(v) ((v) != 0)
+ #define IS_AVAIL_CLIENT_DOMAIN(v) ((v) != 0)
++#define IS_AVAIL_DAEMONADDR(v) IS_AVAIL_CLIENT_ATTR(v)
+ 
+  /*
+   * If running in stand-alone mode, do not try to talk to Postfix daemons but
+@@ -358,6 +361,7 @@ extern int smtpd_peer_from_haproxy(SMTPD_STATE *state);
+ #define FORWARD_PROTO(s)	FORWARD_CLIENT_ATTR((s), protocol)
+ #define FORWARD_HELO(s)		FORWARD_CLIENT_ATTR((s), helo_name)
+ #define FORWARD_PORT(s)		FORWARD_CLIENT_ATTR((s), port)
++#define FORWARD_DAEMONADDR(s)   FORWARD_CLIENT_ATTR((s), dest_addr)
+ 
+  /*
+   * Mixing is not a problem with forwarded local message identifiers.
+diff --git a/src/smtpd/smtpd_peer.c b/src/smtpd/smtpd_peer.c
+index d319f693..7bd0f501 100644
+--- a/src/smtpd/smtpd_peer.c
++++ b/src/smtpd/smtpd_peer.c
+@@ -610,7 +610,6 @@ void    smtpd_peer_init(SMTPD_STATE *state)
+     } else {
+ 	smtpd_peer_from_proxy(state);
+     }
+-
+     /*
+      * Determine the remote SMTP client hostname. Note: some of the handlers
+      * above provide surrogate endpoint information in case of error. In that
+diff --git a/src/smtpd/smtpd_proxy.c b/src/smtpd/smtpd_proxy.c
+index b2e765b3..c76918db 100644
+--- a/src/smtpd/smtpd_proxy.c
++++ b/src/smtpd/smtpd_proxy.c
+@@ -221,6 +221,7 @@
+ #define SMTPD_PROXY_XFORWARD_IDENT (1<<4)	/* message identifier */
+ #define SMTPD_PROXY_XFORWARD_DOMAIN (1<<5)	/* origin type */
+ #define SMTPD_PROXY_XFORWARD_PORT  (1<<6)	/* client port */
++#define SMTPD_PROXY_XFORWARD_DAEMONADDR (1<<7)	/* local daemon addr*/
+ 
+  /*
+   * Spead-matching: we use an unlinked file for transient storage.
+@@ -318,6 +319,7 @@ static int smtpd_proxy_connect(SMTPD_STATE *state)
+ 	XFORWARD_HELO, SMTPD_PROXY_XFORWARD_HELO,
+ 	XFORWARD_IDENT, SMTPD_PROXY_XFORWARD_IDENT,
+ 	XFORWARD_DOMAIN, SMTPD_PROXY_XFORWARD_DOMAIN,
++	XFORWARD_DAEMONADDR, SMTPD_PROXY_XFORWARD_DAEMONADDR,
+ 	0, 0,
+     };
+     int     server_xforward_features;
+@@ -388,13 +390,15 @@ static int smtpd_proxy_connect(SMTPD_STATE *state)
+      */
+     server_xforward_features = 0;
+     lines = STR(proxy->reply);
+-    while ((words = mystrtok(&lines, "\n")) != 0) {
++    while ((words = mystrtok(&lines, "\r\n")) != 0) {
+ 	if (mystrtok(&words, "- ") && (word = mystrtok(&words, " \t")) != 0) {
+ 	    if (strcasecmp(word, XFORWARD_CMD) == 0)
+-		while ((word = mystrtok(&words, " \t")) != 0)
++		while ((word = mystrtok(&words, " \t")) != 0) {
+ 		    server_xforward_features |=
+ 			name_code(known_xforward_features,
+ 				  NAME_CODE_FLAG_NONE, word);
++
++                }
+ 	}
+     }
+ 
+@@ -436,6 +440,10 @@ static int smtpd_proxy_connect(SMTPD_STATE *state)
+ 		 && smtpd_proxy_xforward_send(state, buf, XFORWARD_DOMAIN, 1,
+ 			 STREQ(FORWARD_DOMAIN(state), MAIL_ATTR_RWR_LOCAL) ?
+ 				  XFORWARD_DOM_LOCAL : XFORWARD_DOM_REMOTE))
++	     || ((server_xforward_features & SMTPD_PROXY_XFORWARD_DAEMONADDR)
++		 && smtpd_proxy_xforward_send(state, buf, XFORWARD_DAEMONADDR,
++				IS_AVAIL_DAEMONADDR(FORWARD_DAEMONADDR(state)),
++					      FORWARD_DAEMONADDR(state)))
+ 	     || smtpd_proxy_xforward_flush(state, buf));
+ 	vstring_free(buf);
+ 	if (bad) {
+diff --git a/src/smtpd/smtpd_xforward.c b/src/smtpd/smtpd_xforward.c
+index 053d3779..467ea454 100644
+--- a/src/smtpd/smtpd_xforward.c
++++ b/src/smtpd/smtpd_xforward.c
+@@ -64,6 +64,7 @@ void    smtpd_xforward_init(SMTPD_STATE *state)
+     state->xforward.helo_name = 0;
+     state->xforward.ident = 0;
+     state->xforward.domain = 0;
++    state->xforward.dest_addr = 0;
+ }
+ 
+ /* smtpd_xforward_preset - set xforward attributes to "unknown" */
+@@ -93,6 +94,7 @@ void    smtpd_xforward_preset(SMTPD_STATE *state)
+     state->xforward.protocol = mystrdup(CLIENT_PROTO_UNKNOWN);
+     /* Leave ident at zero. */
+     /* Leave domain context at zero. */
++    state->xforward.dest_addr = mystrdup(SERVER_ADDR_UNKNOWN);
+ }
+ 
+ /* smtpd_xforward_reset - reset xforward attributes */
+@@ -111,4 +113,5 @@ void    smtpd_xforward_reset(SMTPD_STATE *state)
+     FREE_AND_WIPE(state->xforward.helo_name);
+     FREE_AND_WIPE(state->xforward.ident);
+     FREE_AND_WIPE(state->xforward.domain);
++    FREE_AND_WIPE(state->xforward.dest_addr);
+ }

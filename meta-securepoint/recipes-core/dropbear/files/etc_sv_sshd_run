@@ -1,4 +1,5 @@
 #!/bin/sh
+exec 2>&1
 SYSCONF=/data/securepoint/etc
 KEYFILE=${SYSCONF}/dropbear-rsa.key
 LASTLOG=/var/log/lastlog
@@ -10,4 +11,4 @@ then
   mkdir -p ${SYSCONF} || KEYFILE=/tmp/dropbear-rsa-temp.key
   dropbearkey -t rsa -f ${KEYFILE} > /dev/null
 fi
-exec dropbear -F -E -p 22 -r ${KEYFILE}
+exec dropbear -g -F -E -p 22 -r ${KEYFILE}

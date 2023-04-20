@@ -1,8 +1,17 @@
-diff -Nru squid-3.3.9.orig/src/ssl/gadgets.cc squid-3.3.9-key-usage/src/ssl/gadgets.cc
---- squid-3.3.9.orig/src/ssl/gadgets.cc	2013-09-11 06:08:38.000000000 +0200
-+++ squid-3.3.9-key-usage/src/ssl/gadgets.cc	2013-11-20 11:18:15.078813083 +0100
-@@ -257,7 +257,6 @@
- mimicExtensions(Ssl::X509_Pointer & cert, Ssl::X509_Pointer const & mimicCert)
+From 76f79880de8678138c7c3e5856e1a8b616c45ea4 Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Mon, 20 Jan 2014 12:41:25 +0100
+
+---
+ src/ssl/gadgets.cc | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/ssl/gadgets.cc b/src/ssl/gadgets.cc
+index 2688513..148564c 100644
+--- a/src/ssl/gadgets.cc
++++ b/src/ssl/gadgets.cc
+@@ -357,7 +357,6 @@ static int
+ mimicExtensions(Security::CertPointer & cert, Security::CertPointer const &mimicCert, Security::CertPointer const &issuerCert)
  {
      static int extensions[]= {
 -        NID_key_usage,

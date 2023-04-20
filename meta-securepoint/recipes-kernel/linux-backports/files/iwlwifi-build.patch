@@ -1,0 +1,18 @@
+diff -up backports-5.15.8-1/drivers/net/wireless/intel/iwlwifi/dvm/Makefile.iwl backports-5.15.8-1/drivers/net/wireless/intel/iwlwifi/dvm/Makefile
+--- backports-5.15.8-1/drivers/net/wireless/intel/iwlwifi/dvm/Makefile.iwl	2022-03-11 14:42:24.942643269 +0100
++++ backports-5.15.8-1/drivers/net/wireless/intel/iwlwifi/dvm/Makefile	2022-03-11 14:43:32.811942373 +0100
+@@ -11,4 +11,4 @@ iwldvm-objs		+= rxon.o devices.o
+ iwldvm-$(CPTCFG_IWLWIFI_LEDS) += led.o
+ iwldvm-$(CPTCFG_IWLWIFI_DEBUGFS) += debugfs.o
+ 
+-ccflags-y += -I $(src)/../
++ccflags-y += -I$(src)/../
+diff -up backports-5.15.8-1/drivers/net/wireless/intel/iwlwifi/mvm/Makefile.iwl backports-5.15.8-1/drivers/net/wireless/intel/iwlwifi/mvm/Makefile
+--- backports-5.15.8-1/drivers/net/wireless/intel/iwlwifi/mvm/Makefile.iwl	2022-03-11 14:43:51.210481278 +0100
++++ backports-5.15.8-1/drivers/net/wireless/intel/iwlwifi/mvm/Makefile	2022-03-11 14:44:00.763241874 +0100
+@@ -11,4 +11,4 @@ iwlmvm-$(CPTCFG_IWLWIFI_DEBUGFS) += debu
+ iwlmvm-$(CPTCFG_IWLWIFI_LEDS) += led.o
+ iwlmvm-$(CONFIG_PM) += d3.o
+ 
+-ccflags-y += -I $(src)/../
++ccflags-y += -I$(src)/../

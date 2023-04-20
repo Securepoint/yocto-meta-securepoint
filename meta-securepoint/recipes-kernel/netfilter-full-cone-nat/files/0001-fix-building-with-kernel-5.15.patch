@@ -1,0 +1,67 @@
+From d2af84e3f32742d2c747355db3a9710baae7d80e Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Wed, 22 Jun 2022 11:19:42 +0000
+Subject: [PATCH] fix building with kernel 5.15
+
+---
+ xt_FULLCONENAT.c | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/xt_FULLCONENAT.c b/xt_FULLCONENAT.c
+index 8555b54..ad1b899 100644
+--- a/xt_FULLCONENAT.c
++++ b/xt_FULLCONENAT.c
+@@ -336,7 +336,11 @@ static void gc_worker(struct work_struct *work) {
+ static int ct_event_cb(struct notifier_block *this, unsigned long events, void *ptr) {
+   struct nf_ct_event *item = ptr;
+ #else
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+ static int ct_event_cb(unsigned int events, struct nf_ct_event *item) {
++#else
++static int ct_event_cb(unsigned int events, const struct nf_ct_event *item) {
++#endif
+ #endif
+   struct nf_conn *ct;
+   struct nf_conntrack_tuple *ct_tuple_reply, *ct_tuple_original;
+@@ -645,16 +649,25 @@ static int fullconenat_tg_check(const struct xt_tgchk_param *par)
+ #ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
+     ct_event_notifier.notifier_call = ct_event_cb;
+ #else
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+     ct_event_notifier.fcn = ct_event_cb;
++#else
++    ct_event_notifier.ct_event = ct_event_cb;
++#endif
+ #endif
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+     if (nf_conntrack_register_notifier(par->net, &ct_event_notifier) == 0) {
+       ct_event_notifier_registered = 1;
+       pr_debug("xt_FULLCONENAT: fullconenat_tg_check(): ct_event_notifier registered\n");
+     } else {
+       printk("xt_FULLCONENAT: warning: failed to register a conntrack notifier. Disable active GC for mappings.\n");
+     }
+-
++#else
++    nf_conntrack_register_notifier(par->net, &ct_event_notifier);
++    ct_event_notifier_registered = 1;
++    pr_debug("xt_FULLCONENAT: fullconenat_tg_check(): ct_event_notifier registered\n");
++#endif
+   }
+ 
+   mutex_unlock(&nf_ct_net_event_lock);
+@@ -672,7 +685,11 @@ static void fullconenat_tg_destroy(const struct xt_tgdtor_param *par)
+ 
+   if (tg_refer_count == 0) {
+     if (ct_event_notifier_registered) {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+       nf_conntrack_unregister_notifier(par->net, &ct_event_notifier);
++#else
++      nf_conntrack_unregister_notifier(par->net);
++#endif
+       ct_event_notifier_registered = 0;
+ 
+       pr_debug("xt_FULLCONENAT: fullconenat_tg_destroy(): ct_event_notifier unregistered\n");
+-- 
+2.33.0
+

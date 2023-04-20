@@ -1,0 +1,5 @@
+#!/bin/sh
+exec 2>&1
+mkfifo /var/spool/nullmailer/trigger
+chown nullmail:nullmail /var/spool/nullmailer/trigger
+exec chpst -u nullmail:nullmail /usr/sbin/nullmailer-send

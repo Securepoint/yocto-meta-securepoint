@@ -1,0 +1,219 @@
+diff --git a/src/rrdtool.c b/src/rrdtool.c
+index f188ac4a..b72e39c8 100644
+--- a/src/rrdtool.c
++++ b/src/rrdtool.c
+@@ -36,6 +36,24 @@
+ /*
+  * Private types
+  */
++typedef struct file_list file_list_t;
++struct file_list {
++  char *filename;
++  cdtime_t last_update;
++  file_list_t *next_file;
++};
++typedef struct custom_timeout_tree custom_timeout_tree_t;
++struct custom_timeout_tree {
++  char *name;
++  cdtime_t value;
++  file_list_t *files;
++  custom_timeout_tree_t *next;
++};
++static struct custom_timeout_tree *ct_last_tree_p = NULL;
++
++static struct file_list *search_file_list(struct custom_timeout_tree *plugin, const char *filename);
++static char *custom_strtok(char *__restrict__ str);
++
+ typedef struct rrd_cache_s {
+   int values_num;
+   char **values;
+@@ -490,7 +508,6 @@ static int rrd_queue_dequeue(const char *filename, rrd_queue_t **head,
+ static void rrd_cache_flush(cdtime_t timeout) {
+   rrd_cache_t *rc;
+   cdtime_t now;
+-
+   char **keys = NULL;
+   int keys_num = 0;
+ 
+@@ -710,13 +727,41 @@ static int rrd_cache_insert(const char *filename, const char *value,
+       DEBUG("rrdtool plugin: `%s' is already queued.", filename);
+     }
+   }
+-
+-  if ((cache_timeout > 0) &&
++  
++  if ( NULL != ct_last_tree_p) {
++    struct custom_timeout_tree *param = ct_last_tree_p;
++    struct file_list *obj = NULL;
++    char *found = NULL;
++    char *token = NULL;
++    while (NULL != param) {
++      found = strstr(filename, param->name);
++      if (found) {  
++        obj = search_file_list(param, filename);
++        if ((cdtime()- obj->last_update) > (param->value)) {
++          char *filen = strdup(obj->filename);
++          token = custom_strtok(filen);
++          rrd_cache_flush_identifier((cdtime_t) param->value, token);
++          obj->last_update = cdtime();
++          free(filen);
++        }
++        break;
++      }
++      param = param->next;
++    } 
++    if (NULL == found) {
++      char *filen = strdup(filename);
++      token = custom_strtok(filen);
++      if ((cache_timeout > 0) &&
++        ((cdtime() - cache_flush_last) > cache_flush_timeout))
++      rrd_cache_flush_identifier(cache_timeout + random_timeout, token);
++      free(filen);
++    }
++    
++  } else if ((cache_timeout > 0) &&
+       ((cdtime() - cache_flush_last) > cache_flush_timeout))
+     rrd_cache_flush(cache_timeout + random_timeout);
+ 
+-  pthread_mutex_unlock(&cache_lock);
+-
++  pthread_mutex_unlock(&cache_lock);  
+   return 0;
+ } /* int rrd_cache_insert */
+ 
+@@ -831,7 +876,6 @@ static int rrd_flush(cdtime_t timeout, const char *identifier,
+     pthread_mutex_unlock(&cache_lock);
+     return 0;
+   }
+-
+   rrd_cache_flush_identifier(timeout, identifier);
+ 
+   pthread_mutex_unlock(&cache_lock);
+@@ -984,6 +1028,110 @@ static int rrd_config(const char *key, const char *value) {
+   return 0;
+ } /* int rrd_config */
+ 
++static struct file_list *search_file_list(struct custom_timeout_tree *plugin, const char *filename) {
++  struct file_list *cur_list = plugin->files;
++  struct file_list *prev = NULL;
++  while (NULL != cur_list) {
++    if ((strcmp(filename, cur_list->filename) == 0)) {
++      return cur_list;
++    }
++    prev = cur_list;
++    cur_list = cur_list->next_file;
++  }
++  struct file_list *cur_list_a = malloc(sizeof(struct file_list));
++  cur_list_a->filename = strdup(filename);
++  cur_list_a->last_update = 0; 
++  cur_list_a->next_file = NULL;
++  if ( NULL != prev) {
++    prev->next_file = cur_list_a;
++  } else {
++    plugin->files = cur_list_a;
++  }
++  return cur_list_a;
++} /* search_file_list */
++
++static struct custom_timeout_tree *custom_timeout_tree_add(char *name, double value){
++  struct custom_timeout_tree *out_tree = malloc(sizeof(struct custom_timeout_tree));
++  out_tree->name = strdup(name);
++  out_tree->value = DOUBLE_TO_CDTIME_T(value);
++  out_tree->files = NULL;
++  out_tree->next = NULL;
++  return out_tree;
++} /* custom_timeout_tree_add */
++
++static void custom_timeout_tree_free(struct custom_timeout_tree *t) {
++  struct custom_timeout_tree *ntree = NULL;
++  struct file_list *nlist = NULL;
++  while( NULL != t) {
++    while( NULL != t->files) {
++      free(t->files->filename);
++      nlist = t->files;
++      t->files = t->files->next_file;
++      free(nlist);
++    }
++    free(t->name);
++    ntree = t;
++    t = t->next;
++    free(ntree);
++  }
++} /* custom_timeout_tree_free */
++
++static void check_config_item(oconfig_item_t *ci) {
++  for (int i = 0; i < config_keys_num; i++) {
++    if (strcasecmp(config_keys[i], ci->key) == 0) {
++      if (OCONFIG_TYPE_BOOLEAN == ci->values->type) {
++        char valb[1];
++        ssnprintf(valb,sizeof(valb), "%d", ci->values->value.boolean);
++        rrd_config(ci->key, valb);
++      } else if (OCONFIG_TYPE_NUMBER == ci->values->type) {
++        char valn[32];
++        ssnprintf(valn,sizeof(valn), "%f", ci->values->value.number);
++        rrd_config(ci->key,valn);
++      } else if (OCONFIG_TYPE_STRING == ci->values->type) {
++        char * vals = ci->values->value.string;
++        rrd_config(ci->key, vals);
++      } 
++    }
++  }
++} /* check_config_item */
++
++static int custom_timeout_config(oconfig_item_t *ci) {
++  oconfig_item_t *ci_cu = ci->children;
++  for (int i = 0; i < ci->children_num; i++) {
++    oconfig_item_t *ci_cur = &ci_cu[i];
++    char *keyp = ci_cur->key;
++    check_config_item(ci_cur);
++    if (strcasecmp("DirName",keyp) == 0) {
++      oconfig_item_t *plgn = ci_cur->children;
++      char *keyc = plgn->key;
++      if (strcasecmp("CustomTimeout",keyc) == 0) {
++        if (ct_last_tree_p == NULL)
++        {
++          char *name = ci_cur->values->value.string;
++          struct custom_timeout_tree *ct_tree = custom_timeout_tree_add(name,plgn->values->value.number);
++          ct_last_tree_p = ct_tree;
++        } else {
++          char *name = ci_cur->values->value.string;
++          struct custom_timeout_tree *ct_tree = custom_timeout_tree_add(name,plgn->values->value.number);
++          ct_tree->next = ct_last_tree_p;
++          ct_last_tree_p = ct_tree;
++        }
++      }
++    }
++  }
++  return 0;
++} /* custom_timeout_config */
++
++static char *custom_strtok(char *__restrict__ str) {
++  const char *delim1 = "/";
++  const char *delim2 = ".";
++  char *token = strtok(str, delim1);
++  token = strtok(NULL, delim1);
++  token = strtok(NULL, delim1);
++  token = strtok(NULL, delim2);
++  return token;
++} /* custom_strtok */
++
+ static int rrd_shutdown(void) {
+   pthread_mutex_lock(&cache_lock);
+   rrd_cache_flush(0);
+@@ -1011,6 +1159,7 @@ static int rrd_shutdown(void) {
+   }
+ 
+   rrd_cache_destroy();
++  custom_timeout_tree_free(ct_last_tree_p);
+ 
+   return 0;
+ } /* int rrd_shutdown */
+@@ -1075,7 +1224,7 @@ static int rrd_init(void) {
+ } /* int rrd_init */
+ 
+ void module_register(void) {
+-  plugin_register_config("rrdtool", rrd_config, config_keys, config_keys_num);
++  plugin_register_complex_config("rrdtool", custom_timeout_config);
+   plugin_register_init("rrdtool", rrd_init);
+   plugin_register_write("rrdtool", rrd_write, /* user_data = */ NULL);
+   plugin_register_flush("rrdtool", rrd_flush, /* user_data = */ NULL);

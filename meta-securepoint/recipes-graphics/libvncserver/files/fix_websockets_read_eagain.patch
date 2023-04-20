@@ -1,0 +1,36 @@
+diff -up libvncserver-LibVNCServer-0.9.11/libvncserver/ws_decode.c.eagain libvncserver-LibVNCServer-0.9.11/libvncserver/ws_decode.c
+--- libvncserver-LibVNCServer-0.9.11/libvncserver/ws_decode.c.eagain	2018-12-20 11:22:07.085213615 +0100
++++ libvncserver-LibVNCServer-0.9.11/libvncserver/ws_decode.c	2018-12-20 11:24:32.284497992 +0100
+@@ -121,7 +121,7 @@ hybiReadHeader(ws_ctx_t *ctx, int *sockR
+   int n = ((uint64_t)WSHLENMAX) - wsctx->header.nDone;
+ 
+   //rfbLog("header_read to %p with len=%d\n", headerDst, n);
+-  ret = ctx->ctxInfo.readFunc(ctx->ctxInfo.ctxPtr, headerDst, n);
++  while (-1 == (ret = ctx->ctxInfo.readFunc(ctx->ctxInfo.ctxPtr, headerDst, n)) && EAGAIN == errno);
+   //rfbLog("read %d bytes from socket\n", ret);
+   if (ret <= 0) {
+     if (-1 == ret) {
+@@ -333,7 +333,8 @@ hybiReadAndDecode(ws_ctx_t *wsctx, char
+ 
+   if (nextRead > 0) {
+     /* decode more data */
+-    if (-1 == (n = wsctx->ctxInfo.readFunc(wsctx->ctxInfo.ctxPtr, dec_ctx->writePos, nextRead))) {
++    while (-1 == (n = wsctx->ctxInfo.readFunc(wsctx->ctxInfo.ctxPtr, dec_ctx->writePos, nextRead)) && EAGAIN == errno);
++    if (-1 == n) {
+       int olderrno = errno;
+       rfbErr("%s: read; %s", __func__, strerror(errno));
+       errno = olderrno;
+diff -up libvncserver-LibVNCServer-0.9.11/libvncserver/websockets.c.eagain libvncserver-LibVNCServer-0.9.11/libvncserver/websockets.c
+--- libvncserver-LibVNCServer-0.9.11/libvncserver/websockets.c.eagain	2018-12-21 11:22:39.526946647 +0100
++++ libvncserver-LibVNCServer-0.9.11/libvncserver/websockets.c	2018-12-21 11:29:37.884859244 +0100
+@@ -567,7 +567,9 @@ webSocketsEncodeHybi(ws_ctx_t *wsctx, co
+           n = wsctx->ctxInfo.writeFunc(wsctx->ctxInfo.ctxPtr, enc_ctx->readPos, encodeSockRemaining(enc_ctx));
+           if (n < 0) {
+             int olderrno = errno;
+-            rfbErr("%s: failed writing to socket\n");
++            if (errno == EAGAIN || errno == EWOULDBLOCK)
++              continue;
++            rfbErr("%s: failed writing to socket, %s\n", __func__, strerror(errno));
+             errno = olderrno;
+             return -1;
+           }

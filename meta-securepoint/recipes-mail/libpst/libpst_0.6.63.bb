@@ -19,7 +19,7 @@ EXTRA_OECONF = "\
 EXTRA_OEMAKE = "\
     libpst.la \
 "
-do_compile_prepend(){
+do_compile:prepend(){
 cd ${S}/src
 }
 

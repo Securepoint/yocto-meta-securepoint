@@ -1,0 +1,12 @@
+diff --git a/lua_yajl.c b/lua_yajl.c
+index 5cb7bea..f59c8bd 100644
+--- a/lua_yajl.c
++++ b/lua_yajl.c
+@@ -143,6 +143,7 @@ static int got_array_value(lua_State* L) {
+     lua_rawseti(L, -4, lua_tointeger(L, -3));
+     lua_pushinteger(L, lua_tointeger(L, -2)+1);
+     lua_replace(L, -3);
++    return 0;
+ }
+ 
+ static int to_value_start_map(void* ctx) {

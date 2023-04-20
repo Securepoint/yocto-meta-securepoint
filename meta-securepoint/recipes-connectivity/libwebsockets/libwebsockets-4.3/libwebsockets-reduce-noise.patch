@@ -1,0 +1,265 @@
+From fef544b746155ea85c2c25baf30c3e2c1bfed454 Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Wed, 1 Jun 2022 16:01:13 +0200
+Subject: [PATCH] reduce noise
+
+---
+ lib/core-net/output.c           | 14 +++++++-------
+ lib/roles/netlink/ops-netlink.c | 10 +++++-----
+ lib/roles/ws/client-parser-ws.c | 24 ++++++++++++------------
+ lib/roles/ws/ops-ws.c           |  6 +++---
+ 4 files changed, 27 insertions(+), 27 deletions(-)
+
+diff --git a/lib/core-net/output.c b/lib/core-net/output.c
+index 911688e4..3bb6ce42 100644
+--- a/lib/core-net/output.c
++++ b/lib/core-net/output.c
+@@ -54,7 +54,7 @@ lws_issue_raw(struct lws *wsi, unsigned char *buf, size_t len)
+ 		return (int)len;
+ 
+ 	if (buf && lws_has_buffered_out(wsi)) {
+-		lwsl_wsi_info(wsi, "** prot: %s, incr buflist_out by %lu",
++		lwsl_wsi_debug(wsi, "** prot: %s, incr buflist_out by %lu",
+ 				   wsi->a.protocol->name, (unsigned long)len);
+ 
+ 		/*
+@@ -104,7 +104,7 @@ lws_issue_raw(struct lws *wsi, unsigned char *buf, size_t len)
+ 	else
+ 		m = (unsigned int)lws_ssl_capable_write(wsi, buf, n);
+ 
+-	lwsl_wsi_info(wsi, "ssl_capable_write (%d) says %d", n, m);
++	lwsl_wsi_debug(wsi, "ssl_capable_write (%d) says %d", n, m);
+ 
+ 	/* something got written, it can have been truncated now */
+ 	wsi->could_have_pending = 1;
+@@ -134,17 +134,17 @@ lws_issue_raw(struct lws *wsi, unsigned char *buf, size_t len)
+ 	 */
+ 	if (lws_has_buffered_out(wsi)) {
+ 		if (m) {
+-			lwsl_wsi_info(wsi, "partial adv %d (vs %ld)",
++			lwsl_wsi_debug(wsi, "partial adv %d (vs %ld)",
+ 					   m, (long)real_len);
+ 			lws_buflist_use_segment(&wsi->buflist_out, m);
+ 		}
+ 
+ 		if (!lws_has_buffered_out(wsi)) {
+-			lwsl_wsi_info(wsi, "buflist_out flushed");
++			lwsl_wsi_debug(wsi, "buflist_out flushed");
+ 
+ 			m = (unsigned int)real_len;
+ 			if (lwsi_state(wsi) == LRS_FLUSHING_BEFORE_CLOSE) {
+-				lwsl_wsi_info(wsi, "*signalling to close now");
++				lwsl_wsi_debug(wsi, "*signalling to close now");
+ 				return -1; /* retry closing now */
+ 			}
+ 
+@@ -156,7 +156,7 @@ lws_issue_raw(struct lws *wsi, unsigned char *buf, size_t len)
+ #if defined(LWS_ROLE_H1) || defined(LWS_ROLE_H2)
+ #if defined(LWS_WITH_SERVER)
+ 			if (wsi->http.deferred_transaction_completed) {
+-				lwsl_wsi_notice(wsi, "partial completed, doing "
++				lwsl_wsi_debug(wsi, "partial completed, doing "
+ 					    "deferred transaction completed");
+ 				wsi->http.deferred_transaction_completed = 0;
+ 				return lws_http_transaction_completed(wsi) ?
+@@ -299,7 +299,7 @@ do_err:
+ 		lws_metric_event(wsi->a.vhost->mt_traffic_rx, METRES_NOGO, 0u);
+ #endif
+ 
+-	lwsl_wsi_info(wsi, "error on reading from skt : %d, errno %d", n, en);
++	lwsl_wsi_debug(wsi, "error on reading from skt : %d, errno %d", n, en);
+ 
+ 	return LWS_SSL_CAPABLE_ERROR;
+ }
+diff --git a/lib/roles/netlink/ops-netlink.c b/lib/roles/netlink/ops-netlink.c
+index fa3bf29a..a0f2f1c4 100644
+--- a/lib/roles/netlink/ops-netlink.c
++++ b/lib/roles/netlink/ops-netlink.c
+@@ -41,7 +41,7 @@
+ #define RTA_ALIGNTO 4U
+ 
+ //#define lwsl_netlink lwsl_notice
+-#define lwsl_cx_netlink lwsl_cx_info
++#define lwsl_cx_netlink lwsl_debug
+ 
+ static void
+ lws_netlink_coldplug_done_cb(lws_sorted_usec_list_t *sul)
+@@ -302,7 +302,7 @@ rops_handle_POLLIN_netlink(struct lws_context_per_thread *pt, struct lws *wsi,
+ 				break;
+ 
+ 			default:
+-				lwsl_cx_info(cx, "unknown attr type %d",
++				lwsl_cx_netlink(cx, "unknown attr type %d",
+ 					     ra->rta_type);
+ 				break;
+ 			}
+@@ -397,7 +397,7 @@ ana:
+ 
+ 			rou->uidx = _lws_route_get_uidx(cx);
+ 			lws_dll2_add_tail(&rou->list, &cx->routing_table);
+-			lwsl_cx_info(cx, "route list size %u",
++			lwsl_cx_netlink(cx, "route list size %u",
+ 					cx->routing_table.count);
+ 
+ 			_lws_route_pt_close_unroutable(pt);
+@@ -500,7 +500,7 @@ rops_pt_init_destroy_netlink(struct lws_context *context,
+ 		/* we can only have one netlink socket */
+ 		return 0;
+ 
+-	lwsl_cx_info(context, "creating netlink skt");
++	lwsl_cx_netlink(context, "creating netlink skt");
+ 
+ 	/*
+ 	 * We want a netlink socket per pt as well
+@@ -535,7 +535,7 @@ rops_pt_init_destroy_netlink(struct lws_context *context,
+ 
+ 	if (lws_fi(&context->fic, "netlink_bind") ||
+ 	    bind(wsi->desc.sockfd, (struct sockaddr*)&sanl, sizeof(sanl)) < 0) {
+-		lwsl_cx_warn(context, "netlink bind failed");
++		lwsl_cx_debug(context, "netlink bind failed");
+ 		ret = 0; /* some systems deny access, just ignore */
+ 		goto bail2;
+ 	}
+diff --git a/lib/roles/ws/client-parser-ws.c b/lib/roles/ws/client-parser-ws.c
+index 19b2032e..58aa47f2 100644
+--- a/lib/roles/ws/client-parser-ws.c
++++ b/lib/roles/ws/client-parser-ws.c
+@@ -100,7 +100,7 @@ int lws_ws_client_rx_sm(struct lws *wsi, unsigned char c)
+ 				break;
+ 			case LWSWSOPC_CONTINUATION:
+ 				if (!wsi->ws->continuation_possible) {
+-					lwsl_wsi_info(wsi, "disordered continuation");
++					lwsl_wsi_debug(wsi, "disordered continuation");
+ 					return -1;
+ 				}
+ 				wsi->ws->first_fragment = 0;
+@@ -119,7 +119,7 @@ int lws_ws_client_rx_sm(struct lws *wsi, unsigned char c)
+ 			case 0xd:
+ 			case 0xe:
+ 			case 0xf:
+-				lwsl_wsi_info(wsi, "illegal opcode");
++				lwsl_wsi_debug(wsi, "illegal opcode");
+ 				return -1;
+ 			default:
+ 				wsi->ws->defeat_check_utf8 = 1;
+@@ -132,7 +132,7 @@ int lws_ws_client_rx_sm(struct lws *wsi, unsigned char c)
+ 				!wsi->ws->count_act_ext &&
+ #endif
+ 				wsi->ws->rsv) {
+-				lwsl_wsi_info(wsi, "illegal rsv bits set");
++				lwsl_wsi_debug(wsi, "illegal rsv bits set");
+ 				return -1;
+ 			}
+ 			wsi->ws->final = !!((c >> 7) & 1);
+@@ -142,7 +142,7 @@ int lws_ws_client_rx_sm(struct lws *wsi, unsigned char c)
+ 			if (wsi->ws->owed_a_fin &&
+ 			    (wsi->ws->opcode == LWSWSOPC_TEXT_FRAME ||
+ 			     wsi->ws->opcode == LWSWSOPC_BINARY_FRAME)) {
+-				lwsl_wsi_info(wsi, "hey you owed us a FIN");
++				lwsl_wsi_debug(wsi, "hey you owed us a FIN");
+ 				return -1;
+ 			}
+ 			if ((!(wsi->ws->opcode & 8)) && wsi->ws->final) {
+@@ -151,7 +151,7 @@ int lws_ws_client_rx_sm(struct lws *wsi, unsigned char c)
+ 			}
+ 
+ 			if ((wsi->ws->opcode & 8) && !wsi->ws->final) {
+-				lwsl_wsi_info(wsi, "control msg can't be fragmented");
++				lwsl_wsi_debug(wsi, "control msg can't be fragmented");
+ 				return -1;
+ 			}
+ 			if (!wsi->ws->final)
+@@ -426,7 +426,7 @@ spill:
+ 			wsi->ws->close_in_ping_buffer_len =
+ 					(uint8_t)wsi->ws->rx_ubuf_head;
+ 
+-			lwsl_wsi_info(wsi, "scheduling return close as ack");
++			lwsl_wsi_debug(wsi, "scheduling return close as ack");
+ 			__lws_change_pollfd(wsi, LWS_POLLIN, 0);
+ 			lws_set_timeout(wsi, PENDING_TIMEOUT_CLOSE_SEND, 3);
+ 			wsi->waiting_to_send_close_frame = 1;
+@@ -437,7 +437,7 @@ spill:
+ 			break;
+ 
+ 		case LWSWSOPC_PING:
+-			lwsl_wsi_info(wsi, "received %d byte ping, sending pong",
++			lwsl_wsi_debug(wsi, "received %d byte ping, sending pong",
+ 				  (int)wsi->ws->rx_ubuf_head);
+ 
+ 			/* he set a close reason on this guy, ignore PING */
+@@ -475,7 +475,7 @@ ping_drop:
+ 			break;
+ 
+ 		case LWSWSOPC_PONG:
+-			lwsl_wsi_info(wsi, "Received pong");
++			lwsl_wsi_debug(wsi, "Received pong");
+ 			lwsl_hexdump_wsi_debug(wsi, &wsi->ws->rx_ubuf[LWS_PRE],
+ 				     wsi->ws->rx_ubuf_head);
+ 
+@@ -529,7 +529,7 @@ drain_extension:
+ #endif
+ 		do {
+ 
+-		//	lwsl_wsi_notice("pmdrx.eb_in.len: %d",
++		//	lwsl_wsi_debug("pmdrx.eb_in.len: %d",
+ 		//		    (int)pmdrx.eb_in.len);
+ 
+ 			n = PMDR_DID_NOTHING;
+@@ -588,12 +588,12 @@ drain_extension:
+ 				    && (n == PMDR_EMPTY_FINAL || n == PMDR_UNKNOWN)
+ #endif
+ 				    ) {
+-					lwsl_wsi_info(wsi, "FINAL utf8 error");
++					lwsl_wsi_debug(wsi, "FINAL utf8 error");
+ 					lws_close_reason(wsi,
+ 						LWS_CLOSE_STATUS_INVALID_PAYLOAD,
+ 						(uint8_t *)"partial utf8", 12);
+ utf8_fail:
+-					lwsl_wsi_info(wsi, "utf8 error");
++					lwsl_wsi_debug(wsi, "utf8 error");
+ 					lwsl_hexdump_wsi_info(wsi, pmdrx.eb_out.token,
+ 							  (unsigned int)pmdrx.eb_out.len);
+ 
+@@ -620,7 +620,7 @@ utf8_fail:
+ 				goto already_done;
+ 
+ 			if (callback_action == LWS_CALLBACK_CLIENT_RECEIVE_PONG)
+-				lwsl_wsi_info(wsi, "Client doing pong callback");
++				lwsl_wsi_debug(wsi, "Client doing pong callback");
+ 			if (callback_action == LWS_CALLBACK_CLIENT_RECEIVE_PING)
+ 				lwsl_info("Client doing ping callback\n");
+ 
+diff --git a/lib/roles/ws/ops-ws.c b/lib/roles/ws/ops-ws.c
+index 37fbd34d..d330eae2 100644
+--- a/lib/roles/ws/ops-ws.c
++++ b/lib/roles/ws/ops-ws.c
+@@ -509,7 +509,7 @@ spill:
+ 			goto process_as_ping;
+ 
+ 		case LWSWSOPC_PING:
+-			lwsl_info("received %d byte ping, sending pong\n",
++			lwsl_debug("received %d byte ping, sending pong\n",
+ 						 (int)wsi->ws->rx_ubuf_head);
+ 
+ 			if (wsi->ws->pong_pending_flag) {
+@@ -542,7 +542,7 @@ ping_drop:
+ 			return 0;
+ 
+ 		case LWSWSOPC_PONG:
+-			lwsl_info("received pong\n");
++			lwsl_debug("received pong\n");
+ 			lwsl_hexdump(&wsi->ws->rx_ubuf[LWS_PRE],
+ 			             wsi->ws->rx_ubuf_head);
+ 
+@@ -709,7 +709,7 @@ utf8_fail:
+ 				    !(already_processed & ALREADY_PROCESSED_NO_CB)) {
+ 					if (callback_action ==
+ 						      LWS_CALLBACK_RECEIVE_PONG)
+-						lwsl_info("Doing pong callback\n");
++						lwsl_debug("Doing pong callback\n");
+ 
+ 					ret = user_callback_handle_rxflow(
+ 						wsi->a.protocol->callback, wsi,
+-- 
+2.35.3
+

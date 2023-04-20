@@ -1,0 +1,17 @@
+diff -up kernel-source/drivers/scsi/storvsc_drv.c.storesvc kernel-source/drivers/scsi/storvsc_drv.c
+--- kernel-source/drivers/scsi/storvsc_drv.c.storesvc	2023-01-24 09:43:12.957980634 +0100
++++ kernel-source/drivers/scsi/storvsc_drv.c	2023-01-24 09:45:00.264287270 +0100
+@@ -2072,6 +2072,13 @@ static int storvsc_probe(struct hv_devic
+ 	 *    have an offset that is a multiple of HV_HYP_PAGE_SIZE.
+ 	 */
+ 	host->sg_tablesize = (max_xfer_bytes >> HV_HYP_PAGE_SHIFT) + 1;
++
++#if defined(CONFIG_X86_32)
++        dev_warn(&device->device, "adjusting sg_tablesize 0x%x -> 0x%x",
++        host->sg_tablesize, MAX_MULTIPAGE_BUFFER_COUNT);
++        host->sg_tablesize = MAX_MULTIPAGE_BUFFER_COUNT;
++#endif
++
+ 	/*
+ 	 * For non-IDE disks, the host supports multiple channels.
+ 	 * Set the number of HW queues we are supporting.

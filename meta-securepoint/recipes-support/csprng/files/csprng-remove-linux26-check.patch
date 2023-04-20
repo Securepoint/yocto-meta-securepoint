@@ -1,0 +1,18 @@
+diff -uri csprng-1.1.3.orig/utils/random_interface_linux.c csprng-1.1.3/utils/random_interface_linux.c
+--- csprng-1.1.3.orig/utils/random_interface_linux.c   2022-08-02 10:04:43.444409000 +0200
++++ csprng-1.1.3/utils/random_interface_linux.c        2022-08-02 10:11:38.557951000 +0200
+@@ -116,12 +116,14 @@
+     }
+     poolsize *= 8;
+   } else if ( *kernel == KERNEL_LINUX_26 ) {
++/*
+     if (poolsize != 4096 ) {
+       fprintf(stderr, "ERROR: Kernel 2.6 or newer was detected. In this kernel, "
+           "valid size of random poolsize is 4096 bits. However, "
+           "poolsize of %d was read from /proc/sys/kernel/random/poolsize\n", poolsize);
+       error = 1;
+     }
++*/
+   } else {
+       fprintf(stderr, "ERROR: Unknown kernel_mode_t was passed to get_rng_poolsize\n");
+       error = 1;

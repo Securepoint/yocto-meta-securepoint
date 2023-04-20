@@ -4,6 +4,7 @@
 # GT: alias handling looks weird if you ask me
 
 ip=/sbin/ip
+CMD_PREFIX=/usr/bin/ip6_prefix
 
 # Must be used on exit. Invokes the local dhcp client exit hooks, if any.
 exit_with_hooks() {
@@ -180,6 +181,9 @@ case "${reason}" in
 
     if [ -n "${old_ip6_prefix}" ] || [ -n "${new_ip6_prefix}" ] ; then
       echo Prefix ${reason} old=${old_ip6_prefix} new=${new_ip6_prefix}
+
+      ## inform spnetd about new delegated prefix
+      ${CMD_PREFIX} "${new_ip6_prefix}"
       exit_with_hooks 0
     fi
 
@@ -213,6 +217,13 @@ case "${reason}" in
       ;;
 
     EXPIRE6|RELEASE6|STOP6)
+      if [ -n "${old_ip6_prefix}" ]; then
+
+        echo "Prefix ${old_ip6_prefix} $reason"
+        ## remove delegated prefix
+        ${CMD_PREFIX} ""
+      fi
+
       if [ -z "${old_ip6_address}" ] || [ -z "${old_ip6_prefixlen}" ] ; then
         exit_with_hooks 2;
       fi

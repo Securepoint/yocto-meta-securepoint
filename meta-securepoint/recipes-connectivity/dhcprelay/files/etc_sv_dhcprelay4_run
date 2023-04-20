@@ -1,0 +1,38 @@
+#!/bin/sh
+
+exec 2>&1
+
+dostuff() {
+  server_ip=`eval echo '${'$#'}'`
+  while [ -n "$2" ]
+  do
+    device=$1
+    keep=1
+    for addr in `ip -4 -j addr show dev $device 2>/dev/null \
+    | jq '.[].addr_info[] | {prefixlen, local}' \
+    | jq '.local,.prefixlen' \
+    | sed -e 's/"//g' \
+    | awk '{if (NR % 2 == 1) A=$1; if (NR % 2 == 0) print A "/" $0 }'`
+    do
+      if inet46_memberof "$addr" "$server_ip"
+      then
+        keep=0
+      fi
+    done
+    for d in `bridge -j link | jq '.[] | select(has("master")).ifname' | sed -e 's/"//g'`
+    do
+      if [ "$d" = "$device" ]
+      then
+        keep=0
+      fi
+    done
+    if [ "$keep" -eq 1 ]
+    then
+      echo $device
+    fi
+    shift
+  done
+  echo $server_ip
+}
+
+exec /usr/sbin/dhcprelay -f $(dostuff `cat /etc/dhcp/dhcprelay4_args.conf`)

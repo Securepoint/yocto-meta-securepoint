@@ -1,0 +1,42 @@
+diff -up backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmfmac/Makefile.bcrm backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmfmac/Makefile
+--- backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmfmac/Makefile.bcrm	2022-03-02 11:58:59.369782367 +0100
++++ backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmfmac/Makefile	2022-03-02 11:59:48.605560422 +0100
+@@ -6,8 +6,8 @@
+ #
+ 
+ ccflags-y += \
+-	-I $(src) \
+-	-I $(src)/../include
++	-I$(src) \
++	-I$(src)/../include
+ 
+ obj-$(CPTCFG_BRCMFMAC) += brcmfmac.o
+ brcmfmac-objs += \
+diff -up backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmsmac/Makefile.bcrm backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmsmac/Makefile
+--- backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmsmac/Makefile.bcrm	2022-03-02 11:59:21.697228240 +0100
++++ backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmsmac/Makefile	2022-03-02 11:59:37.445837385 +0100
+@@ -16,9 +16,9 @@
+ # CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ 
+ ccflags-y := \
+-	-I $(src) \
+-	-I $(src)/phy \
+-	-I $(src)/../include
++	-I$(src) \
++	-I$(src)/phy \
++	-I$(src)/../include
+ 
+ brcmsmac-y := \
+ 	mac80211_if.o \
+diff -up backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmutil/Makefile.bcrm backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmutil/Makefile
+--- backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmutil/Makefile.bcrm	2022-03-02 11:58:18.081807062 +0100
++++ backports-5.15.8-1/drivers/net/wireless/broadcom/brcm80211/brcmutil/Makefile	2022-03-02 12:00:01.334244493 +0100
+@@ -4,7 +4,7 @@
+ #
+ # Copyright (c) 2011 Broadcom Corporation
+ #
+-ccflags-y := -I $(src)/../include
++ccflags-y := -I$(src)/../include
+ 
+ obj-$(CPTCFG_BRCMUTIL)	+= brcmutil.o
+ brcmutil-objs	= utils.o d11.o

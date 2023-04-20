@@ -1,0 +1,16 @@
+diff -up kernel-source/drivers/scsi/storvsc_drv.c.storevsc_drv_32bit_tablesize kernel-source/drivers/scsi/storvsc_drv.c
+--- kernel-source/drivers/scsi/storvsc_drv.c.storevsc_drv_32bit_tablesize	2018-04-05 20:38:21.690838657 +0200
++++ kernel-source/drivers/scsi/storvsc_drv.c	2018-04-05 20:40:14.765338657 +0200
+@@ -1798,6 +1798,12 @@ static int storvsc_probe(struct hv_devic
+ 	 * from the host.
+ 	 */
+ 	host->sg_tablesize = (stor_device->max_transfer_bytes >> PAGE_SHIFT);
++
++#if defined(CONFIG_X86_32)
++        dev_warn(&device->device, "adjusting sg_tablesize 0x%x -> 0x%x",
++        host->sg_tablesize, MAX_MULTIPAGE_BUFFER_COUNT);
++        host->sg_tablesize = MAX_MULTIPAGE_BUFFER_COUNT;
++#endif
+ 	/*
+ 	 * Set the number of HW queues we are supporting.
+ 	 */

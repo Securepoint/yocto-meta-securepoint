@@ -1,0 +1,12 @@
+diff -up freerdp-2.0.0-rc4/libfreerdp/crypto/tls.c.libressl29 freerdp-2.0.0-rc4/libfreerdp/crypto/tls.c
+--- freerdp-2.0.0-rc4/libfreerdp/crypto/tls.c.libressl29	2019-09-17 15:51:13.302270765 +0200
++++ freerdp-2.0.0-rc4/libfreerdp/crypto/tls.c	2019-09-17 15:51:59.343451736 +0200
+@@ -1026,7 +1026,7 @@ BOOL tls_send_alert(rdpTls* tls)
+ 	 * FIXME: The following code does not work on OpenSSL > 1.1.0 because the
+ 	 *        SSL struct is opaqe now
+ 	 */
+-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
++#if OPENSSL_VERSION_NUMBER < 0x10100000L || (defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x20800000L)
+ 
+ 	if (tls->alertDescription != TLS_ALERT_DESCRIPTION_CLOSE_NOTIFY)
+ 	{

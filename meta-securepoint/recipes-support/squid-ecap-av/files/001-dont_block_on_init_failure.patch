@@ -1,0 +1,78 @@
+diff --git a/src/adapter_avscan.cc b/src/adapter_avscan.cc
+index 354fe00..95cf444 100644
+--- a/src/adapter_avscan.cc
++++ b/src/adapter_avscan.cc
+@@ -339,6 +339,9 @@ void Adapter::Xaction::log_result() {
+         } else if (Ctx->status == stBlocked) {
+             resultDict[LOG_KEY_STATUS] = "BLOCKED";
+             old << "BLOCKED, " << statusString;
++        } else if (Ctx->status == stSkip) {
++            resultDict[LOG_KEY_STATUS] = "SKIPPED";
++            old << "SKIPPED, " << statusString;
+         } else if (statusString != "OK") {
+             resultDict[LOG_KEY_STATUS] = "ERROR";
+             old << statusString;
+@@ -663,7 +666,12 @@ void Adapter::Xaction::avStart(void)
+         avCheckVersion();
+ 
+     if (stError == Ctx->status) {
+-        /* */
++        LOG_DBG("%s: could not initialize AV daemon comm (%d): %s", __FUNCTION__, errno, strerror(errno));
++        if (errno == ENOENT || errno == EBADF) {
++            /* XXX skip scan if inital connect fails */
++            Ctx->status = stSkip;
++            statusString = "unable to connect to AV scan engine";
++        }
+     } else if (-1 == (Ctx->sockfd = doconnect(service->avdsocket))) {
+         Ctx->status = stError;
+     } else if (engine == engineCommtouch) {
+@@ -671,7 +679,6 @@ void Adapter::Xaction::avStart(void)
+     } else {
+         avStartClamav();
+     }
+-
+ }
+ 
+ int Adapter::Xaction::avWriteChunk(char *buf, ssize_t len)
+@@ -723,7 +730,6 @@ void Adapter::Xaction::avWriteStream(void)
+         Ctx->status = stError;
+     }
+ }
+-
+ void Adapter::Xaction::avCheckVersion(void)
+ {
+     FUNCENTER();
+@@ -751,6 +757,7 @@ void Adapter::Xaction::avCheckVersion(void)
+             Ctx->status = stError;
+         }
+     }
++
+     close(Ctx->sockfd);
+ }
+ 
+@@ -1003,6 +1010,12 @@ void Adapter::Xaction::vbFinished()
+             // timeout condition
+             while (-2 == avScanResult())
+                 noteContentAvailable();
++        } else if (Ctx->status == stSkip) {
++          /* XXX this is only meant as a temporary measure to prevent too
++           * many blocked requests during initial clamav signature updates */
++          log_result();
++          Ctx->status = stOK;
++          statusString = "OK";
+         }
+         receivingVb = opComplete;
+     }
+diff --git a/src/adapter_avscan_Xaction.h b/src/adapter_avscan_Xaction.h
+index 4cc69f6..74055d8 100644
+--- a/src/adapter_avscan_Xaction.h
++++ b/src/adapter_avscan_Xaction.h
+@@ -165,7 +165,7 @@ private:
+     libecap::shared_ptr <libecap::Message> adapted;
+ 
+     typedef enum { opUndecided, opWaiting, opOn, opScanning, opComplete, opNever } OperationState;
+-    typedef enum { stOK, stError, stInfected, stBlocked } ScanState;
++    typedef enum { stOK, stError, stInfected, stBlocked, stSkip } ScanState;
+ 
+     OperationState receivingVb;
+     OperationState sendingAb;

@@ -1,0 +1,47 @@
+diff --git a/src/SquidConfig.h b/src/SquidConfig.h
+index b696ffce6..50a6f9b5b 100644
+--- a/src/SquidConfig.h
++++ b/src/SquidConfig.h
+@@ -337,6 +337,7 @@ public:
+         int memory_cache_first;
+         int memory_cache_disk;
+         int hostStrictVerify;
++        int skipSniCheck;
+         int client_dst_passthru;
+         int dns_mdns;
+ #if USE_OPENSSL
+diff --git a/src/cf.data.pre b/src/cf.data.pre
+index 4aef432ca..4735ce491 100644
+--- a/src/cf.data.pre
++++ b/src/cf.data.pre
+@@ -2632,6 +2632,14 @@ DOC_START
+ 	See http://wiki.squid-cache.org/SquidFaq/SquidAcl for details.
+ DOC_END
+ 
++NAME: skip_sni_check
++TYPE: onoff
++DEFAULT: off
++LOC: Config.onoff.skipSniCheck
++DOC_START
++		If set, the SNI is not validated against the destination IP using DNS.
++DOC_END
++
+ NAME: host_verify_strict
+ TYPE: onoff
+ DEFAULT: off
+diff --git a/src/client_side.cc b/src/client_side.cc
+index f57f3f7ef..e19cd718d 100644
+--- a/src/client_side.cc
++++ b/src/client_side.cc
+@@ -3437,6 +3437,11 @@ ConnStateData::fakeAConnectRequest(const char *reason, const SBuf &payload)
+ 
+     http->calloutContext = new ClientRequestContext(http);
+     HttpRequest::Pointer request = http->request;
++    if (Config.onoff.skipSniCheck && 0 == strcmp(reason, "splice")) {
++      debugs(85, 3, "Skipping SNI check for spliced connection " << http->getConn()->clientConnection <<
++               " on URL: " << http->request->effectiveRequestUri());
++      http->calloutContext->host_header_verify_done = true;
++    }
+     http->doCallouts();
+     clientProcessRequestFinished(this, request);
+     return true;

@@ -1,0 +1,24 @@
+#!/bin/sh
+
+getwlanfromsystem() {
+  ip -j link | jq '.[].ifname' | tr -d '"' | grep -e 'wlan[0-9]'
+}
+
+getwlanfromconfig() {
+  cat /etc/sv/hostapd/hostapd.conf | \
+        grep '^interface=' | \
+        sed -e 's/interface=\(.*\)/\1/'
+}
+
+sys=$(getwlanfromsystem)
+cnf=$(getwlanfromconfig)
+
+if [ -n "$sys" -a -n "$cnf" -a "$sys" != "$cnf" ]
+then
+  ip link set down dev "$sys"
+  ip addr flush dev "$sys"
+  ip link set name $cnf dev "$sys"
+  ip link set up dev "$cnf"
+fi
+
+exec /usr/sbin/hostapd hostapd.conf

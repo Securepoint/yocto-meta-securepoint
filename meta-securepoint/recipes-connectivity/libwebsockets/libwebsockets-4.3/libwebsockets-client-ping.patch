@@ -1,0 +1,53 @@
+diff --git a/include/libwebsockets/lws-callbacks.h b/include/libwebsockets/lws-callbacks.h
+index fd36f7c7..97d313c1 100644
+--- a/include/libwebsockets/lws-callbacks.h
++++ b/include/libwebsockets/lws-callbacks.h
+@@ -896,6 +896,8 @@ enum lws_callback_reasons {
+ 	/****** add new things just above ---^ ******/
+ 
+ 	LWS_CALLBACK_USER = 1000,
++	LWS_CALLBACK_CLIENT_RECEIVE_PING			=  1001,
++#define LWS_CALLBACK_CLIENT_RECEIVE_PING LWS_CALLBACK_CLIENT_RECEIVE_PING
+ 	/**<  user code can use any including above without fear of clashes */
+ };
+ 
+diff --git a/lib/roles/ws/client-parser-ws.c b/lib/roles/ws/client-parser-ws.c
+index f569532e..19b2032e 100644
+--- a/lib/roles/ws/client-parser-ws.c
++++ b/lib/roles/ws/client-parser-ws.c
+@@ -471,7 +471,7 @@ spill:
+ 			lws_callback_on_writable(wsi);
+ ping_drop:
+ 			wsi->ws->rx_ubuf_head = 0;
+-			handled = 1;
++			callback_action = LWS_CALLBACK_CLIENT_RECEIVE_PING;
+ 			break;
+ 
+ 		case LWSWSOPC_PONG:
+@@ -601,9 +601,15 @@ utf8_fail:
+ 				}
+ 			}
+ 
+-			if (pmdrx.eb_out.len < 0 &&
+-			    callback_action != LWS_CALLBACK_CLIENT_RECEIVE_PONG)
++			if (pmdrx.eb_out.len > 0) {
++				/* */
++			} else if (callback_action == LWS_CALLBACK_CLIENT_RECEIVE_PONG) {
++				/* */
++			} else if (callback_action == LWS_CALLBACK_CLIENT_RECEIVE_PING) {
++				/* */
++			} else {
+ 				goto already_done;
++			}
+ 
+ 			if (!pmdrx.eb_out.token)
+ 				goto already_done;
+@@ -615,6 +621,8 @@ utf8_fail:
+ 
+ 			if (callback_action == LWS_CALLBACK_CLIENT_RECEIVE_PONG)
+ 				lwsl_wsi_info(wsi, "Client doing pong callback");
++			if (callback_action == LWS_CALLBACK_CLIENT_RECEIVE_PING)
++				lwsl_info("Client doing ping callback\n");
+ 
+ #if !defined(LWS_WITHOUT_EXTENSIONS)
+ 			if (n == PMDR_HAS_PENDING)

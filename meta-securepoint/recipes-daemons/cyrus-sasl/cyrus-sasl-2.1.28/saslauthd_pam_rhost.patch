@@ -1,0 +1,701 @@
+diff --git a/lib/checkpw.c b/lib/checkpw.c
+index dfa5cf19..518e42e9 100644
+--- a/lib/checkpw.c
++++ b/lib/checkpw.c
+@@ -659,6 +659,8 @@ static int saslauthd_verify_password(sasl_conn_t *conn,
+     char pwpath[sizeof(srvaddr.sun_path)];
+     const char *p = NULL;
+     char *freeme = NULL;
++    char *freemetoo = NULL;
++    const char *client_addr = NULL;
+ #ifdef USE_DOORS
+     door_arg_t arg;
+ #endif
+@@ -694,13 +696,19 @@ static int saslauthd_verify_password(sasl_conn_t *conn,
+ 	user_realm = rtmp + 1;
+     }
+ 
++    if (sasl_getprop(conn, SASL_IPREMOTEPORT, (const void **) & client_addr) == SASL_OK) {
++	if(_sasl_strdup(client_addr, &freemetoo, NULL) != SASL_OK)
++	    goto fail;
++	client_addr = freemetoo;
++    }
++
+     /*
+      * build request of the form:
+      *
+-     * count authid count password count service count realm
++     * count authid count password count service count realm client
+      */
+     {
+- 	unsigned short max_len, req_len, u_len, p_len, s_len, r_len;
++ 	unsigned short max_len, req_len, u_len, p_len, s_len, r_len, c_len;
+  
+ 	max_len = (unsigned short) sizeof(query);
+ 
+@@ -708,7 +716,8 @@ static int saslauthd_verify_password(sasl_conn_t *conn,
+ 	if ((strlen(userid) > USHRT_MAX) ||
+ 	    (strlen(passwd) > USHRT_MAX) ||
+ 	    (strlen(service) > USHRT_MAX) ||
+-	    (user_realm && (strlen(user_realm) > USHRT_MAX))) {
++	    (user_realm && (strlen(user_realm) > USHRT_MAX)) ||
++	    (client_addr && (strlen(client_addr) > USHRT_MAX))) {
+ 	    goto toobig;
+ 	}
+ 
+@@ -716,6 +725,7 @@ static int saslauthd_verify_password(sasl_conn_t *conn,
+  	p_len = (strlen(passwd));
+ 	s_len = (strlen(service));
+ 	r_len = ((user_realm ? strlen(user_realm) : 0));
++	c_len = ((client_addr ? strlen(client_addr): 0));
+ 
+ 	/* prevent buffer overflow */
+ 	req_len = 30;
+@@ -726,11 +736,14 @@ static int saslauthd_verify_password(sasl_conn_t *conn,
+ 	if (max_len - req_len < s_len) goto toobig;
+ 	req_len += s_len;
+ 	if (max_len - req_len < r_len) goto toobig;
++	req_len += r_len;
++	if (max_len - req_len < c_len) goto toobig;
+ 
+ 	u_len = htons(u_len);
+ 	p_len = htons(p_len);
+ 	s_len = htons(s_len);
+ 	r_len = htons(r_len);
++	c_len = htons(c_len);
+ 
+ 	memcpy(query_end, &u_len, sizeof(unsigned short));
+ 	query_end += sizeof(unsigned short);
+@@ -747,6 +760,10 @@ static int saslauthd_verify_password(sasl_conn_t *conn,
+ 	memcpy(query_end, &r_len, sizeof(unsigned short));
+ 	query_end += sizeof(unsigned short);
+ 	if (user_realm) while (*user_realm) *query_end++ = *user_realm++;
++
++	memcpy(query_end, &c_len, sizeof(unsigned short));
++	query_end += sizeof(unsigned short);
++	if(client_addr) while (*client_addr) *query_end++ = *client_addr++;
+     }
+ 
+ #ifdef USE_DOORS
+@@ -848,7 +865,8 @@ static int saslauthd_verify_password(sasl_conn_t *conn,
+     close(s);
+ #endif /* USE_DOORS */
+   
+-    if(freeme) free(freeme);
++    if (freeme) free(freeme);
++    if (freemetoo) free(freemetoo);
+ 
+     if (!strncmp(response, "OK", 2)) {
+ 	return SASL_OK;
+@@ -863,6 +881,7 @@ static int saslauthd_verify_password(sasl_conn_t *conn,
+ 
+  fail:
+     if (freeme) free(freeme);
++    if (freemetoo) free(freemetoo);
+     return SASL_FAIL;
+ }
+ 
+diff --git a/saslauthd/auth_dce.c b/saslauthd/auth_dce.c
+index 1fe0cafa..6bf2cb44 100644
+--- a/saslauthd/auth_dce.c
++++ b/saslauthd/auth_dce.c
+@@ -52,7 +52,8 @@ auth_dce(
+   const char *login,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote
+   /* END PARAMETERS */
+   )
+ {
+@@ -100,7 +101,8 @@ auth_dce(
+   const char *login __attribute__((unused)),
+   const char *password __attribute__((unused)),
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote __attribute__((unused))
+   )
+ {
+      return NULL;
+diff --git a/saslauthd/auth_dce.h b/saslauthd/auth_dce.h
+index d96ee158..fb9c2441 100644
+--- a/saslauthd/auth_dce.h
++++ b/saslauthd/auth_dce.h
+@@ -26,4 +26,4 @@
+  * END COPYRIGHT
+  */
+ 
+-char *auth_dce(const char *, const char *, const char *, const char *);
++char *auth_dce(const char *, const char *, const char *, const char *, const char *);
+diff --git a/saslauthd/auth_getpwent.c b/saslauthd/auth_getpwent.c
+index 828ff0aa..a51362a6 100644
+--- a/saslauthd/auth_getpwent.c
++++ b/saslauthd/auth_getpwent.c
+@@ -68,7 +68,8 @@ auth_getpwent (
+   const char *login,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+diff --git a/saslauthd/auth_getpwent.h b/saslauthd/auth_getpwent.h
+index 0b25f0af..788c4991 100644
+--- a/saslauthd/auth_getpwent.h
++++ b/saslauthd/auth_getpwent.h
+@@ -25,4 +25,4 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_getpwent(const char *, const char *, const char *, const char *);
++char *auth_getpwent(const char *, const char *, const char *, const char *, const char *);
+diff --git a/saslauthd/auth_httpform.c b/saslauthd/auth_httpform.c
+index 6f5fe0e3..c4ff5f14 100644
+--- a/saslauthd/auth_httpform.c
++++ b/saslauthd/auth_httpform.c
+@@ -491,7 +491,8 @@ auth_httpform (
+   const char *user,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service __attribute__((unused)),
+-  const char *realm                    /* I: user's realm */
++  const char *realm,                    /* I: user's realm */
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+diff --git a/saslauthd/auth_httpform.h b/saslauthd/auth_httpform.h
+index 2a95e9c9..b42e4455 100644
+--- a/saslauthd/auth_httpform.h
++++ b/saslauthd/auth_httpform.h
+@@ -25,5 +25,5 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_httpform(const char *, const char *, const char *, const char *);
++char *auth_httpform(const char *, const char *, const char *, const char *, const char *);
+ int auth_httpform_init(void);
+diff --git a/saslauthd/auth_krb4.c b/saslauthd/auth_krb4.c
+index 08482a93..51b43b6a 100644
+--- a/saslauthd/auth_krb4.c
++++ b/saslauthd/auth_krb4.c
+@@ -167,7 +167,8 @@ auth_krb4 (
+   const char *login,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service,
+-  const char *realm_in
++  const char *realm_in,
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+@@ -278,7 +279,8 @@ auth_krb4 (
+   const char *login __attribute__((unused)),
+   const char *password __attribute__((unused)),
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote __attribute__((unused))
+   )
+ {
+     return NULL;
+diff --git a/saslauthd/auth_krb4.h b/saslauthd/auth_krb4.h
+index 7de941e0..7ffa3902 100644
+--- a/saslauthd/auth_krb4.h
++++ b/saslauthd/auth_krb4.h
+@@ -25,5 +25,5 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_krb4(const char *, const char *, const char *, const char *);
++char *auth_krb4(const char *, const char *, const char *, const char *, const char *);
+ int auth_krb4_init(void);
+diff --git a/saslauthd/auth_krb5.c b/saslauthd/auth_krb5.c
+index feeab374..a13fd955 100644
+--- a/saslauthd/auth_krb5.c
++++ b/saslauthd/auth_krb5.c
+@@ -164,7 +164,8 @@ auth_krb5 (
+   const char *user,                     /* I: plaintext authenticator */
+   const char *password,                 /* I: plaintext password */
+   const char *service,                  /* I: service authenticating to */
+-  const char *realm                     /* I: user's realm */
++  const char *realm,                    /* I: user's realm */
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+@@ -275,7 +276,8 @@ auth_krb5 (
+   const char *login __attribute__((unused)),
+   const char *password __attribute__((unused)),
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote __attribute__((unused))
+   )
+ {
+     return NULL;
+diff --git a/saslauthd/auth_krb5.h b/saslauthd/auth_krb5.h
+index 39a3a882..fac35c35 100644
+--- a/saslauthd/auth_krb5.h
++++ b/saslauthd/auth_krb5.h
+@@ -25,5 +25,5 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_krb5(const char *, const char *, const char *, const char *);
++char *auth_krb5(const char *, const char *, const char *, const char *, const char *);
+ int auth_krb5_init(void);
+diff --git a/saslauthd/auth_ldap.c b/saslauthd/auth_ldap.c
+index 7ba294f9..f42c7e17 100644
+--- a/saslauthd/auth_ldap.c
++++ b/saslauthd/auth_ldap.c
+@@ -56,7 +56,8 @@ auth_ldap(
+   const char *login,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service,
+-  const char *realm
++  const char *realm,
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+@@ -106,7 +107,8 @@ auth_ldap(
+   const char *login __attribute__((unused)),
+   const char *password __attribute__((unused)),
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote __attribute__((unused))
+   )
+ {
+      return NULL;
+diff --git a/saslauthd/auth_ldap.h b/saslauthd/auth_ldap.h
+index 983a6fca..fdc72789 100644
+--- a/saslauthd/auth_ldap.h
++++ b/saslauthd/auth_ldap.h
+@@ -25,5 +25,5 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_ldap(const char *, const char *, const char *, const char *);
++char *auth_ldap(const char *, const char *, const char *, const char *, const char *);
+ int auth_ldap_init(void);
+diff --git a/saslauthd/auth_pam.c b/saslauthd/auth_pam.c
+index c0f3ee54..138b7759 100644
+--- a/saslauthd/auth_pam.c
++++ b/saslauthd/auth_pam.c
+@@ -181,7 +181,8 @@ auth_pam (
+   const char *login,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service,			/* I: service name */
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+@@ -208,6 +209,14 @@ auth_pam (
+ 
+     my_appdata.pamh = pamh;
+ 
++    char * remote_host = strdup(remote);
++    if (remote_host) {
++	char * semicol = strchr(remote_host, ';');
++	if (semicol) * semicol = NULL; /* truncate remote_host at the ';' port separator */
++	pam_set_item(pamh, PAM_RHOST, remote_host);
++	free (remote_host);
++    }
++
+     rc = pam_authenticate(pamh, PAM_SILENT);
+     if (rc != PAM_SUCCESS) {
+ 	syslog(LOG_DEBUG, "DEBUG: auth_pam: pam_authenticate failed: %s",
+@@ -237,7 +246,8 @@ auth_pam(
+   const char *login __attribute__((unused)),
+   const char *password __attribute__((unused)),
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote __attribute__((unused))
+   )
+ {
+     return NULL;
+diff --git a/saslauthd/auth_pam.h b/saslauthd/auth_pam.h
+index 4f57e8d7..d15cb462 100644
+--- a/saslauthd/auth_pam.h
++++ b/saslauthd/auth_pam.h
+@@ -32,4 +32,4 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_pam(const char *, const char *, const char *, const char *);
++char *auth_pam(const char *, const char *, const char *, const char *, const char *);
+diff --git a/saslauthd/auth_rimap.c b/saslauthd/auth_rimap.c
+index 8303a543..36a655b6 100644
+--- a/saslauthd/auth_rimap.c
++++ b/saslauthd/auth_rimap.c
+@@ -447,7 +447,8 @@ auth_rimap (
+   const char *login,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+diff --git a/saslauthd/auth_rimap.h b/saslauthd/auth_rimap.h
+index 8eb101aa..760c9b35 100644
+--- a/saslauthd/auth_rimap.h
++++ b/saslauthd/auth_rimap.h
+@@ -25,5 +25,5 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_rimap(const char *, const char *, const char *, const char *);
++char *auth_rimap(const char *, const char *, const char *, const char *, const char *);
+ int auth_rimap_init(void);
+diff --git a/saslauthd/auth_sasldb.c b/saslauthd/auth_sasldb.c
+index b6aaa393..daf48dc0 100644
+--- a/saslauthd/auth_sasldb.c
++++ b/saslauthd/auth_sasldb.c
+@@ -121,13 +121,14 @@ auth_sasldb (
+   const char *login,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service __attribute__((unused)),
+-  const char *realm
++  const char *realm,
+ #else
+   const char *login __attribute__((unused)),/* I: plaintext authenticator */
+   const char *password __attribute__((unused)),  /* I: plaintext password */
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
+ #endif
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+diff --git a/saslauthd/auth_sasldb.h b/saslauthd/auth_sasldb.h
+index 633c360f..4d225fe3 100644
+--- a/saslauthd/auth_sasldb.h
++++ b/saslauthd/auth_sasldb.h
+@@ -25,4 +25,4 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_sasldb(const char *, const char *, const char *, const char *);
++char *auth_sasldb(const char *, const char *, const char *, const char *, const char *);
+diff --git a/saslauthd/auth_shadow.c b/saslauthd/auth_shadow.c
+index 8a830921..03613f89 100644
+--- a/saslauthd/auth_shadow.c
++++ b/saslauthd/auth_shadow.c
+@@ -94,7 +94,8 @@ auth_shadow (
+   const char *login,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+@@ -321,7 +322,8 @@ auth_shadow (
+   const char *login __attribute__((unused)),
+   const char *passwd __attribute__((unused)),
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote __attribute__((unused))
+   )
+ {
+     return NULL;
+diff --git a/saslauthd/auth_shadow.h b/saslauthd/auth_shadow.h
+index b08c06e5..7e96a594 100644
+--- a/saslauthd/auth_shadow.h
++++ b/saslauthd/auth_shadow.h
+@@ -25,4 +25,4 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_shadow(const char *, const char *, const char *, const char *);
++char *auth_shadow(const char *, const char *, const char *, const char *, const char *);
+diff --git a/saslauthd/auth_sia.c b/saslauthd/auth_sia.c
+index ca30cab6..c8a54117 100644
+--- a/saslauthd/auth_sia.c
++++ b/saslauthd/auth_sia.c
+@@ -52,7 +52,8 @@ auth_sia (
+   const char *login,			/* I: plaintext authenticator */
+   const char *password,			/* I: plaintext password */
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote                    /* I: remote host address */
+   /* END PARAMETERS */
+   )
+ {
+@@ -80,7 +81,8 @@ auth_sia(
+   const char *login __attribute__((unused)),
+   const char *password __attribute__((unused)),
+   const char *service __attribute__((unused)),
+-  const char *realm __attribute__((unused))
++  const char *realm __attribute__((unused)),
++  const char *remote __attribute__((unused))
+   )
+ {
+     return NULL;
+diff --git a/saslauthd/auth_sia.h b/saslauthd/auth_sia.h
+index 56a328b4..932a4fbb 100644
+--- a/saslauthd/auth_sia.h
++++ b/saslauthd/auth_sia.h
+@@ -25,4 +25,4 @@
+  * DAMAGE.
+  * END COPYRIGHT */
+ 
+-char *auth_sia(const char *, const char *, const char *, const char *);
++char *auth_sia(const char *, const char *, const char *, const char *, const char *);
+diff --git a/saslauthd/ipc_doors.c b/saslauthd/ipc_doors.c
+index 4e459d7c..65b70c58 100644
+--- a/saslauthd/ipc_doors.c
++++ b/saslauthd/ipc_doors.c
+@@ -247,6 +247,7 @@ do_request(void *cookie, char *data, size_t datasize, door_desc_t *dp, uint_t nd
+ 	char			password[MAX_REQ_LEN + 1]; /* password for authentication            */
+ 	char			service[MAX_REQ_LEN + 1];  /* service name for authentication        */
+ 	char			realm[MAX_REQ_LEN + 1];    /* user realm for authentication          */
++	char			client_addr[MAX_REQ_LEN + 1];  /* client address and port            */
+ 
+ 
+ 	/**************************************************************
+@@ -273,7 +274,7 @@ do_request(void *cookie, char *data, size_t datasize, door_desc_t *dp, uint_t nd
+ 		       MAX_REQ_LEN);
+ 		send_no("");
+ 		return;
+-	}	
++	}
+ 
+ 	memcpy(login, data, count);
+ 	login[count] = '\0';
+@@ -290,7 +291,7 @@ do_request(void *cookie, char *data, size_t datasize, door_desc_t *dp, uint_t nd
+ 		       MAX_REQ_LEN);
+ 		send_no("");
+ 		return;
+-	}	
++	}
+ 
+ 	memcpy(password, data, count);
+ 	password[count] = '\0';
+@@ -307,7 +308,7 @@ do_request(void *cookie, char *data, size_t datasize, door_desc_t *dp, uint_t nd
+ 		       MAX_REQ_LEN);
+ 		send_no("");
+ 		return;
+-	}	
++	}
+ 
+ 	memcpy(service, data, count);
+ 	service[count] = '\0';
+@@ -324,11 +325,27 @@ do_request(void *cookie, char *data, size_t datasize, door_desc_t *dp, uint_t nd
+ 		       MAX_REQ_LEN);
+ 		send_no("");
+ 		return;
+-	}	
++	}
+ 
+ 	memcpy(realm, data, count);
+ 	realm[count] = '\0';
+ 
++	/* client_addr */
++	memcpy(&count, data, sizeof(unsigned short));
++
++	count = ntohs(count);
++	data += sizeof(unsigned short);
++
++	if (count > MAX_REQ_LEN || data + count > dataend) {
++		logger(L_ERR, L_FUNC, "client_addr exceeds MAX_REQ_LEN: %d",
++		       MAX_REQ_LEN);
++		send_no("");
++		return;
++	}
++
++	memcpy(client_addr, data, count);
++	client_addr[count] = '\0';
++
+ 	/**************************************************************
+  	 * We don't allow NULL passwords or login names
+ 	 **************************************************************/
+@@ -336,25 +353,25 @@ do_request(void *cookie, char *data, size_t datasize, door_desc_t *dp, uint_t nd
+ 		logger(L_ERR, L_FUNC, "NULL login received");
+ 		send_no("NULL login received");
+ 		return;
+-	}	
++	}
+ 	
+ 	if (*password == '\0') {
+ 		logger(L_ERR, L_FUNC, "NULL password received");
+ 		send_no("NULL password received");
+ 		return;
+-	}	
++	}
+ 
+ 	/**************************************************************
+ 	 * Get the mechanism response from do_auth() and send it back.
+ 	 **************************************************************/
+-	response = do_auth(login, password, service, realm);
++	response = do_auth(login, password, service, realm, client_addr);
+ 
+ 	memset(password, 0, strlen(password));
+ 
+ 	if (response == NULL) {
+ 	    send_no("NULL response from mechanism");
+ 	    return;
+-	}	
++	}
+ 
+ 	strncpy(response_buff, response, 1023);
+ 	response_buff[1023] = '\0';
+@@ -376,7 +393,7 @@ do_request(void *cookie, char *data, size_t datasize, door_desc_t *dp, uint_t nd
+ void need_thread(door_info_t *di) {
+     pthread_t newt;
+     int more;
+-    
++
+     if (num_procs > 0) {
+ 	pthread_mutex_lock(&num_lock);
+ 	more = (num_thr < num_procs);
+@@ -421,7 +438,7 @@ void send_no(char *mesg) {
+ 
+ 	safe_door_return(buff, strlen(buff));
+ 
+-	return;	
++	return;
+ }
+ 
+ #endif /* USE_DOORS_IPC */
+diff --git a/saslauthd/ipc_unix.c b/saslauthd/ipc_unix.c
+index 63eca3eb..f9357ebc 100644
+--- a/saslauthd/ipc_unix.c
++++ b/saslauthd/ipc_unix.c
+@@ -334,6 +334,7 @@ void do_request(int conn_fd) {
+ 	char			password[MAX_REQ_LEN + 1]; /* password for authentication            */
+ 	char			service[MAX_REQ_LEN + 1];  /* service name for authentication        */
+ 	char			realm[MAX_REQ_LEN + 1];    /* user realm for authentication          */
++	char			client_addr[MAX_REQ_LEN + 1];  /* client address and port            */
+ 
+ 
+ 	/**************************************************************
+@@ -404,12 +405,28 @@ void do_request(int conn_fd) {
+ 		send_no(conn_fd, "");
+ 		return;
+ 	}	
+-
+ 	if (rx_rec(conn_fd, (void *)realm, (size_t)count) != (ssize_t)count) 
+ 		return;
+ 
+ 	realm[count] = '\0';
+ 
++	/* client_addr */
++	if (rx_rec(conn_fd, (void *)&count, (size_t)sizeof(count)) != (ssize_t)sizeof(count))
++		return;
++
++	count = ntohs(count);
++
++	if (count > MAX_REQ_LEN) {
++		logger(L_ERR, L_FUNC, "client address exceeded MAX_REQ_LEN: %d", MAX_REQ_LEN);
++		send_no(conn_fd, "");
++		return;
++	}
++
++	if (rx_rec(conn_fd, (void *)&client_addr, (size_t)count) != (ssize_t)count)
++		return;
++
++	client_addr[count] = '\0';
++
+ 	/**************************************************************
+  	 * We don't allow NULL passwords or login names
+ 	 **************************************************************/
+@@ -428,7 +445,7 @@ void do_request(int conn_fd) {
+ 	/**************************************************************
+ 	 * Get the mechanism response from do_auth() and send it back.
+ 	 **************************************************************/
+-	response = do_auth(login, password, service, realm);
++	response = do_auth(login, password, service, realm, client_addr);
+ 
+ 	memset(password, 0, strlen(password));
+ 
+diff --git a/saslauthd/mechanisms.h b/saslauthd/mechanisms.h
+index 59fb1391..f2b0b74d 100644
+--- a/saslauthd/mechanisms.h
++++ b/saslauthd/mechanisms.h
+@@ -36,8 +36,8 @@ typedef struct {
+     char *name;				/* name of the mechanism */
+     int (*initialize)(void);		/* initialization function */
+     char *(*authenticate)(const char *, const char *,
+-			  const char *, const char *); /* authentication
+-							  function */
++			  const char *, const char *,
++			  const char *); /* authentication function */
+ } authmech_t;
+ 
+ extern authmech_t mechanisms[];		/* array of supported auth mechs */
+diff --git a/saslauthd/saslauthd-main.c b/saslauthd/saslauthd-main.c
+index ca5b7256..ca88c6f2 100644
+--- a/saslauthd/saslauthd-main.c
++++ b/saslauthd/saslauthd-main.c
+@@ -378,7 +378,7 @@ int main(int argc, char **argv) {
+  * return a pointer to a string to send back to the client.
+  * The caller is responsible for freeing the pointer. 
+  **************************************************************/
+-char *do_auth(const char *_login, const char *password, const char *service, const char *realm) {
++char *do_auth(const char *_login, const char *password, const char *service, const char *realm, const char *remote) {
+ 
+ 	struct cache_result	lkup_result;
+ 	char			*response = NULL;
+@@ -407,7 +407,7 @@ char *do_auth(const char *_login, const char *password, const char *service, con
+ 		response = strdup("OK");
+ 		cached = 1;
+ 	} else {
+-		response = auth_mech->authenticate(login, password, service, realm);
++		response = auth_mech->authenticate(login, password, service, realm, remote);
+ 
+ 		if (response == NULL) {
+ 			logger(L_ERR, L_FUNC, "internal mechanism failure: %s", auth_mech->name);
+@@ -420,18 +420,18 @@ char *do_auth(const char *_login, const char *password, const char *service, con
+ 
+ 		if (flags & VERBOSE) {
+ 			if (cached) 
+-				logger(L_DEBUG, L_FUNC, "auth success (cached): [user=%s] [service=%s] [realm=%s]", \
+-					login, service, realm);
++				logger(L_DEBUG, L_FUNC, "auth success (cached): [user=%s] [service=%s] [realm=%s] [remote=%s]", \
++					login, service, realm, remote);
+ 			else
+-				logger(L_DEBUG, L_FUNC, "auth success: [user=%s] [service=%s] [realm=%s] [mech=%s]", \
+-					login, service, realm, auth_mech->name);
++				logger(L_DEBUG, L_FUNC, "auth success: [user=%s] [service=%s] [realm=%s] [remote=%s] [mech=%s]", \
++					login, service, realm, remote, auth_mech->name);
+ 		}
+ 		return response;
+ 	}
+ 
+ 	if (strncmp(response, "NO", 2) == 0) {
+-		logger(L_INFO, L_FUNC, "auth failure: [user=%s] [service=%s] [realm=%s] [mech=%s] [reason=%s]", \
+-			login, service, realm, auth_mech->name,
++		logger(L_INFO, L_FUNC, "auth failure: [user=%s] [service=%s] [realm=%s] [remote=%s] [mech=%s] [reason=%s]", \
++			login, service, realm, remote, auth_mech->name,
+ 		        strlen(response) >= 4 ? response+3 : "Unknown");
+ 
+ 		return response;
+diff --git a/saslauthd/saslauthd-main.h b/saslauthd/saslauthd-main.h
+index 754626c6..e6956b56 100644
+--- a/saslauthd/saslauthd-main.h
++++ b/saslauthd/saslauthd-main.h
+@@ -89,7 +89,8 @@
+ 
+ /* saslauthd-main.c */
+ extern char	*do_auth(const char *, const char *,
+-			 const char *, const char *);
++			 const char *, const char *,
++			 const char *);
+ extern void	set_auth_mech(const char *);
+ extern void	set_max_procs(const char *);
+ extern void	set_mech_option(const char *);

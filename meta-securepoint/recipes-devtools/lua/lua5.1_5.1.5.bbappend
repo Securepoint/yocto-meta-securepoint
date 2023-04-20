@@ -3,6 +3,6 @@
 # bitops is built as an external lib from lua-jit 
 # and set as Dependency to lua-5.1
 
-FILESEXTRAPATHS_prepend := "${THISDIR}/files:"
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
-RDEPENDS_${PN} += "luabitop"
+#RDEPENDS_${PN} += "luabitop"

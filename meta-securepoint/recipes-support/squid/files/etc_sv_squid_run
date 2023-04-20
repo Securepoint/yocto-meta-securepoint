@@ -1,16 +1,31 @@
 #!/bin/sh
-KRB5_KTNAME=/rootdisk/config/AD.keytab
+KRB5_KTNAME=/data/securepoint/etc/krb5/AD.keytab
 export KRB5_KTNAME
-read ULIMITN < env/ULIMITN
-chown nobody:nogroup /var/run/squid
-chmod 700 /var/run/squid
+user=$(awk '$1 ~ /cache_effective_user/ { print $2 }' < /etc/squid/squid.conf)
+mkdir -p /var/run/squid
+chown -R $user:nobody /var/run/squid
+chmod 770 /var/run/squid
+# see #11361
+rm -f /dev/shm/squid-cf*
 read ULIMITN < /etc/squid/ULIMITN
 # prevent ULIMITN causing segmentation faults in combination with a 
 # SQUID_MAXFD that is set to low, see #7749
 if [ $ULIMITN -lt 4096 ]; then
   ULIMITN=4096
 fi
+if [ $ULIMITN -gt 8192 ]; then
+  ULIMITN=8192
+fi
 ulimit -HS -n $ULIMITN
-exec 2>&1
-exec /usr/sbin/squid -N -s
 
+# See #11988
+ARGS=""
+# security_file_certgen comes only with squid 4
+if [ -x /usr/libexec/squid/security_file_certgen ]; then
+  ARGS="--foreground"
+else
+  ARGS="-N"
+fi
+
+exec 2>&1
+exec /usr/sbin/squid -n squid -s ${ARGS}

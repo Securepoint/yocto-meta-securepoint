@@ -1,0 +1,4 @@
+#!/bin/sh
+exec 2>&1
+read SVPID < ../supervise/pid
+exec logger -t "nullmail[$SVPID]" -p "mail.info"

@@ -1,0 +1,32 @@
+diff --git a/Makefile.real b/Makefile.real
+index 6550802..0f24026 100644
+--- a/Makefile.real
++++ b/Makefile.real
+@@ -90,17 +90,17 @@ modules: backport-include/backport/autoconf.h
+ .PHONY: install
+ install: modules
+ 	@$(MAKE) -C $(KLIB_BUILD) M=$(BACKPORT_DIR)			\
+-		INSTALL_MOD_DIR=$(KMODDIR) $(KMODPATH_ARG)		\
++		INSTALL_MOD_DIR=$(KMODDIR) INSTALL_MOD_PATH=$(INSTALL_MOD_PATH)		\
+ 		modules_install
+-	@./scripts/blacklist.sh $(KLIB)/ $(KLIB)/$(KMODDIR)
+-	@./scripts/compress_modules.sh $(KLIB)/$(KMODDIR)
+-	@./scripts/check_depmod.sh
+-	@/sbin/depmod -a
+-	@./scripts/update-initramfs.sh $(KLIB)
+-	@echo
+-	@echo Your backported driver modules should be installed now.
+-	@echo Reboot.
+-	@echo
++#	@./scripts/blacklist.sh $(KLIB)/ $(KLIB)/$(KMODDIR)
++#	@./scripts/compress_modules.sh $(KLIB)/$(KMODDIR)
++#	@./scripts/check_depmod.sh
++#	@/sbin/depmod -a
++#	@./scripts/update-initramfs.sh $(KLIB)
++#	@echo
++#	@echo Your backported driver modules should be installed now.
++#	@echo Reboot.
++#	@echo
+ 
+ .PHONY: modules_install
+ modules_install: install

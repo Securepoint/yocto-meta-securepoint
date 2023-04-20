@@ -1,4 +1,7 @@
 #!/bin/sh
+RUNDIR=/var/run/siproxd
+mkdir -p ${RUNDIR}
+chown siproxd:siproxd ${RUNDIR}
 exec 2>&1
-exec /usr/sbin/siproxd -p /tmp/siproxd.pid
+exec /usr/sbin/siproxd -c /etc/siproxd.conf
 

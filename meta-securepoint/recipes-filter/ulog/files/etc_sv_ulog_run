@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/sbin/ulogd -c /etc/ulogd.conf -v

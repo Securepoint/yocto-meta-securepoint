@@ -29,6 +29,6 @@ do_install(){
 }
 
 #INSANE_SKIP_${PN} += " dev-so "
-FILES_${PN}-dbg = "${libdir}/lua/5.1/.debug"
-FILES_${PN}-dev = "/usr/src"
-FILES_${PN} += "${libdir}/lua/5.1/"
+FILES:${PN}-dbg = "${libdir}/lua/5.1/.debug"
+FILES:${PN}-dev = "/usr/src"
+FILES:${PN} += "${libdir}/lua/5.1/"

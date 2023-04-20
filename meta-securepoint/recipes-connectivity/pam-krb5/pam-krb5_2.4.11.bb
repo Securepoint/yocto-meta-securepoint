@@ -8,8 +8,10 @@ SECTION = "base"
 DEPENDS = "krb5 libpam"
 PR = "r0"
 
-SRC_URI = "git://pagure.io/pam_krb5.git;protocol=https;tag=pam_krb5-${PV}"
+SRC_URI = "git://pagure.io/pam_krb5.git;protocol=https"
+SRCREV = "pam_krb5-2.4.11"
 LIC_FILES_CHKSUM = "file://COPYING.MIT;md5=5288d1454395f7ed938af11db77eaf91"
+PV = "${SRCREV}+git${SRCPV}"
 
 #libPAM installs under /lib not /usr/lib
 EXTRA_OECONF = "--libdir=/lib"

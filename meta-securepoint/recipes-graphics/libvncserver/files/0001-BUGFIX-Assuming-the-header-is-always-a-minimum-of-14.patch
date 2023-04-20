@@ -1,0 +1,64 @@
+From 080eb3b70baedd573ad7d797c0276e2df8d07ead Mon Sep 17 00:00:00 2001
+From: Sebastian Kranz <s.kranz@plastcontrol.de>
+Date: Fri, 26 Apr 2019 08:13:55 +0200
+Subject: [PATCH] BUGFIX: Assuming the header is always a minimum of 14 Bytes
+ long is not correct according to the RFC 6455 spec, it can be as short as 2
+ Bytes. Using it in combination with the RFB protocol, which tells that a
+ client message can be as short as 6 Bytes, leads to reading past the end of a
+ message. The proposal is to use WS_HYBI_HEADER_LEN_SHORT instead of WSHLENMAX
+ to read only a minimum header, then reading the rest of the header if it is
+ longer. Original finding here:
+ https://github.com/LibVNC/libvncserver/issues/297
+
+---
+ libvncserver/ws_decode.c | 27 ++++++++++++++++++++++++++-
+ 1 file changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/libvncserver/ws_decode.c b/libvncserver/ws_decode.c
+index 441ebc73..e4bf552c 100644
+--- a/libvncserver/ws_decode.c
++++ b/libvncserver/ws_decode.c
+@@ -131,7 +131,7 @@ hybiReadHeader(ws_ctx_t *wsctx, int *sockRet, int *nPayload)
+ {
+   int ret;
+   char *headerDst = wsctx->codeBufDecode + wsctx->header.nRead;
+-  int n = ((uint64_t)WSHLENMAX) - wsctx->header.nRead;
++  int n = ((uint64_t)WS_HYBI_HEADER_LEN_SHORT) - wsctx->header.nRead;
+ 
+ 
+   ws_dbg("header_read to %p with len=%d\n", headerDst, n);
+@@ -215,6 +215,31 @@ hybiReadHeader(ws_ctx_t *wsctx, int *sockRet, int *nPayload)
+     goto err_cleanup_state;
+   }
+ 
++  /* Read now the rest of the frame header, if it is longer as the minimum */
++  if ((wsctx->header.payloadLen == 126) || (wsctx->header.payloadLen == 127)) {
++    headerDst = wsctx->codeBufDecode + wsctx->header.nRead;
++    if (wsctx->header.payloadLen == 126) {
++      n = ((uint64_t)WS_HYBI_HEADER_LEN_EXTENDED) - wsctx->header.nRead;
++    } else if (wsctx->header.payloadLen == 127) {
++      n = ((uint64_t)WS_HYBI_HEADER_LEN_LONG) - wsctx->header.nRead;
++    }
++    ret = wsctx->ctxInfo.readFunc(wsctx->ctxInfo.ctxPtr, headerDst, n);
++    if (ret <= 0) {
++      if (-1 == ret) {
++        /* save errno because rfbErr() will tamper it */
++        int olderrno = errno;
++        rfbErr("%s: read; %s\n", __func__, strerror(errno));
++        errno = olderrno;
++        goto err_cleanup_state;
++      } else {
++        *sockRet = 0;
++        goto err_cleanup_state_sock_closed;
++      }
++    }
++
++    /* if more header data was read, account for it */
++    wsctx->header.nRead += ret;
++  }
+ 
+   if (wsctx->header.payloadLen < 126 && wsctx->header.nRead >= 6) {
+     wsctx->header.headerLen = WS_HYBI_HEADER_LEN_SHORT;
+-- 
+2.21.0
+

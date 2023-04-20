@@ -1,0 +1,49 @@
+diff --git a/src/sip_utils.c b/src/sip_utils.c
+index cd58540..a31be67 100644
+--- a/src/sip_utils.c
++++ b/src/sip_utils.c
+@@ -1064,8 +1064,8 @@ int  sip_find_direction(sip_ticket_t *ticket, int *urlidx) {
+          DEBUGC(DBCLASS_SIP, "sip_find_direction: cannot resolve host [%s]",
+              urlmap[i].true_url->host);
+       } else {
+-//         DEBUGC(DBCLASS_BABBLE, "sip_find_direction: reghost:%s ip:%s",
+-//                urlmap[i].true_url->host, utils_inet_ntoa(from->sin_addr));
++         DEBUGC(DBCLASS_BABBLE, "sip_find_direction: reghost:%s ip:%s",
++                urlmap[i].true_url->host, utils_inet_ntoa(from->sin_addr));
+          if (memcmp(&tmp_addr, &from->sin_addr, sizeof(tmp_addr)) == 0) {
+             if (MSG_IS_REQUEST(ticket->sipmsg)) {
+                type=REQTYP_OUTGOING;
+diff --git a/src/siproxd.c b/src/siproxd.c
+index 5a6fd95..18d3b78 100644
+--- a/src/siproxd.c
++++ b/src/siproxd.c
+@@ -50,6 +50,7 @@ static cfgopts_t main_cfg_opts[] = {
+    { "debug_level",         TYP_INT4,   &configuration.debuglevel,		{0, NULL} },
+    { "debug_port",          TYP_INT4,   &configuration.debugport,		{0, NULL} },
+    { "sip_listen_port",     TYP_INT4,   &configuration.sip_listen_port,		{SIP_PORT, NULL} },
++   { "syslog_only",         TYP_INT4,   &configuration.syslog_only,		{0, NULL} },
+    { "daemonize",           TYP_INT4,   &configuration.daemonize,		{0, NULL} },
+    { "silence_log",         TYP_INT4,   &configuration.silence_log,		{1, NULL} },
+    { "if_inbound",          TYP_STRING, &configuration.inbound_if,		{0, NULL} },
+@@ -273,6 +274,9 @@ int main (int argc, char *argv[])
+    log_set_pattern(configuration.debuglevel);
+    log_set_listen_port(configuration.debugport);
+ 
++   if (configuration.syslog_only) {
++      log_set_stderr(0);
++   }
+ 
+    /* daemonize if requested to */
+    if (configuration.daemonize) {
+diff --git a/src/siproxd.h b/src/siproxd.h
+index 4ad6b35..2851627 100644
+--- a/src/siproxd.h
++++ b/src/siproxd.h
+@@ -66,6 +66,7 @@ struct siproxd_config {
+    char *outbound_if;
+    char *outbound_host;
+    int sip_listen_port;
++   int syslog_only;
+    int daemonize;
+    int silence_log;
+    int rtp_port_low;

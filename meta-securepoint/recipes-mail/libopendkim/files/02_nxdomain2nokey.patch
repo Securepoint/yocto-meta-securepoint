@@ -1,0 +1,61 @@
+diff --git a/libopendkim/dkim-dns.c b/libopendkim/dkim-dns.c
+index 584f864a..011fc55a 100644
+--- a/libopendkim/dkim-dns.c
++++ b/libopendkim/dkim-dns.c
+@@ -182,7 +182,7 @@ dkim_res_query(void *srv, int type, unsigned char *query, unsigned char *buf,
+ #else /* HAVE_RES_NINIT */
+ 	ret = res_query((char *) query, C_IN, type, buf, buflen);
+ #endif /* HAVE_RES_NINIT */
+-	if (ret == -1)
++	if (ret == -1 && h_errno != HOST_NOT_FOUND)
+ 		return DKIM_DNS_ERROR;
+ 
+ 	rq = (struct dkim_res_qh *) malloc(sizeof *rq);
+@@ -194,10 +194,12 @@ dkim_res_query(void *srv, int type, unsigned char *query, unsigned char *buf,
+ 		rq->rq_dnssec = DKIM_DNSSEC_SECURE;
+ 	else
+ 		rq->rq_dnssec = DKIM_DNSSEC_INSECURE;
+-	if (ret == -1)
++
++	if (ret == -1 && h_errno == HOST_NOT_FOUND)
+ 	{
+-		rq->rq_error = errno;
+-		rq->rq_buflen = 0;
++		rq->rq_error = 0;
++		rq->rq_buflen = sizeof(*hdr);
++		hdr->rcode = NXDOMAIN;
+ 	}
+ 	else
+ 	{
+diff --git a/libopendkim/dkim-keys.c b/libopendkim/dkim-keys.c
+index a2bd7dc2..3f0bd7c8 100644
+--- a/libopendkim/dkim-keys.c
++++ b/libopendkim/dkim-keys.c
+@@ -232,6 +232,13 @@ dkim_get_key_dns(DKIM *dkim, DKIM_SIGINFO *sig, u_char *buf, size_t buflen)
+ 	cp = (u_char *) &ansbuf + HFIXEDSZ;
+ 	eom = (u_char *) &ansbuf + anslen;
+ 
++	/* if NXDOMAIN, return DKIM_STAT_NOKEY */
++	if (hdr.rcode == NXDOMAIN)
++	{
++		dkim_error(dkim, "'%s' record not found", qname);
++		return DKIM_STAT_NOKEY;
++	}
++
+ 	/* skip over the name at the front of the answer */
+ 	for (qdcount = ntohs((unsigned short) hdr.qdcount);
+ 	     qdcount > 0;
+@@ -265,13 +272,6 @@ dkim_get_key_dns(DKIM *dkim, DKIM_SIGINFO *sig, u_char *buf, size_t buflen)
+ 		return DKIM_STAT_KEYFAIL;
+ 	}
+ 
+-	/* if NXDOMAIN, return DKIM_STAT_NOKEY */
+-	if (hdr.rcode == NXDOMAIN)
+-	{
+-		dkim_error(dkim, "'%s' record not found", qname);
+-		return DKIM_STAT_NOKEY;
+-	}
+-
+ 	/* if truncated, we can't do it */
+ 	if (dkim_check_dns_reply(ansbuf, anslen, C_IN, T_TXT) == 1)
+ 	{

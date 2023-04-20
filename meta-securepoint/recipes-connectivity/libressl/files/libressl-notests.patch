@@ -1,0 +1,9 @@
+diff -up libressl-2.9.2/Makefile.am.notests libressl-2.9.2/Makefile.am
+--- libressl-2.9.2/Makefile.am.notests	2019-09-17 11:44:07.343540653 +0200
++++ libressl-2.9.2/Makefile.am	2019-09-17 11:44:13.251561695 +0200
+@@ -1,4 +1,4 @@
+-SUBDIRS = crypto ssl tls include apps tests man
++SUBDIRS = crypto ssl tls include apps man
+ ACLOCAL_AMFLAGS = -I m4
+ 
+ pkgconfigdir = $(libdir)/pkgconfig

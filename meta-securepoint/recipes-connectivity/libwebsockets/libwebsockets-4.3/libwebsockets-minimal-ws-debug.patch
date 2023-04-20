@@ -1,0 +1,37 @@
+diff -up libwebsockets/minimal-examples/ws-client/minimal-ws-client/minimal-ws-client.c.ipv4 libwebsockets/minimal-examples/ws-client/minimal-ws-client/minimal-ws-client.c
+--- libwebsockets/minimal-examples/ws-client/minimal-ws-client/minimal-ws-client.c.ipv4	2022-11-25 10:33:27.357340322 +0100
++++ libwebsockets/minimal-examples/ws-client/minimal-ws-client/minimal-ws-client.c	2022-11-25 13:19:10.165208586 +0100
+@@ -110,6 +110,11 @@ callback_minimal(struct lws *wsi, enum l
+ 	case LWS_CALLBACK_CLIENT_CLOSED:
+ 		goto do_retry;
+ 
++#ifdef LWS_CALLBACK_CLIENT_RECEIVE_PING
++	case LWS_CALLBACK_CLIENT_RECEIVE_PING:
++		lwsl_user("%s: received ping\n", __func__);
++		return 0;
++#endif
+ 	default:
+ 		break;
+ 	}
+@@ -153,6 +158,8 @@ int main(int argc, const char **argv)
+ 	const char *p;
+ 	int n = 0;
+ 
++	int logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_INFO | LLL_HEADER | LLL_DEBUG | LLL_NOTICE;
++
+ 	signal(SIGINT, sigint_handler);
+ 	memset(&info, 0, sizeof info);
+ 	lws_cmdline_option_handle_builtin(argc, argv, &info);
+@@ -195,6 +202,12 @@ int main(int argc, const char **argv)
+ 	if (lws_cmdline_option(argc, argv, "-e"))
+ 		ssl_connection |= LCCSCF_ALLOW_EXPIRED;
+ 
++	if (lws_cmdline_option(argc, argv, "-4"))
++		info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
++
++	if (lws_cmdline_option(argc, argv, "-d"))
++		lws_set_log_level(logs, NULL);
++
+ 	info.fd_limit_per_thread = 1 + 1 + 1;
+ 
+ 	context = lws_create_context(&info);

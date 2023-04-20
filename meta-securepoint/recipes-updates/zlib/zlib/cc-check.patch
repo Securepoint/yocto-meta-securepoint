@@ -1,0 +1,11 @@
+diff -up zlib-1.2.12/configure.compiler zlib-1.2.12/configure
+--- zlib-1.2.12/configure.compiler	2022-03-31 14:59:37.548892502 +0200
++++ zlib-1.2.12/configure	2022-03-31 15:00:17.840887286 +0200
+@@ -167,6 +167,7 @@ extern int getchar();
+ int hello() {return getchar();}
+ EOF
+ 
++cc=${CC}
+ if test -z "$CC"; then
+   echo Checking for ${CROSS_PREFIX}gcc... | tee -a configure.log
+   if ${CROSS_PREFIX}gcc -v >/dev/null 2>&1; then

@@ -5,91 +5,72 @@ DESCRIPTION = "Clam AntiVirus"
 HOMEPAGE = "http://www.clamav.net/"
 LICENSE = "GPLv2"
 LIC_FILES_CHKSUM = "\
-    file://COPYING;md5=2c0b5770a62017a3121c69bb9f680b0c \
-    file://COPYING.bzip2;md5=ae8d555c34b656ff864ea9437a10d3a0 \
-    file://COPYING.file;md5=e63a61022c36cff2fdfbf02dd51674bd \
-    file://COPYING.getopt;md5=5d05c2548fde51bf7c7132e09b2947de \
-    file://COPYING.LGPL;md5=2d5025d4aa3495befef8f17206a5b0a1 \
-    file://COPYING.llvm;md5=c82fc668ef1809acdd0684811df93bfc \
-    file://COPYING.lzma;md5=84044362a179fe47ab28fec03be352d0 \
-    file://COPYING.regex;md5=7a04124fed6082129732f23a7d16db60 \
-    file://COPYING.YARA;md5=58810d217b67bebe14e636bfe2595bdf \
-    file://COPYING.unrar;md5=6a741ba21afc8b71aeaee3b5f86a8111 \
-    file://COPYING.zlib;md5=3648a0b9713ab246e11536055165a41a \
+    file://COPYING.txt;md5=2c0b5770a62017a3121c69bb9f680b0c \
+    file://COPYING/COPYING.bzip2;md5=ae8d555c34b656ff864ea9437a10d3a0 \
+    file://COPYING/COPYING.file;md5=e63a61022c36cff2fdfbf02dd51674bd \
+    file://COPYING/COPYING.getopt;md5=5d05c2548fde51bf7c7132e09b2947de \
+    file://COPYING/COPYING.LGPL;md5=2d5025d4aa3495befef8f17206a5b0a1 \
+    file://COPYING/COPYING.llvm;md5=c82fc668ef1809acdd0684811df93bfc \
+    file://COPYING/COPYING.lzma;md5=84044362a179fe47ab28fec03be352d0 \
+    file://COPYING/COPYING.regex;md5=7a04124fed6082129732f23a7d16db60 \
+    file://COPYING/COPYING.YARA;md5=58810d217b67bebe14e636bfe2595bdf \
+    file://COPYING/COPYING.unrar;md5=6a741ba21afc8b71aeaee3b5f86a8111 \
+    file://COPYING/COPYING.zlib;md5=3648a0b9713ab246e11536055165a41a \
 "
 
 SECTION = "Applications/File"
-DEPENDS = "libxml2 zlib bzip2 openssl pcre"
+DEPENDS = "libxml2 zlib bzip2 openssl libpcre2 libtool json-c"
 PR = "r0"
 
 SRC_URI = "\
     https://www.clamav.net/downloads/production/${PN}-${PV}.tar.gz \
-    file://clamav_xml2_check.patch \
-    file://clamav_pcre_check.patch \
     file://clamav_fdpassing.patch \
-    file://clamav_0.99.2_subdir-objets.patch \
-    file://clamav_0.99.2_llvm.patch \
     file://etc_sv_clamd_run \
     file://etc_sv_clamd_down \
 "
 
-inherit autotools useradd runit pkgconfig
+inherit cmake useradd runit pkgconfig
 
 RUNIT_SERVICES = "clamd"
-PACKAGES_prepend += " ${PN}-clamd ${PN}-update ${PN}-libs ${PN}-common "
+PACKAGES:prepend = " ${PN}-clamd ${PN}-clamdscan ${PN}-update ${PN}-libs ${PN}-common "
 
 USERADD_PACKAGES += "${PN}-common"
-USERADD_PARAM_${PN}-common = "-r -d /var/empty -g clamav -s /bin/false clamav;"
-GROUPADD_PARAM_${PN}-common = "-r -f clamav;"
+USERADD_PARAM:${PN}-common = "-r -d /var/empty -g clamav -s /bin/false clamav;"
+GROUPADD_PARAM:${PN}-common = "-r -f clamav;"
 
-export LDFLAGS='-Wl,--as-needed'
-export FRESHCLAM_LIBS='-lz'
-# IPv6 check is buggy and does not work when there are no IPv6 interface on build machine
-export have_cv_ipv6='yes'
+EXTRA_OECMAKE += " -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=/usr/lib \
+                   -DAPP_CONFIG_DIRECTORY=/etc -DDATABASE_DIRECTORY=/data/clamav \
+                   -DCMAKE_CROSSCOMPILING=false -DCMAKE_SKIP_RPATH=TRUE -DBYTECODE_RUNTIME=none \
+                   -DPCRE2_LIBRARY=${STAGING_LIBDIR}/libpcre2-8.so -DPCRE2_INCLUDE_DIR=${STAGING_INCDIR} \
+                   -DJSONC_LIBRARY=${STAGING_LIBDIR}/libjson-c.so -DJSONC_INCLUDE_DIR=${STAGING_INCDIR}/json-c \
+                   -DZLIB_LIBRARY=${STAGING_LIBDIR}/libz.so -DZLIB_INCLUDE_DIR=${STAGING_INCDIR} \
+                   -DLIBXML2_LIBRARY=${STAGING_LIBDIR}/libxml2.so -DLIBXML2_INCLUDE_DIR=${STAGING_INCDIR}/libxml2 \
+                 "
 
-# curl is only required for 'clamsubmit' so disable it
-EXTRA_OECONF = "\
-    --program-prefix='' \
-    --disable-clamav \
-    --disable-static \
-    --disable-rpath \
-    --disable-clamdtop \
-    --disable-llvm \
-    --with-included-ltdl \
-    --with-xml=${STAGING_LIBDIR}/.. \
-    --with-libcheck-prefix=${STAGING_LIBDIR}/.. \
-    --with-libbz2-prefix=${STAGING_LIBDIR}/.. \
-    --with-zlib=${STAGING_LIBDIR}/.. \
-    --with-openssl=${STAGING_LIBDIR}/.. \
-    --with-pcre=${STAGING_LIBDIR}/.. \
-    --without-libcurl \
-    CPPFLAGS=-I${STAGING_LIBDIR}/../include/libxml2 \
-    have_cv_gai=yes \
-    ac_cv_c_mmap_private=yes \
-    ac_cv_c_can_get_pagesize=yes \
-    ac_cv_c_mmap_anonymous=MAP_ANONYMOUS \
-"
+PACKAGECONFIG = "unrar"
+PACKAGECONFIG[milter] = "-DENABLE_MILTER=ON ,-DENABLE_MILTER=OFF, curl, curl"
+PACKAGECONFIG[clamonacc] = "-DENABLE_CLAMONACC=ON ,-DENABLE_CLAMONACC=OFF,"
+PACKAGECONFIG[unrar] = "-DENABLE_UNRAR=ON ,-DENABLE_UNRAR=OFF,"
+PACKAGECONFIG[systemd] = "-DENABLE_SYSTEMD=ON -DSYSTEMD_UNIT_DIR=${systemd_system_unitdir}, -DENABLE_SYSTEMD=OFF, systemd"
+PACKAGECONFIG[man] = "-DENABLE_MAN_PAGES=ON, -DENABLE_MAN_PAGES=OFF,"
+PACKAGECONFIG[ctest] = "-DENABLE_TESTS=ON, -DENABLE_TESTS=OFF,"
 
-do_configure_prepend() {
-    cp -f ${WORKDIR}/pcre.m4 ${S}/m4/reorganization/libs/
-} 
-
-do_configure_append() {
+do_configure:append() {
     # configure can't detect this if cross compiling
     echo "#define HAVE_FD_PASSING 1" >> ${B}/clamav-config.h
 }
 
-do_install_prepend() {
-    # remove last standing rpath
-    sed -i -e 's|^relink_command=.*||' libclamav/libclamunrar_iface.la libclamav/.libs/libclamunrar_iface.la
+do_install:prepend() {
+    # for ${PN}-common
     install -d ${D}/var/empty
 }
 
-FILES_${PN}-libs       = "${libdir}/libclam*.so.*"
-FILES_${PN}-clamd      = "/usr/sbin/clamd /etc/clamd.* /etc/sv/clamd/* /var/service/clamd"
-FILES_${PN}-update     = "/usr/bin/freshclam /etc/freshclam.*"
-FILES_${PN}-common     = "/var/empty"
+FILES:${PN}-libs       = "${libdir}/libclam*.so.* ${libdir}/libfresh*.so.*"
+FILES:${PN}-clamd      = "/usr/sbin/clamd /etc/clamd.* /etc/sv/clamd/* /var/service/clamd"
+FILES:${PN}-clamdscan  = "/usr/bin/clamdscan"
+FILES:${PN}-update     = "/usr/bin/freshclam /etc/freshclam.*"
+FILES:${PN}-common     = "/var/empty"
 
-RDEPENDS_${PN}        = "${PN}-common"
-RDEPENDS_${PN}-clamd  = "${PN}-common"
-RDEPENDS_${PN}-update = "${PN}-common"
+RDEPENDS:${PN}        = "${PN}-common"
+RDEPENDS:${PN}-clamd  = "${PN}-common"
+RDEPENDS:${PN}-update = "${PN}-common"

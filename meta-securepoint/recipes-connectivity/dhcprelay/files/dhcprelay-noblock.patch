@@ -1,0 +1,83 @@
+diff -ur dhcprelay-1.2.orig/dhcprelay.c dhcprelay-1.2/dhcprelay.c
+--- dhcprelay-1.2.orig/dhcprelay.c	2019-01-31 13:38:42.406621000 +0100
++++ dhcprelay-1.2/dhcprelay.c	2019-02-04 10:52:06.476541000 +0100
+@@ -126,32 +126,41 @@
+     create_bootp(argv[argc-1]);
+ 
+     while (1) {
++        static int data_processed = 0;
++
++        if (!data_processed) {
++          struct timespec ts = {0,100000000L};
++          nanosleep(&ts, NULL);
++        }
++
++        data_processed = 0;
++
+ 	u_char i;
+ 	if (DEBUG) fprintf(stderr,"%c",wait[waitcounter++%4]);
+ 
+ 	i=0;
+ 	while (interfaces[i].number) {
+ 	    interface=&interfaces[i];
+-	    pcap_dispatch(interface->cap,1,pcap_callback,NULL);
+-
+-	    {
+-		fd_set read;
+-		struct timeval timeout;
+-		int max;
+-
+-		FD_ZERO(&read);
+-		FD_SET(interface->fds,&read);
+-		max=interface->fds;
+-		timeout.tv_sec=0;
+-		timeout.tv_usec=10;
+-		if (select(max+1,&read,NULL,NULL,&timeout)<0) {
+-		    errx(1,"select");
+-		}
+-		if (FD_ISSET(interface->fds,&read)) {
+-		    process_bootps();
+-		    FD_CLR(interface->fds,&read);
+-		}
+-	    }
++	    if (1 == pcap_dispatch(interface->cap,1,pcap_callback,NULL)) {
++                data_processed = 1;
++            }
++
++            fd_set read;
++            struct timeval timeout;
++            int max;
++
++            FD_ZERO(&read);
++            FD_SET(interface->fds,&read);
++            max=interface->fds;
++            timeout.tv_sec=0;
++            timeout.tv_usec=0;
++            if (select(max+1,&read,NULL,NULL,&timeout)<0) {
++                errx(1,"select");
++            }
++            if (FD_ISSET(interface->fds,&read)) {
++                data_processed |= process_bootps();
++                FD_CLR(interface->fds,&read);
++            }
+ 
+ 	    i++;
+ 	}
+@@ -302,7 +311,7 @@
+ 		errx(1,"pcap_compile: %s",pcap_geterr(cap));
+ 	    if (pcap_setfilter(cap,&fp)<0)
+ 		errx(1,"pcap_setfilter: %s",pcap_geterr(cap));
+-	    if (pcap_setnonblock(cap,0,errbuf)<0)
++	    if (pcap_setnonblock(cap,1,errbuf)<0)
+ 		errx(1,"pcap_setnonblock(%s): %s",ifname,pcap_geterr(cap));
+ 	    interfaces[i-1].cap=cap;
+ 	}
+@@ -366,7 +375,7 @@
+ 
+     process_bootps_server(i,msgbuf,fromsock,fromlen);
+     if (DEBUG>1) printf("\n");
+-    return 0;
++    return 1;
+ }
+ 
+ int process_bootps_server(int msgbuf_len,u_char *msgbuf,struct sockaddr_in fromsock,socklen_t socklen) {

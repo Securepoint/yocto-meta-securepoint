@@ -12,7 +12,7 @@ LICENSE = "LGPLv2.1"
 LIC_FILES_CHKSUM = "file://COPYING;md5=e639b5c15b4bd709b52c4e7d4e2b09a4"
 PR = "r0"
 
-SRC_URI = "http://ftp.gnu.org/gnu/osip/libosip2-${PV}.tar.gz"
+SRC_URI = "https://ftp.gnu.org/gnu/osip/libosip2-${PV}.tar.gz"
 SRC_URI[md5sum] = "756423628683c07f817432f046a26516"
 SRC_URI[sha256sum] = "996aa0363316a871915b6f12562af53853a9962bb93f6abe1ae69f8de7008504"
 

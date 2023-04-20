@@ -1,0 +1,15 @@
+diff --git a/keepalived/vrrp/vrrp.c b/keepalived/vrrp/vrrp.c
+index 188ed2e..6b9f801 100644
+--- a/keepalived/vrrp/vrrp.c
++++ b/keepalived/vrrp/vrrp.c
+@@ -4059,8 +4059,10 @@ set_vrrp_src_addr(void)
+ 			bool addr_missing = false;
+ 
+ 			if (vrrp->family == AF_INET) {
++				/*
+ 				if (!(VRRP_CONFIGURED_IFP(vrrp))->sin_addr.s_addr)
+ 					addr_missing = true;
++				*/
+ 			}
+ 			else {
+ #ifdef _HAVE_VRRP_VMAC_

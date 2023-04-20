@@ -1,0 +1,4181 @@
+diff --git a/.appveyor.yml b/.appveyor.yml
+index c2fffb5..b410f19 100644
+--- a/.appveyor.yml
++++ b/.appveyor.yml
+@@ -19,7 +19,7 @@ install:
+   - 7z x libpng.tar.gz -so | 7z x -si -ttar > nul
+   - move libpng-1.6.28 libpng
+   - cd libpng
+-  - cmake . -DZLIB_INCLUDE_DIR=..\zlib -DZLIB_LIBRARY=..\zlib\debug\zlibd.lib
++  - cmake . -DZLIB_INCLUDE_DIR=..\zlib -DZLIB_LIBRARY=..\zlib\debug\zlibstaticd.lib
+   - cmake --build .
+   - cd ..
+   # go back to source root
+@@ -29,5 +29,6 @@ install:
+ build_script:
+   - mkdir build
+   - cd build 
+-  - cmake .. -DZLIB_INCLUDE_DIR=..\deps\zlib -DZLIB_LIBRARY=..\deps\zlib\debug\zlibd.lib -DPNG_PNG_INCLUDE_DIR=..\deps\libpng -DPNG_LIBRARY=..\deps\libpng\debug\libpng16d.lib
++  - cmake .. -DZLIB_INCLUDE_DIR=..\deps\zlib -DZLIB_LIBRARY=..\deps\zlib\debug\zlibstaticd.lib -DPNG_PNG_INCLUDE_DIR=..\deps\libpng -DPNG_LIBRARY=..\deps\libpng\debug\libpng16_staticd.lib
+   - cmake --build .
++  - ctest -C Debug --output-on-failure
+diff --git a/.gitignore b/.gitignore
+index fccd7af..03bdf0f 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -66,6 +66,7 @@ test/cargstest
+ test/copyrecttest
+ test/cursortest
+ test/encodingstest
++test/wstest
+ /test/tjbench
+ /test/tjunittest
+ vncterm/LinuxVNC
+diff --git a/.travis.yml b/.travis.yml
+index 3b1f1b5..077dc84 100644
+--- a/.travis.yml
++++ b/.travis.yml
+@@ -23,5 +23,7 @@ before_install:
+ script:
+   - mkdir build
+   - cd build
+-  - cmake .. && make
++  - cmake ..
++  - cmake --build .
++  - ctest --output-on-failure
+ 
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6620b39..56f477b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -7,9 +7,10 @@ include(CheckIncludeFile)
+ include(CheckTypeSize)
+ include(TestBigEndian)
+ include(CheckCSourceCompiles)
+-include(CheckCXXSourceCompiles)
+ include(CheckCSourceRuns)
+ 
++enable_testing()
++
+ set(PACKAGE_NAME           "LibVNCServer")
+ set(FULL_PACKAGE_NAME      "LibVNCServer")
+ set(VERSION_MAJOR          "0")
+@@ -23,9 +24,9 @@ set(COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common)
+ set(LIBVNCCLIENT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libvncclient)
+ set(LIBVNCSRVEXAMPLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/examples)
+ set(LIBVNCCLIEXAMPLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/client_examples)
++set(TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/test)
+ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+ 
+-
+ include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/libvncserver ${CMAKE_CURRENT_SOURCE_DIR}/common)
+ 
+ # all the build configuration switches
+@@ -361,6 +362,7 @@ if(LIBVNCSERVER_WITH_WEBSOCKETS)
+   set(LIBVNCSERVER_SOURCES
+     ${LIBVNCSERVER_SOURCES}
+     ${LIBVNCSERVER_DIR}/websockets.c
++    ${LIBVNCSERVER_DIR}/ws_decode.c
+     ${WSSRCS}
+   )
+ endif(LIBVNCSERVER_WITH_WEBSOCKETS)
+@@ -467,7 +469,81 @@ foreach(e ${LIBVNCCLIENT_EXAMPLES})
+   target_link_libraries(client_examples_${e} vncclient ${CMAKE_THREAD_LIBS_INIT} ${SDL_LIBRARY} ${FFMPEG_LIBRARIES})
+ endforeach(e ${LIBVNCCLIENT_EXAMPLES})
+ 
++
++#
++# them tests
++#
++
++if(UNIX)
++    set(ADDITIONAL_TEST_LIBS m)
++endif(UNIX)
++
++set(SIMPLETESTS
++   cargstest
++   copyrecttest
++)
++
++if(CMAKE_USE_PTHREADS_INIT)
++  set(SIMPLETESTS
++      ${SIMPLETESTS}
++      encodingstest
++     )
++endif(CMAKE_USE_PTHREADS_INIT)
++
++file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test)
++foreach(t ${SIMPLETESTS})
++  add_executable(test_${t} ${TESTS_DIR}/${t}.c)
++  set_target_properties(test_${t} PROPERTIES OUTPUT_NAME ${t})
++  set_target_properties(test_${t} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test)
++  target_link_libraries(test_${t} vncserver vncclient ${ADDITIONAL_TEST_LIBS})
++endforeach(t ${SIMPLETESTS})
++
++if(FOUND_LIBJPEG_TURBO)
++  add_executable(test_tjunittest
++                 ${TESTS_DIR}/tjunittest.c
++                 ${TESTS_DIR}/tjutil.c
++                 ${TESTS_DIR}/tjutil.h
++                 ${COMMON_DIR}/turbojpeg.c
++                 ${COMMON_DIR}/turbojpeg.h
++                )
++  set_target_properties(test_tjunittest PROPERTIES OUTPUT_NAME tjunittest)
++  set_target_properties(test_tjunittest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test)
++  target_link_libraries(test_tjunittest vncserver vncclient ${ADDITIONAL_TEST_LIBS})
++
++  add_executable(test_tjbench
++                 ${TESTS_DIR}/tjbench.c
++                 ${TESTS_DIR}/tjutil.c
++                 ${TESTS_DIR}/tjutil.h
++                 ${TESTS_DIR}/bmp.c
++                 ${TESTS_DIR}/bmp.h
++                 ${COMMON_DIR}/turbojpeg.c
++                 ${COMMON_DIR}/turbojpeg.h
++                )
++  set_target_properties(test_tjbench PROPERTIES OUTPUT_NAME tjbench)
++  set_target_properties(test_tjbench PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test)
++  target_link_libraries(test_tjbench vncserver vncclient ${ADDITIONAL_TEST_LIBS})
++
++endif(FOUND_LIBJPEG_TURBO)
++
++add_executable(test_wstest
++               ${TESTS_DIR}/wstest.c
++               ${TESTS_DIR}/wstestdata.inc
++              )
++set_target_properties(test_wstest PROPERTIES OUTPUT_NAME wstest)
++set_target_properties(test_wstest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test)
++target_link_libraries(test_wstest vncserver vncclient ${ADDITIONAL_TEST_LIBS})
++
++add_test(NAME cargs COMMAND test_cargstest)
++if(FOUND_LIBJPEG_TURBO)
++    add_test(NAME turbojpeg COMMAND test_tjunittest)
++endif(FOUND_LIBJPEG_TURBO)
++add_test(NAME wstest COMMAND test_wstest)
++
++
++
++#
+ # this gets the libraries needed by TARGET in "-libx -liby ..." form
++#
+ function(get_link_libraries OUT TARGET)
+     set(RESULT "")
+     get_target_property(LIBRARIES ${TARGET} INTERFACE_LINK_LIBRARIES)
+@@ -507,3 +583,6 @@ install_files(/lib/pkgconfig FILES
+     libvncserver.pc
+     libvncclient.pc
+ )
++
++SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -O0 -g")
++SET( CMAKE_C_FLAGS  "${CMAKE_CXX_FLAGS} -O0 -g")
+diff --git a/LibVNCServer.spec.in b/LibVNCServer.spec.in
+deleted file mode 100755
+index 13fe351..0000000
+--- a/LibVNCServer.spec.in
++++ /dev/null
+@@ -1,97 +0,0 @@
+-# Note that this is NOT a relocatable package
+-Name: @PACKAGE@
+-Version: @VERSION@
+-Release: 2
+-Summary: a library to make writing a vnc server easy
+-Copyright: GPL
+-Group: Libraries/Network
+-Packager: Johannes.Schindelin <Johannes.Schindelin@gmx.de>
+-Source: %{name}-%{version}.tar.gz
+-BuildRoot: %{_tmppath}/%{name}-%{version}-buildroot
+-
+-%description
+-LibVNCServer makes writing a VNC server (or more correctly, a program
+-exporting a framebuffer via the Remote Frame Buffer protocol) easy.
+-
+-It is based on OSXvnc, which in turn is based on the original Xvnc by
+-ORL, later AT&T research labs in UK.
+-
+-It hides the programmer from the tedious task of managing clients and
+-compression schemata.
+-
+-LibVNCServer was put together and is (actively ;-) maintained by
+-Johannes Schindelin <Johannes.Schindelin@gmx.de>
+-
+-%package devel
+-Requires:     %{name} = %{version}
+-Summary:      Static Libraries and Header Files for LibVNCServer
+-Group:        Libraries/Network
+-Requires:     %{name} = %{version}
+-
+-%description devel
+-Static Libraries and Header Files for LibVNCServer.
+-
+-%package x11vnc
+-Requires:     %{name} = %{version}
+-Summary:      VNC server for the current X11 session
+-Group:        User Interface/X
+-Requires:     %{name} = %{version}
+-
+-%description x11vnc
+-x11vnc is to X Window System what WinVNC is to Windows, i.e. a server
+-which serves the current X Window System desktop via RFB (VNC)
+-protocol to the user.
+-
+-Based on the ideas of x0rfbserver and on LibVNCServer, it has evolved
+-into a versatile and performant while still easy to use program.
+-
+-%prep
+-%setup -n %{name}-%{version}
+-
+-%build
+-# CFLAGS="$RPM_OPT_FLAGS" ./configure --prefix=%{_prefix}
+-%configure
+-make
+-
+-%install
+-[ -n "%{buildroot}" -a "%{buildroot}" != / ] && rm -rf %{buildroot}
+-# make install prefix=%{buildroot}%{_prefix}
+-%makeinstall includedir="%{buildroot}%{_includedir}/rfb"
+-
+-%{__install} -d -m0755 %{buildroot}%{_datadir}/x11vnc/classes
+-%{__install} webclients/VncViewer.jar webclients/index.vnc \
+-  %{buildroot}%{_datadir}/x11vnc/classes
+-
+-%clean
+-[ -n "%{buildroot}" -a "%{buildroot}" != / ] && rm -rf %{buildroot}
+-
+-%pre
+-%post
+-%preun
+-%postun
+-
+-%files
+-%defattr(-,root,root)
+-%doc README INSTALL AUTHORS ChangeLog NEWS TODO 
+-%{_bindir}/LinuxVNC
+-%{_bindir}/libvncserver-config
+-%{_libdir}/libvncclient.*
+-%{_libdir}/libvncserver.*
+-
+-%files devel
+-%defattr(-,root,root)
+-%{_includedir}/rfb/*
+-
+-%files x11vnc
+-%defattr(-,root,root)
+-%{_bindir}/x11vnc
+-%{_mandir}/man1/x11vnc.1*
+-%{_datadir}/x11vnc/classes
+-
+-%changelog
+-* Fri Aug 19 2005 Alberto Lusiani <alusiani@gmail.com> release 2
+-- create separate package for x11vnc to prevent conflicts with x11vnc rpm
+-- create devel package, needed to compile but not needed for running
+-* Sun Feb 9 2003 Johannes Schindelin
+-- created libvncserver.spec.in
+-
+diff --git a/Makefile.am b/Makefile.am
+deleted file mode 100644
+index a7bc64d..0000000
+--- a/Makefile.am
++++ /dev/null
+@@ -1,28 +0,0 @@
+-ACLOCAL_AMFLAGS = -I m4
+-
+-SUBDIRS=libvncserver examples libvncclient webclients client_examples test
+-DIST_SUBDIRS=libvncserver examples libvncclient webclients client_examples test
+-EXTRA_DIST = CMakeLists.txt rfb/rfbconfig.h.cmake
+-
+-bin_SCRIPTS = libvncserver-config
+-
+-pkgconfigdir = $(libdir)/pkgconfig
+-pkgconfig_DATA = libvncserver.pc libvncclient.pc
+-
+-includedir=$(prefix)/include/rfb
+-
+-include_HEADERS=rfb/rfb.h rfb/rfbconfig.h rfb/rfbproto.h \
+-	rfb/keysym.h rfb/rfbregion.h rfb/rfbclient.h
+-
+-$(PACKAGE)-$(VERSION).tar.gz: dist
+-
+-if HAVE_RPM
+-# Rule to build RPM distribution package
+-rpm: $(PACKAGE)-$(VERSION).tar.gz $(PACKAGE).spec
+-	cp $(PACKAGE)-$(VERSION).tar.gz @RPMSOURCEDIR@
+-	rpmbuild -ba $(PACKAGE).spec
+-endif
+-
+-t:
+-	$(MAKE) -C test test
+-
+diff --git a/README b/README
+index f632c9e..5a69f3e 100644
+--- a/README
++++ b/README
+@@ -68,6 +68,19 @@ https://github.com/ocrespo/VNCpp
+ 
+ Mail me, if your application is missing!
+ 
++How to build
++------------
++
++LibVNCServer uses CMake, so you can build via:
++
++    mkdir build
++    cd build
++    cmake ..
++    cmake --build .
++
++For some more comprehensive examples that include installation of dependencies, see
++the [Unix CI](.travis.yml) and [Windows CI](.appveyor.yml) build setups.
++
+ How to use
+ ----------
+ 
+diff --git a/TODO b/TODO
+index 3139f35..285d9ce 100644
+--- a/TODO
++++ b/TODO
+@@ -1,8 +1,18 @@
+-immediate:
++high-prio:
+ ----------
+ - Add sources for the java stuff.
+ - Implement encryption in libvncserver.
+-- Add a libvncclient-config script.
++- Get rid of compat dir
++- Fix encodingstest
++
++
++maybe-later:
++------------
++
++selectbox: scroll bars
++authentification schemes (secure vnc)
++	IO function ptr exists; now explain how to tunnel and implement a
++	client address restriction scheme.
+ 
+ make SDLvncviewer more versatile
+ 	- test for missing keys (especially "[]{}" with ./examples/mac),
+@@ -18,12 +28,3 @@ make corre work again (libvncclient or libvncserver?)
+ teach SDLvncviewer about CopyRect...
+ implement "-record" in libvncclient
+ implement QoS for Windows in libvncclient
+-
+-later:
+-------
+-
+-selectbox: scroll bars
+-authentification schemes (secure vnc)
+-	IO function ptr exists; now explain how to tunnel and implement a
+-	client address restriction scheme.
+-VisualNaCro testing
+diff --git a/autogen.sh b/autogen.sh
+deleted file mode 100755
+index 2437158..0000000
+--- a/autogen.sh
++++ /dev/null
+@@ -1,4 +0,0 @@
+-#!/bin/sh
+-
+-autoreconf -fiv &&
+-./configure "$@"
+diff --git a/client_examples/Makefile.am b/client_examples/Makefile.am
+deleted file mode 100644
+index 9cb2c32..0000000
+--- a/client_examples/Makefile.am
++++ /dev/null
+@@ -1,38 +0,0 @@
+-AM_CPPFLAGS = -I$(top_srcdir)
+-LDADD = ../libvncclient/libvncclient.la @WSOCKLIB@
+-
+-if WITH_FFMPEG
+-FFMPEG_HOME=@with_ffmpeg@
+-
+-if HAVE_MP3LAME
+-MP3LAME_LIB=-lmp3lame
+-endif
+-
+-vnc2mpg_CFLAGS=-I$(FFMPEG_HOME)/libavformat -I$(FFMPEG_HOME)/libavcodec -I$(FFMPEG_HOME)/libavutil
+-vnc2mpg_LDADD=$(LDADD) $(FFMPEG_HOME)/libavformat/libavformat.a $(FFMPEG_HOME)/libavcodec/libavcodec.a $(MP3LAME_LIB) -lm
+-
+-FFMPEG_CLIENT=vnc2mpg
+-endif
+-
+-if HAVE_LIBSDL
+-SDLVIEWER=SDLvncviewer
+-
+-SDLvncviewer_CFLAGS=$(SDL_CFLAGS)
+-SDLvncviewer_SOURCES=SDLvncviewer.c scrap.c scrap.h
+-
+-# thanks to autoconf, this looks ugly
+-SDLvncviewer_LDADD=$(LDADD) $(SDL_LIBS)
+-endif
+-
+-if HAVE_LIBGTK
+-GTKVIEWER=gtkvncviewer
+-gtkvncviewer_SOURCES=gtkvncviewer.c
+-gtkvncviewer_CFLAGS=$(GTK_CFLAGS)
+-gtkvncviewer_LDADD=$(LDADD) $(GTK_LIBS)
+-endif
+-
+-
+-noinst_PROGRAMS=ppmtest $(SDLVIEWER) $(GTKVIEWER) $(FFMPEG_CLIENT) backchannel
+-
+-
+-
+diff --git a/configure.ac b/configure.ac
+deleted file mode 100644
+index f13edb4..0000000
+--- a/configure.ac
++++ /dev/null
+@@ -1,599 +0,0 @@
+-# Process this file with autoconf to produce a configure script.
+-AC_INIT(LibVNCServer, 0.9.11, https://github.com/LibVNC/libvncserver)
+-AM_INIT_AUTOMAKE([subdir-objects])
+-m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
+-AM_CONFIG_HEADER(rfbconfig.h)
+-AX_PREFIX_CONFIG_H([rfb/rfbconfig.h])
+-AC_CONFIG_MACRO_DIR([m4])
+-
+-
+-# set detailed version info
+-AC_DEFINE(VERSION_MAJOR, 0, LibVNCServer major version)
+-AC_DEFINE(VERSION_MINOR, 9, LibVNCServer minor version)
+-AC_DEFINE(VERSION_PATCHLEVEL, 11, LibVNCServer patchlevel)
+-
+-# Checks for programs.
+-AC_PROG_CC
+-AM_PROG_CC_C_O
+-if test -z "$CC"; then
+-	CCLD="\$(CC)"
+-else
+-	CCLD="$CC"
+-fi
+-test "x$GCC" = "xyes" && CFLAGS="$CFLAGS -Wall"
+-AC_PROG_MAKE_SET
+-AC_LIBTOOL_WIN32_DLL
+-AC_PROG_LIBTOOL
+-AC_CHECK_TOOL([AR], [ar], [/usr/bin/ar],
+-                  [$PATH:/usr/ccs/bin])
+-
+-# Options
+-AH_TEMPLATE(WITH_TIGHTVNC_FILETRANSFER, [Disable TightVNCFileTransfer protocol])
+-AC_ARG_WITH(tightvnc-filetransfer,
+-	[  --without-tightvnc-filetransfer  disable TightVNC file transfer protocol],
+-	, [ with_tightvnc_filetransfer=yes ])
+-# AC_DEFINE moved to after libpthread check.
+-
+-# WebSockets support
+-AC_CHECK_FUNC(__b64_ntop, HAVE_B64_IN_LIBC="true", HAVE_B64_IN_LIBC="false")
+-if test "x$HAVE_B64_IN_LIBC" != "xtrue"; then
+-	AC_CHECK_LIB(resolv, __b64_ntop, HAVE_B64_IN_LIBRESOLV="true", HAVE_B64_IN_LIBRESOLV="false")
+-	if test "x$HAVE_B64_IN_LIBRESOLV" = "xtrue"; then
+-		RESOLV_LIB="-lresolv"
+-		HAVE_B64="true"
+-	fi
+-else
+-	HAVE_B64="true"
+-fi
+-AH_TEMPLATE(WITH_WEBSOCKETS, [Disable WebSockets support])
+-AC_ARG_WITH(websockets,
+-	[  --without-websockets    disable WebSockets support],
+-	, [ with_websockets=yes ])
+-# AC_DEFINE moved to after libresolve check.
+-
+-AH_TEMPLATE(ALLOW24BPP, [Enable 24 bit per pixel in native framebuffer])
+-AC_ARG_WITH(24bpp,
+-	[  --without-24bpp         disable 24 bpp framebuffers],
+-	, [ with_24bpp=yes ])
+-if test "x$with_24bpp" = "xyes"; then
+-	AC_DEFINE(ALLOW24BPP)
+-fi
+-AH_TEMPLATE(FFMPEG, [Use ffmpeg (for vnc2mpg)])
+-AC_ARG_WITH(ffmpeg,
+-	[  --with-ffmpeg=dir       set ffmpeg home directory],,)
+-AC_SUBST(with_ffmpeg)
+-AM_CONDITIONAL(WITH_FFMPEG, test ! -z "$with_ffmpeg")
+-if test ! -z "$with_ffmpeg"; then
+-	AC_CHECK_LIB(mp3lame, lame_init, HAVE_MP3LAME="true", HAVE_MP3LAME="false" )
+-fi
+-AM_CONDITIONAL(HAVE_MP3LAME, test "$HAVE_MP3LAME" = "true")
+-
+-PKG_CHECK_MODULES([LIBSYSTEMD], [libsystemd], [with_systemd=1], [with_systemd=0])
+-AM_CONDITIONAL([WITH_SYSTEMD], [test $with_systemd -eq 1])
+-
+-# Seem to need this dummy here to induce the 'checking for egrep... grep -E', etc.
+-# before it seemed to be inside the with_jpeg conditional. 
+-AC_CHECK_HEADER(thenonexistentheader.h, HAVE_THENONEXISTENTHEADER_H="true")
+-
+-# set some ld -R nonsense
+-#
+-uname_s=`(uname -s) 2>/dev/null`
+-ld_minus_R="yes"
+-if test "x$uname_s" = "xHP-UX"; then
+-	ld_minus_R="no"
+-elif test "x$uname_s" = "xOSF1"; then
+-	ld_minus_R="no"
+-elif test "x$uname_s" = "xDarwin"; then
+-	ld_minus_R="no"
+-fi
+-
+-# Check for OpenSSL
+-AH_TEMPLATE(HAVE_LIBCRYPT, [libcrypt library present])
+-AC_ARG_WITH(crypt,
+-[  --without-crypt         disable support for libcrypt],,)
+-if test "x$with_crypt" != "xno"; then
+-	AC_CHECK_FUNCS([crypt], HAVE_LIBC_CRYPT="true")
+-	if test -z "$HAVE_LIBC_CRYPT"; then
+-		AC_CHECK_LIB(crypt, crypt,
+-			CRYPT_LIBS="-lcrypt"
+-			[AC_DEFINE(HAVE_LIBCRYPT)], ,)
+-	fi
+-fi
+-AC_SUBST(CRYPT_LIBS)
+-
+-# some OS's need both -lssl and -lcrypto on link line:
+-AH_TEMPLATE(HAVE_LIBCRYPTO, [openssl libcrypto library present])
+-AC_ARG_WITH(crypto,
+-[  --without-crypto        disable support for openssl libcrypto],,)
+-
+-AH_TEMPLATE(HAVE_LIBSSL, [openssl libssl library present])
+-AC_ARG_WITH(ssl,
+-[  --without-ssl           disable support for openssl libssl]
+-[  --with-ssl=DIR          use openssl include/library files in DIR],,)
+-
+-if test "x$with_crypto" != "xno" -a "x$with_ssl" != "xno"; then
+-	if test ! -z "$with_ssl" -a "x$with_ssl" != "xyes"; then
+-		saved_CPPFLAGS="$CPPFLAGS"
+-		saved_LDFLAGS="$LDFLAGS"
+-		CPPFLAGS="$CPPFLAGS -I$with_ssl/include"
+-		LDFLAGS="$LDFLAGS -L$with_ssl/lib"
+-		if test "x$ld_minus_R" = "xno"; then
+-			:
+-		elif test "x$GCC" = "xyes"; then
+-			LDFLAGS="$LDFLAGS -Xlinker -R$with_ssl/lib"
+-		else
+-			LDFLAGS="$LDFLAGS -R$with_ssl/lib"
+-		fi
+-	fi
+-	AC_CHECK_LIB(crypto, RAND_file_name,
+-		[AC_DEFINE(HAVE_LIBCRYPTO) HAVE_LIBCRYPTO="true"], ,)
+-	if test ! -z "$with_ssl" -a "x$with_ssl" != "xyes"; then
+-		if test "x$HAVE_LIBCRYPTO" != "xtrue"; then
+-			CPPFLAGS="$saved_CPPFLAGS"
+-			LDFLAGS="$saved_LDFLAGS"
+-		fi
+-	fi
+-fi
+-
+-AH_TEMPLATE(HAVE_X509_PRINT_EX_FP, [open ssl X509_print_ex_fp available])
+-if test "x$with_ssl" != "xno"; then
+-	if test "x$HAVE_LIBCRYPTO" = "xtrue"; then
+-		AC_CHECK_LIB(ssl, SSL_library_init,
+-			SSL_LIBS="-lssl -lcrypto"
+-			[AC_DEFINE(HAVE_LIBSSL) HAVE_LIBSSL="true"], ,
+-			-lcrypto)
+-	else
+-		AC_CHECK_LIB(ssl, SSL_library_init,
+-			SSL_LIBS="-lssl"
+-			[AC_DEFINE(HAVE_LIBSSL) HAVE_LIBSSL="true"], ,)
+-	fi
+-fi
+-AC_SUBST(SSL_LIBS)
+-AM_CONDITIONAL(HAVE_LIBSSL, test ! -z "$SSL_LIBS")
+-
+-
+-
+-
+-AC_ARG_WITH(jpeg,
+-[  --without-jpeg          disable support for jpeg]
+-[  --with-jpeg=DIR         use jpeg include/library files in DIR],,)
+-
+-# At this point:
+-#	no jpeg on command line   with_jpeg=""
+-#	-with-jpeg                with_jpeg="yes"
+-#	-without-jpeg             with_jpeg="no"
+-#	-with-jpeg=/foo/dir       with_jpeg="/foo/dir"
+-
+-HAVE_LIBJPEG_TURBO="false"
+-
+-if test "x$with_jpeg" != "xno"; then
+-	AC_ARG_VAR(JPEG_LDFLAGS,
+-		[Linker flags to use when linking with libjpeg, e.g. -L/foo/dir/lib -Wl,-static -ljpeg -Wl,-shared.  This overrides the linker flags set by --with-jpeg.])
+-	saved_CPPFLAGS="$CPPFLAGS"
+-	saved_LDFLAGS="$LDFLAGS"
+-	saved_LIBS="$LIBS"
+-	if test ! -z "$with_jpeg" -a "x$with_jpeg" != "xyes"; then
+-		# add user supplied directory to flags:
+-		CPPFLAGS="$CPPFLAGS -I$with_jpeg/include"
+-		LDFLAGS="$LDFLAGS -L$with_jpeg/lib"
+-		if test "x$ld_minus_R" = "xno"; then
+-			:
+-		elif test "x$GCC" = "xyes"; then
+-			# this is not complete... in general a rat's nest.
+-			LDFLAGS="$LDFLAGS -Xlinker -R$with_jpeg/lib"
+-		else
+-			LDFLAGS="$LDFLAGS -R$with_jpeg/lib"
+-		fi
+-	fi
+-	if test "x$JPEG_LDFLAGS" != "x"; then
+-		LDFLAGS="$saved_LDFLAGS"
+-		LIBS="$LIBS $JPEG_LDFLAGS"
+-	else
+-		LIBS="-ljpeg"
+-	fi
+-	AC_CHECK_HEADER(jpeglib.h, HAVE_JPEGLIB_H="true")
+-	AC_MSG_CHECKING(for jpeg_CreateCompress in libjpeg)
+-	if test "x$HAVE_JPEGLIB_H" = "xtrue"; then
+-		AC_LINK_IFELSE([AC_LANG_CALL([], [jpeg_CreateCompress])],
+-			[AC_MSG_RESULT(yes);
+-				AC_DEFINE(HAVE_LIBJPEG, 1, libjpeg support enabled)],
+-			[AC_MSG_RESULT(no); HAVE_JPEGLIB_H=""])
+-	fi
+-	if test "x$HAVE_JPEGLIB_H" != "xtrue"; then
+-			# restore old flags on failure:
+-			CPPFLAGS="$saved_CPPFLAGS"
+-			LDFLAGS="$saved_LDFLAGS"
+-			LIBS="$saved_LIBS"
+-			AC_MSG_WARN([
+-==========================================================================
+-*** The libjpeg compression library was not found. ***
+-This may lead to reduced performance, especially over slow links.
+-If libjpeg is in a non-standard location use --with-jpeg=DIR to
+-indicate the header file is in DIR/include/jpeglib.h and the library
+-in DIR/lib/libjpeg.a.  You can also set the JPEG_LDFLAGS variable to
+-specify more detailed linker flags.  A copy of libjpeg-turbo may be
+-obtained from:  https://sourceforge.net/projects/libjpeg-turbo/files/
+-A copy of libjpeg may be obtained from:  http://ijg.org/files/
+-==========================================================================
+-])
+-			sleep 5
+-		fi
+-
+-	if test "x$HAVE_JPEGLIB_H" = "xtrue"; then
+-		AC_MSG_CHECKING(whether JPEG library is libjpeg-turbo)
+-		m4_define([LJT_TEST],
+-			[AC_LANG_PROGRAM([#include <stdio.h>
+-				#include <jpeglib.h>],
+-			[struct jpeg_compress_struct cinfo;
+-				struct jpeg_error_mgr jerr;
+-				cinfo.err=jpeg_std_error(&jerr);
+-				jpeg_create_compress(&cinfo);
+-				cinfo.input_components = 3;
+-				jpeg_set_defaults(&cinfo);
+-				cinfo.in_color_space = JCS_EXT_RGB;
+-				jpeg_default_colorspace(&cinfo);
+-				return 0;])]
+-		)
+-		if test "x$cross_compiling" != "xyes"; then
+-			AC_RUN_IFELSE([LJT_TEST],
+-				[HAVE_LIBJPEG_TURBO="true"; AC_MSG_RESULT(yes)],
+-				[AC_MSG_RESULT(no)])
+-		else
+-			AC_LINK_IFELSE([LJT_TEST],
+-				[HAVE_LIBJPEG_TURBO="true"; AC_MSG_RESULT(yes)],
+-				[AC_MSG_RESULT(no)])
+-		fi
+-	fi
+-
+-	if test "x$HAVE_JPEGLIB_H" = "xtrue" -a "x$HAVE_LIBJPEG_TURBO" != "xtrue"; then
+-		AC_MSG_WARN([
+-==========================================================================
+-*** The libjpeg library you are building against is not libjpeg-turbo.
+-Performance will be reduced.  You can obtain libjpeg-turbo from:
+-https://sourceforge.net/projects/libjpeg-turbo/files/ ***
+-==========================================================================
+-])
+-  fi
+-
+-fi
+-
+-AC_ARG_WITH(png,
+-[  --without-png           disable support for png]
+-[  --with-png=DIR          use png include/library files in DIR],,)
+-
+-# At this point:
+-#	no png on command line    with_png=""
+-#	-with-png                 with_png="yes"
+-#	-without-png              with_png="no"
+-#	-with-png=/foo/dir        with_png="/foo/dir"
+-
+-if test "x$with_png" != "xno"; then
+-	if test ! -z "$with_png" -a "x$with_png" != "xyes"; then
+-		# add user supplied directory to flags:
+-		saved_CPPFLAGS="$CPPFLAGS"
+-		saved_LDFLAGS="$LDFLAGS"
+-		CPPFLAGS="$CPPFLAGS -I$with_png/include"
+-		LDFLAGS="$LDFLAGS -L$with_png/lib"
+-		if test "x$ld_minus_R" = "xno"; then
+-			:
+-		elif test "x$GCC" = "xyes"; then
+-			# this is not complete... in general a rat's nest.
+-			LDFLAGS="$LDFLAGS -Xlinker -R$with_png/lib"
+-		else
+-			LDFLAGS="$LDFLAGS -R$with_png/lib"
+-		fi
+-	fi
+-	AC_CHECK_HEADER(png.h, HAVE_PNGLIB_H="true")
+-	if test "x$HAVE_PNGLIB_H" = "xtrue"; then
+-		AC_CHECK_LIB(png, png_create_write_struct, , HAVE_PNGLIB_H="")
+-	fi
+-	if test ! -z "$with_png" -a "x$with_png" != "xyes"; then
+-		if test "x$HAVE_PNGLIB_H" != "xtrue"; then
+-			# restore old flags on failure:
+-			CPPFLAGS="$saved_CPPFLAGS"
+-			LDFLAGS="$saved_LDFLAGS"
+-		fi
+-	fi
+-		if test "x$HAVE_PNGLIB_H" != "xtrue"; then
+-			AC_MSG_WARN([
+-==========================================================================
+-*** The libpng compression library was not found. ***
+-This may lead to reduced performance, especially over slow links.
+-If libpng is in a non-standard location use --with-png=DIR to
+-indicate the header file is in DIR/include/png.h and the library
+-in DIR/lib/libpng.a.  A copy of libpng may be obtained from:
+-http://www.libpng.org/pub/png/libpng.html
+-==========================================================================
+-])
+-			sleep 5
+-		fi
+-fi
+-
+-AC_ARG_WITH(libz,
+-[  --without-libz          disable support for deflate],,)
+-AC_ARG_WITH(zlib,
+-[  --without-zlib          disable support for deflate]
+-[  --with-zlib=DIR         use zlib include/library files in DIR],,)
+-
+-if test "x$with_zlib" != "xno" -a "x$with_libz" != "xno"; then
+-	if test ! -z "$with_zlib" -a "x$with_zlib" != "xyes"; then
+-		saved_CPPFLAGS="$CPPFLAGS"
+-		saved_LDFLAGS="$LDFLAGS"
+-		CPPFLAGS="$CPPFLAGS -I$with_zlib/include"
+-		LDFLAGS="$LDFLAGS -L$with_zlib/lib"
+-		if test "x$ld_minus_R" = "xno"; then
+-			:
+-		elif test "x$GCC" = "xyes"; then
+-			LDFLAGS="$LDFLAGS -Xlinker -R$with_zlib/lib"
+-		else
+-			LDFLAGS="$LDFLAGS -R$with_zlib/lib"
+-		fi
+-	fi
+-	AC_CHECK_HEADER(zlib.h, HAVE_ZLIB_H="true")
+-	if test "x$HAVE_ZLIB_H" = "xtrue"; then
+-		AC_CHECK_LIB(z, deflate, , HAVE_ZLIB_H="")
+-	fi
+-	if test ! -z "$with_zlib" -a "x$with_zlib" != "xyes"; then
+-		if test "x$HAVE_ZLIB_H" != "xtrue"; then
+-			CPPFLAGS="$saved_CPPFLAGS"
+-			LDFLAGS="$saved_LDFLAGS"
+-		fi
+-	fi
+-		if test "x$HAVE_ZLIB_H" != "xtrue"; then
+-			AC_MSG_WARN([
+-==========================================================================
+-*** The libz compression library was not found. ***
+-This may lead to reduced performance, especially over slow links.
+-If libz is in a non-standard location use --with-zlib=DIR to indicate the
+-header file is in DIR/include/zlib.h and the library in DIR/lib/libz.a.
+-A copy of libz may be obtained from: http://www.gzip.org/zlib/
+-==========================================================================
+-])
+-			sleep 5
+-		fi
+-fi
+-
+-AC_ARG_WITH(pthread,
+-[  --without-pthread       disable support for libpthread],,)
+-
+-if test "x$with_pthread" != "xno"; then
+-	AC_CHECK_HEADER(pthread.h, HAVE_PTHREAD_H="true")
+-	if test ! -z "$HAVE_PTHREAD_H"; then
+-		AC_CHECK_LIB(pthread, pthread_mutex_lock)
+-		AC_CHECK_LIB(pthread, pthread_mutex_lock, HAVE_LIBPTHREAD="true")
+-	fi
+-fi
+-AM_CONDITIONAL(HAVE_LIBPTHREAD, test ! -z "$HAVE_LIBPTHREAD")
+-
+-AC_MSG_CHECKING([for __thread])
+-AC_LINK_IFELSE([AC_LANG_PROGRAM(, [static __thread int p = 0])],
+-	       [AC_DEFINE(HAVE_TLS, 1,
+-		      Define to 1 if compiler supports __thread)
+-		AC_MSG_RESULT([yes])],
+-	       [AC_MSG_RESULT([no])])
+-
+-# tightvnc-filetransfer implemented using threads:
+-if test -z "$HAVE_LIBPTHREAD"; then
+-	with_tightvnc_filetransfer=""
+-fi
+-if test "x$with_tightvnc_filetransfer" = "xyes"; then
+-	AC_DEFINE(WITH_TIGHTVNC_FILETRANSFER)
+-fi
+-AM_CONDITIONAL(WITH_TIGHTVNC_FILETRANSFER, test "$with_tightvnc_filetransfer" = "yes")
+-
+-# websockets implemented using base64 from resolve
+-if test "x$HAVE_B64" != "xtrue"; then
+-	with_websockets=""
+-fi
+-if test "x$with_websockets" = "xyes"; then
+-	LIBS="$LIBS $RESOLV_LIB $SSL_LIBS"
+-	AC_DEFINE(WITH_WEBSOCKETS)
+-fi
+-AM_CONDITIONAL(WITH_WEBSOCKETS, test "$with_websockets" = "yes")
+-
+-AM_CONDITIONAL(HAVE_LIBZ, test ! -z "$HAVE_ZLIB_H")
+-AM_CONDITIONAL(HAVE_LIBJPEG, test ! -z "$HAVE_JPEGLIB_H")
+-AM_CONDITIONAL(HAVE_LIBPNG, test ! -z "$HAVE_PNGLIB_H")
+-
+-
+-SDLCONFIG="sdl-config"
+-AC_ARG_WITH(sdl-config,
+-[[  --with-sdl-config=FILE
+-    Use the given path to sdl-config when determining
+-    SDL configuration; defaults to "sdl-config"]],
+-[
+-    if test "$withval" != "yes" -a "$withval" != ""; then
+-        SDLCONFIG=$withval
+-    fi
+-])
+-
+-if test -z "$with_sdl"; then
+-	if $SDLCONFIG --version >/dev/null 2>&1; then
+-		with_sdl=yes
+-		SDL_CFLAGS=`$SDLCONFIG --cflags`
+-		SDL_LIBS=`$SDLCONFIG --libs`
+-	else
+-		with_sdl=no
+-	fi
+-fi
+-AM_CONDITIONAL(HAVE_LIBSDL, test "x$with_sdl" = "xyes")
+-AC_SUBST(SDL_CFLAGS)
+-AC_SUBST(SDL_LIBS)
+-
+-
+-# Check for GTK+. if present, build the GTK+ vnc viewer example
+-PKG_CHECK_MODULES([GTK], [gtk+-2.0],,:)
+-AM_CONDITIONAL(HAVE_LIBGTK, test ! -z "$GTK_LIBS")
+-
+-AC_CANONICAL_HOST
+-MINGW=`echo $host_os | grep mingw32  2>/dev/null`
+-AM_CONDITIONAL(MINGW, test ! -z "$MINGW" )
+-if test ! -z "$MINGW"; then
+-	WSOCKLIB="-lws2_32"
+-fi
+-AC_SUBST(WSOCKLIB)
+-
+-# Check for libgcrypt
+-AH_TEMPLATE(WITH_CLIENT_GCRYPT, [Enable support for libgcrypt in libvncclient])
+-AC_ARG_WITH(gcrypt,
+-[  --without-gcrypt        disable support for gcrypt],,)
+-AC_ARG_WITH(client-gcrypt,
+-[  --without-client-gcrypt disable support for gcrypt in libvncclient],,)
+-
+-if test "x$with_gcrypt" != "xno"; then
+-	AM_PATH_LIBGCRYPT(1.4.0, , with_client_gcrypt=no)
+-	CFLAGS="$CFLAGS $LIBGCRYPT_CFLAGS"
+-	LIBS="$LIBS $LIBGCRYPT_LIBS"
+-	if test "x$with_client_gcrypt" != "xno"; then
+-		AC_DEFINE(WITH_CLIENT_GCRYPT)
+-	fi
+-fi
+-
+-# Checks for GnuTLS
+-AH_TEMPLATE(HAVE_GNUTLS, [GnuTLS library present])
+-AC_ARG_WITH(gnutls,
+-[  --without-gnutls        disable support for gnutls]
+-[  --with-gnutls=DIR       use gnutls include/library files in DIR],,)
+-
+-if test "x$with_gnutls" != "xno"; then
+-	PKG_CHECK_MODULES(GNUTLS, gnutls >= 2.4.0,,:)
+-	CFLAGS="$CFLAGS $GNUTLS_CFLAGS"
+-	LIBS="$LIBS $GNUTLS_LIBS"
+-fi
+-AM_CONDITIONAL(HAVE_GNUTLS, test ! -z "$GNUTLS_LIBS")
+-if test ! -z "$GNUTLS_LIBS" ; then
+-  AC_DEFINE(HAVE_GNUTLS)
+-fi
+-
+-
+-# warn if neither GnuTLS nor OpenSSL are available
+-if test -z "$SSL_LIBS" -a -z "$GNUTLS_LIBS"; then
+-		AC_MSG_WARN([
+-==========================================================================
+-*** No encryption library could be found. ***
+-A libvncserver/libvncclient built this way will not support SSL encryption.
+-To enable SSL install the necessary development packages (perhaps it is named
+-something like libssl-dev or gnutls-dev) and run configure again.
+-==========================================================================
+-])
+-	sleep 5
+-fi
+-
+-
+-# IPv6
+-AH_TEMPLATE(IPv6, [Enable IPv6 support])
+-AC_ARG_WITH(ipv6,
+-[  --without-ipv6          disable IPv6 support],,)
+-if test "x$with_ipv6" != "xno"; then
+-	AC_CHECK_FUNC(getaddrinfo, AC_DEFINE(IPv6,1),
+-		AC_CHECK_LIB(socket, getaddrinfo, AC_DEFINE(IPv6,1), [
+-			AC_MSG_CHECKING([for getaddrinfo in -lws2_32])
+-		        LIBS="$LIBS -lws2_32"
+-		        AC_TRY_LINK([#include <ws2tcpip.h>], [getaddrinfo(0, 0, 0, 0);], [
+-				      AC_DEFINE(IPv6,1)
+-		                      AC_MSG_RESULT([yes])
+-				      ],
+-				    AC_MSG_RESULT([no]))
+-                   ]))
+-fi
+-
+-
+-
+-# Checks for header files.
+-AC_HEADER_STDC
+-AC_CHECK_HEADERS([arpa/inet.h endian.h fcntl.h netdb.h netinet/in.h stdlib.h stdint.h string.h sys/endian.h sys/socket.h sys/time.h sys/timeb.h syslog.h unistd.h ws2tcpip.h])
+-
+-# Checks for typedefs, structures, and compiler characteristics.
+-AC_C_CONST
+-AC_C_INLINE
+-AC_TYPE_SIZE_T
+-AC_HEADER_TIME
+-AC_HEADER_SYS_WAIT
+-AX_TYPE_SOCKLEN_T
+-AC_CACHE_CHECK([for in_addr_t],
+-        vnc_cv_inaddrt, [
+-                AC_TRY_COMPILE([#include <sys/types.h>
+-#include <netinet/in.h>],
+-                        [in_addr_t foo; return 0;],
+-                                        [inaddrt=yes],
+-                                        [inaddrt=no]),
+-        ])
+-AH_TEMPLATE(NEED_INADDR_T, [Need a typedef for in_addr_t])
+-if test $inaddrt = no ; then
+-  AC_DEFINE(NEED_INADDR_T)
+-fi
+-# Checks for library functions.
+-AC_FUNC_MEMCMP
+-AC_FUNC_STAT
+-AC_FUNC_STRFTIME
+-AC_FUNC_VPRINTF
+-AC_FUNC_FORK
+-AC_CHECK_LIB(nsl,gethostbyname)
+-AC_CHECK_LIB(socket,socket)
+-
+-uname_s=`(uname -s) 2>/dev/null`
+-if test "x$uname_s" = "xHP-UX"; then
+-	# need -lsec for getspnam()
+-	LDFLAGS="$LDFLAGS -lsec"
+-fi
+-
+-AC_CHECK_FUNCS([ftime gethostbyname gethostname gettimeofday inet_ntoa memmove memset mmap mkfifo select socket strchr strcspn strdup strerror strstr])
+-
+-# check, if shmget is in cygipc.a
+-AC_CHECK_LIB(cygipc,shmget)
+-AM_CONDITIONAL(CYGIPC, test "$HAVE_CYGIPC" = "true")
+-
+-# Check if /usr/include/linux exists, if so, define LINUX
+-AM_CONDITIONAL(LINUX, test -d /usr/include/linux)
+-
+-# Check for OS X specific header
+-AC_CHECK_HEADER(ApplicationServices/ApplicationServices.h, HAVE_OSX="true")
+-AM_CONDITIONAL(OSX, test "$HAVE_OSX" = "true")
+-
+-# Check for Android specific header
+-AC_CHECK_HEADER(android/api-level.h, HAVE_ANDROID="true")
+-AM_CONDITIONAL(ANDROID, test "$HAVE_ANDROID" = "true")
+-if test "$HAVE_ANDROID" = "true"; then
+-	AC_DEFINE(HAVE_ANDROID, 1, [Android host system detected])
+-fi
+-
+-# On Solaris 2.7, write() returns ENOENT when it really means EAGAIN
+-AH_TEMPLATE(ENOENT_WORKAROUND, [work around when write() returns ENOENT but does not mean it])
+-case `(uname -sr) 2>/dev/null` in
+-    "SunOS 5.7")
+-	AC_DEFINE(ENOENT_WORKAROUND)
+-    ;;
+-esac
+-
+-# Check for rpm SOURCES path
+-printf "checking for rpm sources path... "
+-RPMSOURCEDIR="NOT-FOUND"
+-for directory in packages OpenLinux redhat RedHat rpm RPM "" ; do
+-	if test -d /usr/src/${directory}/SOURCES; then
+-		RPMSOURCEDIR="/usr/src/${directory}/SOURCES/"
+-	fi
+-done
+-echo "$RPMSOURCEDIR"
+-AM_CONDITIONAL(HAVE_RPM, test "$RPMSOURCEDIR" != "NOT-FOUND")
+-AC_SUBST(RPMSOURCEDIR)
+-
+-AC_CONFIG_FILES([Makefile
+-	libvncserver.pc
+-	libvncclient.pc
+-	libvncserver/Makefile
+-	examples/Makefile
+-	examples/android/Makefile
+-	webclients/Makefile
+-	webclients/java-applet/Makefile
+-	webclients/java-applet/ssl/Makefile
+-	libvncclient/Makefile
+-	client_examples/Makefile
+-	test/Makefile
+-	libvncserver-config
+-	LibVNCServer.spec])
+-
+-
+-AC_CONFIG_COMMANDS([chmod-libvncserver-config],[chmod a+x libvncserver-config])
+-AC_OUTPUT
+-chmod a+x ./libvncserver-config
+-
+diff --git a/examples/Makefile.am b/examples/Makefile.am
+deleted file mode 100644
+index 829f735..0000000
+--- a/examples/Makefile.am
++++ /dev/null
+@@ -1,27 +0,0 @@
+-AM_CPPFLAGS = -I$(top_srcdir)
+-LDADD = ../libvncserver/libvncserver.la @WSOCKLIB@
+-
+-if OSX
+-MAC=mac
+-mac_LDFLAGS=-framework ApplicationServices -framework Carbon -framework IOKit
+-endif
+-
+-if ANDROID
+-SUBDIRS=android
+-endif
+-
+-if WITH_TIGHTVNC_FILETRANSFER
+-FILETRANSFER=filetransfer
+-endif
+-
+-if HAVE_LIBPTHREAD
+-BLOOPTEST=blooptest
+-endif
+-
+-noinst_HEADERS=radon.h rotatetemplate.c
+-
+-noinst_PROGRAMS=example pnmshow regiontest pnmshow24 fontsel \
+-	vncev storepasswd colourmaptest simple simple15 $(MAC) \
+-	$(FILETRANSFER) backchannel $(BLOOPTEST) camera rotate \
+-	zippy repeater
+-
+diff --git a/examples/android/Makefile.am b/examples/android/Makefile.am
+deleted file mode 100644
+index 9cb5c02..0000000
+--- a/examples/android/Makefile.am
++++ /dev/null
+@@ -1,7 +0,0 @@
+-AM_CPPFLAGS = -I$(top_srcdir)
+-LDADD = $(top_srcdir)/libvncserver/libvncserver.la @WSOCKLIB@
+-
+-noinst_PROGRAMS=androidvncserver
+-androidvncserver_SOURCES=jni/fbvncserver.c
+-
+-EXTRA_DIST=jni/Android.mk
+diff --git a/libvncclient.pc.in b/libvncclient.pc.in
+deleted file mode 100644
+index 37495e7..0000000
+--- a/libvncclient.pc.in
++++ /dev/null
+@@ -1,14 +0,0 @@
+-prefix=@prefix@
+-exec_prefix=@exec_prefix@
+-libdir=@libdir@
+-includedir=@includedir@
+-
+-Name: LibVNCClient
+-Description: A library for easy implementation of a VNC client.
+-Version: @VERSION@
+-Requires:
+-Requires.private: zlib
+-Libs: -L${libdir} -lvncclient
+-Libs.private: @LIBS@ @WSOCKLIB@
+-Cflags: -I${includedir}
+-
+diff --git a/libvncclient/Makefile.am b/libvncclient/Makefile.am
+deleted file mode 100644
+index bc2420b..0000000
+--- a/libvncclient/Makefile.am
++++ /dev/null
+@@ -1,29 +0,0 @@
+-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/common
+-
+-if HAVE_GNUTLS
+-TLSSRCS = tls_gnutls.c
+-TLSLIBS = @GNUTLS_LIBS@
+-else
+-if HAVE_LIBSSL
+-TLSSRCS = tls_openssl.c 
+-TLSLIBS = @SSL_LIBS@ @CRYPT_LIBS@
+-else
+-TLSSRCS = tls_none.c
+-endif
+-endif
+-
+-
+-libvncclient_la_SOURCES=cursor.c listen.c rfbproto.c sockets.c vncviewer.c ../common/minilzo.c $(TLSSRCS)
+-libvncclient_la_LIBADD=$(TLSLIBS)
+-
+-noinst_HEADERS=../common/lzodefs.h ../common/lzoconf.h ../common/minilzo.h tls.h
+-
+-rfbproto.o: rfbproto.c corre.c hextile.c rre.c tight.c zlib.c zrle.c ultra.c
+-
+-EXTRA_DIST=corre.c hextile.c rre.c tight.c zlib.c zrle.c ultra.c tls_gnutls.c tls_openssl.c tls_none.c
+-
+-$(libvncclient_la_OBJECTS): ../rfb/rfbclient.h
+-
+-lib_LTLIBRARIES=libvncclient.la
+-libvncclient_la_LDFLAGS = -version-info 1:0:0
+-
+diff --git a/libvncserver-config.in b/libvncserver-config.in
+deleted file mode 100644
+index ea0bef8..0000000
+--- a/libvncserver-config.in
++++ /dev/null
+@@ -1,78 +0,0 @@
+-#!/bin/sh
+-
+-prefix=@prefix@
+-exec_prefix=@exec_prefix@
+-exec_prefix_set=no
+-includedir=@includedir@
+-libdir=@libdir@
+-
+-# if this script is in the same directory as libvncserver-config.in, assume not installed
+-if [ -f "`dirname "$0"`/libvncserver-config.in" ]; then
+-  dir="`dirname "$0"`"
+-  prefix="`cd "$dir"; pwd`"
+-  includedir="$prefix"
+-  libdir="$prefix/libvncserver/.libs $prefix/libvncclient/.libs"
+-fi
+-
+-usage="\
+-Usage: @PACKAGE@-config [--prefix[=DIR]] [--exec-prefix[=DIR]] [--version] [--link] [--libs] [--cflags]"
+-
+-if test $# -eq 0; then
+-      echo "${usage}" 1>&2
+-      exit 1
+-fi
+-
+-while test $# -gt 0; do
+-  case "$1" in
+-  -*=*) optarg=`echo "$1" | sed 's/[-_a-zA-Z0-9]*=//'` ;;
+-  *) optarg= ;;
+-  esac
+-
+-  case $1 in
+-    --prefix=*)
+-      prefix=$optarg
+-      if test $exec_prefix_set = no ; then
+-        exec_prefix=$optarg
+-      fi
+-      ;;
+-    --prefix)
+-      echo $prefix
+-      ;;
+-    --exec-prefix=*)
+-      exec_prefix=$optarg
+-      exec_prefix_set=yes
+-      ;;
+-    --exec-prefix)
+-      echo $exec_prefix
+-      ;;
+-    --version)
+-      echo @VERSION@
+-      ;;
+-    --cflags)
+-      if [ "$includedir" != /usr/include ]; then
+-	  includes=-I"$includedir"
+-      fi
+-      echo "$includes"
+-      ;;
+-    --libs)
+-      libs=""
+-      for dir in $libdir; do
+-        libs="$libs -L$dir"
+-        if [ "`uname`" = "SunOS" ]; then
+-          # why only Solaris??
+-          libs="$libs -R$dir"
+-        fi
+-      done
+-      echo "$libs" -lvncserver -lvncclient @LIBS@ @WSOCKLIB@
+-      ;;
+-    --link)
+-      echo @CC@
+-      ;;
+-    *)
+-      echo "${usage}" 1>&2
+-      exit 1
+-      ;;
+-  esac
+-  shift
+-done
+-
+diff --git a/libvncserver.pc.in b/libvncserver.pc.in
+deleted file mode 100644
+index d246052..0000000
+--- a/libvncserver.pc.in
++++ /dev/null
+@@ -1,14 +0,0 @@
+-prefix=@prefix@
+-exec_prefix=@exec_prefix@
+-libdir=@libdir@
+-includedir=@includedir@
+-
+-Name: LibVNCServer
+-Description: A library for easy implementation of a VNC server.
+-Version: @VERSION@
+-Requires:
+-Requires.private: zlib
+-Libs: -L${libdir} -lvncserver
+-Libs.private: @LIBS@ @WSOCKLIB@
+-Cflags: -I${includedir}
+-
+diff --git a/libvncserver/Makefile.am b/libvncserver/Makefile.am
+deleted file mode 100644
+index e25784b..0000000
+--- a/libvncserver/Makefile.am
++++ /dev/null
+@@ -1,80 +0,0 @@
+-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/common
+-
+-if WITH_TIGHTVNC_FILETRANSFER
+-TIGHTVNCFILETRANSFERHDRS=tightvnc-filetransfer/filelistinfo.h \
+-	tightvnc-filetransfer/filetransfermsg.h \
+-	tightvnc-filetransfer/handlefiletransferrequest.h \
+-	tightvnc-filetransfer/rfbtightproto.h
+-
+-TIGHTVNCFILETRANSFERSRCS = tightvnc-filetransfer/rfbtightserver.c \
+-	tightvnc-filetransfer/handlefiletransferrequest.c \
+-	tightvnc-filetransfer/filetransfermsg.c \
+-	tightvnc-filetransfer/filelistinfo.c
+-endif
+-
+-if WITH_WEBSOCKETS
+-
+-if HAVE_GNUTLS
+-WEBSOCKETSSSLSRCS = rfbssl_gnutls.c rfbcrypto_gnutls.c
+-WEBSOCKETSSSLLIBS = @GNUTLS_LIBS@
+-else
+-if HAVE_LIBSSL
+-WEBSOCKETSSSLSRCS = rfbssl_openssl.c rfbcrypto_openssl.c
+-WEBSOCKETSSSLLIBS = @SSL_LIBS@ @CRYPT_LIBS@
+-else
+-WEBSOCKETSSSLSRCS = rfbssl_none.c rfbcrypto_included.c ../common/md5.c ../common/sha1.c
+-endif
+-endif
+-
+-WEBSOCKETSSRCS = websockets.c $(WEBSOCKETSSSLSRCS)
+-endif
+-
+-includedir=$(prefix)/include/rfb
+-
+-include_HEADERS=../rfb/rfb.h ../rfb/rfbconfig.h \
+-	../rfb/rfbproto.h ../rfb/keysym.h ../rfb/rfbregion.h ../rfb/rfbclient.h
+-
+-noinst_HEADERS=../common/d3des.h ../rfb/default8x16.h zrleoutstream.h \
+-	zrlepalettehelper.h zrletypes.h private.h scale.h rfbssl.h rfbcrypto.h \
+-	../common/minilzo.h ../common/lzoconf.h ../common/lzodefs.h ../common/md5.h ../common/sha.h ../common/sha-private.h \
+-	$(TIGHTVNCFILETRANSFERHDRS)
+-
+-EXTRA_DIST=tableinit24.c tableinittctemplate.c tabletranstemplate.c \
+-	tableinitcmtemplate.c tabletrans24template.c \
+-	zrleencodetemplate.c
+-
+-if HAVE_LIBZ
+-ZLIBSRCS = zlib.c zrle.c zrleoutstream.c zrlepalettehelper.c ../common/zywrletemplate.c
+-if HAVE_LIBJPEG
+-TIGHTSRCS = tight.c ../common/turbojpeg.c
+-endif
+-endif
+-
+-LIB_SRCS = main.c rfbserver.c rfbregion.c auth.c sockets.c $(WEBSOCKETSSRCS) \
+-	stats.c corre.c hextile.c rre.c translate.c cutpaste.c \
+-	httpd.c cursor.c font.c \
+-	draw.c selbox.c ../common/d3des.c ../common/vncauth.c cargs.c ../common/minilzo.c ultra.c scale.c \
+-	$(ZLIBSRCS) $(TIGHTSRCS) $(TIGHTVNCFILETRANSFERSRCS)
+-
+-libvncserver_la_SOURCES=$(LIB_SRCS)
+-libvncserver_la_LIBADD=$(WEBSOCKETSSSLLIBS)
+-
+-if WITH_SYSTEMD
+-AM_CPPFLAGS += -DLIBVNCSERVER_WITH_SYSTEMD
+-libvncserver_la_CFLAGS = $(LIBSYSTEMD_CFLAGS)
+-libvncserver_la_LIBADD += $(LIBSYSTEMD_LIBS)
+-endif
+-
+-lib_LTLIBRARIES=libvncserver.la
+-libvncserver_la_LDFLAGS = -version-info 1:0:0
+-
+-if HAVE_RPM
+-$(PACKAGE)-$(VERSION).tar.gz: dist
+-
+-# Rule to build RPM distribution package
+-rpm: $(PACKAGE)-$(VERSION).tar.gz libvncserver.spec
+-	cp $(PACKAGE)-$(VERSION).tar.gz @RPMSOURCEDIR@
+-	rpmbuild -ba libvncserver.spec
+-endif
+-
+-
+diff --git a/libvncserver/main.c b/libvncserver/main.c
+index dbda77d..95c3da5 100644
+--- a/libvncserver/main.c
++++ b/libvncserver/main.c
+@@ -261,7 +261,16 @@ rfbLogProc rfbErr=rfbDefaultLog;
+ 
+ void rfbLogPerror(const char *str)
+ {
++#ifdef WIN32
++    wchar_t *s = NULL;
++    FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 
++                   NULL, errno, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
++                   (LPWSTR)&s, 0, NULL);
++    rfbErr("%s: %S\n", str, s);
++    LocalFree(s);
++#else
+     rfbErr("%s: %s\n", str, strerror(errno));
++#endif
+ }
+ 
+ void rfbScheduleCopyRegion(rfbScreenInfoPtr rfbScreen,sraRegionPtr copyRegion,int dx,int dy)
+@@ -1052,7 +1061,15 @@ void rfbInitServer(rfbScreenInfoPtr screen)
+ {
+ #ifdef WIN32
+   WSADATA trash;
+-  WSAStartup(MAKEWORD(2,2),&trash);
++  static rfbBool WSAinitted=FALSE;
++  if(!WSAinitted) {
++    int i=WSAStartup(MAKEWORD(2,0),&trash);
++    if(i!=0) {
++      rfbErr("Couldn't init Windows Sockets\n");
++      return 0;
++    }
++    WSAinitted=TRUE;
++  }
+ #endif
+   rfbInitSockets(screen);
+   rfbHttpInitSockets(screen);
+diff --git a/libvncserver/rfbserver.c b/libvncserver/rfbserver.c
+index 040238d..116c488 100644
+--- a/libvncserver/rfbserver.c
++++ b/libvncserver/rfbserver.c
+@@ -1999,11 +1999,6 @@ rfbProcessClientNormalMessage(rfbClientPtr cl)
+     char encBuf[64];
+     char encBuf2[64];
+ 
+-#ifdef LIBVNCSERVER_WITH_WEBSOCKETS
+-    if (cl->wsctx && webSocketCheckDisconnect(cl))
+-      return;
+-#endif
+-
+     if ((n = rfbReadExact(cl, (char *)&msg, 1)) <= 0) {
+         if (n != 0)
+             rfbLogPerror("rfbProcessClientNormalMessage: read");
+diff --git a/libvncserver/sockets.c b/libvncserver/sockets.c
+index bbc3d90..36c803e 100644
+--- a/libvncserver/sockets.c
++++ b/libvncserver/sockets.c
+@@ -783,25 +783,32 @@ rfbWriteExact(rfbClientPtr cl,
+     fprintf(stderr,"\n");
+ #endif
+ 
+-#ifdef LIBVNCSERVER_WITH_WEBSOCKETS
+-    if (cl->wsctx) {
+-        char *tmp = NULL;
+-        if ((len = webSocketsEncode(cl, buf, len, &tmp)) < 0) {
+-            rfbErr("WriteExact: WebSockets encode error\n");
+-            return -1;
+-        }
+-        buf = tmp;
+-    }
+-#endif
++//#ifdef LIBVNCSERVER_WITH_WEBSOCKETS
++//    if (cl->wsctx) {
++//        char *tmp = NULL;
++//        if ((len = webSocketsEncode(cl, buf, len, &tmp)) < 0) {
++//            rfbErr("WriteExact: WebSockets encode error\n");
++//            return -1;
++//        }
++//        buf = tmp;
++//    }
++//#endif
+ 
+     LOCK(cl->outputMutex);
+     while (len > 0) {
++//#ifdef LIBVNCSERVER_WITH_WEBSOCKETS
++//        if (cl->sslctx)
++//	    n = rfbssl_write(cl, buf, len);
++//	else
++//#endif
+ #ifdef LIBVNCSERVER_WITH_WEBSOCKETS
+-        if (cl->sslctx)
+-	    n = rfbssl_write(cl, buf, len);
+-	else
++      if (cl->wsctx)
++        n = webSocketsEncode(cl, buf, len);
++      else if (cl->sslctx)
++        n = rfbssl_write(cl, buf, len);
++      else
+ #endif
+-	    n = write(sock, buf, len);
++        n = write(sock, buf, len);
+ 
+         if (n > 0) {
+ 
+diff --git a/libvncserver/websockets.c b/libvncserver/websockets.c
+index 72396c2..188b1c6 100644
+--- a/libvncserver/websockets.c
++++ b/libvncserver/websockets.c
+@@ -34,10 +34,6 @@
+ /* errno */
+ #include <errno.h>
+ 
+-#ifndef _MSC_VER
+-#include <resolv.h> /* __b64_ntop */
+-#endif
+-
+ #ifdef LIBVNCSERVER_HAVE_ENDIAN_H
+ #include <endian.h>
+ #elif LIBVNCSERVER_HAVE_SYS_ENDIAN_H
+@@ -55,33 +51,8 @@
+ #include "rfb/rfbconfig.h"
+ #include "rfbssl.h"
+ #include "rfbcrypto.h"
++#include "ws_decode.h"
+ 
+-#if defined(__APPLE__)
+-
+-#include <libkern/OSByteOrder.h>
+-#define WS_NTOH64(n) OSSwapBigToHostInt64(n)
+-#define WS_NTOH32(n) OSSwapBigToHostInt32(n)
+-#define WS_NTOH16(n) OSSwapBigToHostInt16(n)
+-#define WS_HTON64(n) OSSwapHostToBigInt64(n)
+-#define WS_HTON16(n) OSSwapHostToBigInt16(n)
+-
+-#else
+-
+-#define WS_NTOH64(n) htobe64(n)
+-#define WS_NTOH32(n) htobe32(n)
+-#define WS_NTOH16(n) htobe16(n)
+-#define WS_HTON64(n) htobe64(n)
+-#define WS_HTON16(n) htobe16(n)
+-
+-#endif
+-
+-#define B64LEN(__x) (((__x + 2) / 3) * 12 / 3)
+-#define WSHLENMAX 14  /* 2 + sizeof(uint64_t) + sizeof(uint32_t) */
+-
+-enum {
+-  WEBSOCKETS_VERSION_HIXIE,
+-  WEBSOCKETS_VERSION_HYBI
+-};
+ 
+ #if 0
+ #include <sys/syscall.h>
+@@ -90,72 +61,6 @@ static int gettid() {
+ }
+ #endif
+ 
+-typedef int (*wsEncodeFunc)(rfbClientPtr cl, const char *src, int len, char **dst);
+-typedef int (*wsDecodeFunc)(rfbClientPtr cl, char *dst, int len);
+-
+-typedef struct ws_ctx_s {
+-    char codeBufDecode[B64LEN(UPDATE_BUF_SIZE) + WSHLENMAX]; /* base64 + maximum frame header length */
+-	char codeBufEncode[B64LEN(UPDATE_BUF_SIZE) + WSHLENMAX]; /* base64 + maximum frame header length */
+-	char readbuf[8192];
+-    int readbufstart;
+-    int readbuflen;
+-    int dblen;
+-    char carryBuf[3];                      /* For base64 carry-over */
+-    int carrylen;
+-    int version;
+-    int base64;
+-    wsEncodeFunc encode;
+-    wsDecodeFunc decode;
+-} ws_ctx_t;
+-
+-typedef union ws_mask_s {
+-  char c[4];
+-  uint32_t u;
+-} ws_mask_t;
+-
+-/* XXX: The union and the structs do not need to be named.
+- *      We are working around a bug present in GCC < 4.6 which prevented
+- *      it from recognizing anonymous structs and unions.
+- *      See http://gcc.gnu.org/bugzilla/show_bug.cgi?id=4784
+- */
+-typedef struct 
+-#if __GNUC__
+-__attribute__ ((__packed__)) 
+-#endif
+-ws_header_s {
+-  unsigned char b0;
+-  unsigned char b1;
+-  union {
+-    struct 
+-#if __GNUC__
+-    __attribute__ ((__packed__)) 
+-#endif
+-           {
+-      uint16_t l16;
+-      ws_mask_t m16;
+-    } s16;
+-    struct
+-#if __GNUC__
+-__attribute__ ((__packed__)) 
+-#endif
+-           {
+-      uint64_t l64;
+-      ws_mask_t m64;
+-    } s64;
+-    ws_mask_t m;
+-  } u;
+-} ws_header_t;
+-
+-enum
+-{
+-    WS_OPCODE_CONTINUATION = 0x0,
+-    WS_OPCODE_TEXT_FRAME,
+-    WS_OPCODE_BINARY_FRAME,
+-    WS_OPCODE_CLOSE = 0x8,
+-    WS_OPCODE_PING,
+-    WS_OPCODE_PONG
+-};
+-
+ #define FLASH_POLICY_RESPONSE "<cross-domain-policy><allow-access-from domain=\"*\" to-ports=\"*\" /></cross-domain-policy>\n"
+ #define SZ_FLASH_POLICY_RESPONSE 93
+ 
+@@ -165,14 +70,6 @@ enum
+  */
+ #define GUID "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+ 
+-#define SERVER_HANDSHAKE_HIXIE "HTTP/1.1 101 Web Socket Protocol Handshake\r\n\
+-Upgrade: WebSocket\r\n\
+-Connection: Upgrade\r\n\
+-%sWebSocket-Origin: %s\r\n\
+-%sWebSocket-Location: %s://%s%s\r\n\
+-%sWebSocket-Protocol: %s\r\n\
+-\r\n%s"
+-
+ #define SERVER_HANDSHAKE_HYBI "HTTP/1.1 101 Switching Protocols\r\n\
+ Upgrade: websocket\r\n\
+ Connection: Upgrade\r\n\
+@@ -199,12 +96,12 @@ struct timeval
+ #endif
+ 
+ static rfbBool webSocketsHandshake(rfbClientPtr cl, char *scheme);
+-void webSocketsGenMd5(char * target, char *key1, char *key2, char *key3);
+ 
+-static int webSocketsEncodeHybi(rfbClientPtr cl, const char *src, int len, char **dst);
+-static int webSocketsEncodeHixie(rfbClientPtr cl, const char *src, int len, char **dst);
+-static int webSocketsDecodeHybi(rfbClientPtr cl, char *dst, int len);
+-static int webSocketsDecodeHixie(rfbClientPtr cl, char *dst, int len);
++static int webSocketsEncodeHybi(ws_ctx_t *ctx, const char *src, int len);
++
++static size_t ws_read(void *cl, char *buf, size_t len);
++
++static size_t ws_write(void *cl, char *buf, size_t len);
+ 
+ static int
+ min (int a, int b) {
+@@ -225,6 +122,17 @@ static void webSocketsGenSha1Key(char *target, int size, char *key)
+ 	rfbErr("b64_ntop failed\n");
+ }
+ 
++
++void
++wsEncodeCleanup(ws_encoding_ctx_t *ctx)
++{
++    wsHeaderCleanup(&(ctx->header));
++    ctx->state = WS_STATE_ENCODING_IDLE;
++    ctx->readPos = ctx->codeBufEncode;
++    ctx->nToWrite = 0;
++}
++
++
+ /*
+  * rfbWebSocketsHandshake is called to handle new WebSockets connections
+  */
+@@ -309,10 +217,11 @@ webSocketsHandshake(rfbClientPtr cl, char *scheme)
+             if ((n < 0) && (errno == ETIMEDOUT)) {
+                 break;
+             }
+-            if (n == 0)
++            if (n == 0) {
+                 rfbLog("webSocketsHandshake: client gone\n");
+-            else
++            } else {
+                 rfbLogPerror("webSocketsHandshake: read");
++            }
+             free(response);
+             free(buf);
+             return FALSE;
+@@ -328,10 +237,11 @@ webSocketsHandshake(rfbClientPtr cl, char *scheme)
+                         if ((n < 0) && (errno == ETIMEDOUT)) {
+                             break;
+                         }
+-                        if (n == 0)
++                        if (n == 0) {
+                             rfbLog("webSocketsHandshake: client gone\n");
+-                        else
++                        } else {
+                             rfbLogPerror("webSocketsHandshake: read");
++                        }
+                         free(response);
+                         free(buf);
+                         return FALSE;
+@@ -367,25 +277,34 @@ webSocketsHandshake(rfbClientPtr cl, char *scheme)
+                 /* rfbLog("Got key2: %s\n", key2); */
+             /* HyBI */
+ 
+-	    } else if ((strncasecmp("sec-websocket-protocol: ", line, min(llen,24))) == 0) {
++            } else if ((strncasecmp("sec-websocket-protocol: ", line, min(llen,24))) == 0) {
+                 protocol = line+24;
+                 buf[len-2] = '\0';
+                 rfbLog("Got protocol: %s\n", protocol);
+             } else if ((strncasecmp("sec-websocket-origin: ", line, min(llen,22))) == 0) {
+-		sec_ws_origin = line+22;
++                sec_ws_origin = line+22;
+                 buf[len-2] = '\0';
+             } else if ((strncasecmp("sec-websocket-key: ", line, min(llen,19))) == 0) {
+-		sec_ws_key = line+19;
++                sec_ws_key = line+19;
+                 buf[len-2] = '\0';
+             } else if ((strncasecmp("sec-websocket-version: ", line, min(llen,23))) == 0) {
+-		sec_ws_version = strtol(line+23, NULL, 10);
++                sec_ws_version = strtol(line+23, NULL, 10);
+                 buf[len-2] = '\0';
+-	    }
++            }
+ 
+             linestart = len;
+         }
+     }
+ 
++    /* older hixie handshake, this could be removed if
++     * a final standard is established -- removed now */
++    if (!sec_ws_version) {
++        rfbErr("Hixie no longer supported\n");
++        free(response);
++        free(buf);
++        return FALSE;
++    }
++
+     if (!(path && host && (origin || sec_ws_origin))) {
+         rfbErr("webSocketsHandshake: incomplete client handshake\n");
+         free(response);
+@@ -394,12 +313,6 @@ webSocketsHandshake(rfbClientPtr cl, char *scheme)
+     }
+ 
+     if ((protocol) && (strstr(protocol, "binary"))) {
+-        if (! sec_ws_version) {
+-            rfbErr("webSocketsHandshake: 'binary' protocol not supported with Hixie\n");
+-            free(response);
+-            free(buf);
+-            return FALSE;
+-        }
+         rfbLog("  - webSocketsHandshake: using binary/raw encoding\n");
+         base64 = FALSE;
+         protocol = "binary";
+@@ -417,32 +330,16 @@ webSocketsHandshake(rfbClientPtr cl, char *scheme)
+      * Generate the WebSockets server response based on the the headers sent
+      * by the client.
+      */
++    char accept[B64LEN(SHA1_HASH_SIZE) + 1];
++    rfbLog("  - WebSockets client version hybi-%02d\n", sec_ws_version);
++    webSocketsGenSha1Key(accept, sizeof(accept), sec_ws_key);
+ 
+-    if (sec_ws_version) {
+-	char accept[B64LEN(SHA1_HASH_SIZE) + 1];
+-	rfbLog("  - WebSockets client version hybi-%02d\n", sec_ws_version);
+-	webSocketsGenSha1Key(accept, sizeof(accept), sec_ws_key);
+-        if(strlen(protocol) > 0)
+-            len = snprintf(response, WEBSOCKETS_MAX_HANDSHAKE_LEN,
+-	                   SERVER_HANDSHAKE_HYBI, accept, protocol);
+-        else
+-            len = snprintf(response, WEBSOCKETS_MAX_HANDSHAKE_LEN,
+-                           SERVER_HANDSHAKE_HYBI_NO_PROTOCOL, accept);
++    if(strlen(protocol) > 0) {
++        len = snprintf(response, WEBSOCKETS_MAX_HANDSHAKE_LEN,
++                 SERVER_HANDSHAKE_HYBI, accept, protocol);
+     } else {
+-	/* older hixie handshake, this could be removed if
+-	 * a final standard is established */
+-	if (!(key1 && key2 && key3)) {
+-	    rfbLog("  - WebSockets client version hixie-75\n");
+-	    prefix[0] = '\0';
+-	    trailer[0] = '\0';
+-	} else {
+-	    rfbLog("  - WebSockets client version hixie-76\n");
+-	    snprintf(prefix, 5, "Sec-");
+-	    webSocketsGenMd5(trailer, key1, key2, key3);
+-	}
+-	len = snprintf(response, WEBSOCKETS_MAX_HANDSHAKE_LEN,
+-		 SERVER_HANDSHAKE_HIXIE, prefix, origin, prefix, scheme,
+-		 host, path, prefix, protocol, trailer);
++        len = snprintf(response, WEBSOCKETS_MAX_HANDSHAKE_LEN,
++                       SERVER_HANDSHAKE_HYBI_NO_PROTOCOL, accept);
+     }
+ 
+     if (rfbWriteExact(cl, response, len) < 0) {
+@@ -455,365 +352,124 @@ webSocketsHandshake(rfbClientPtr cl, char *scheme)
+     free(response);
+     free(buf);
+ 
+-
+     wsctx = calloc(1, sizeof(ws_ctx_t));
+-    if (sec_ws_version) {
+-	wsctx->version = WEBSOCKETS_VERSION_HYBI;
+-	wsctx->encode = webSocketsEncodeHybi;
+-	wsctx->decode = webSocketsDecodeHybi;
+-    } else {
+-	wsctx->version = WEBSOCKETS_VERSION_HIXIE;
+-	wsctx->encode = webSocketsEncodeHixie;
+-	wsctx->decode = webSocketsDecodeHixie;
+-    }
++    wsctx->encode = webSocketsEncodeHybi;
++    wsctx->decode = webSocketsDecodeHybi;
++    wsctx->ctxInfo.readFunc = ws_read;
+     wsctx->base64 = base64;
++    hybiDecodeCleanupComplete(&(wsctx->dec));
++    wsEncodeCleanup(&(wsctx->enc));
+     cl->wsctx = (wsCtx *)wsctx;
+     return TRUE;
+ }
+- 
+-void
+-webSocketsGenMd5(char * target, char *key1, char *key2, char *key3)
+-{
+-    unsigned int i, spaces1 = 0, spaces2 = 0;
+-    unsigned long num1 = 0, num2 = 0;
+-    unsigned char buf[17];
+-    struct iovec iov[1];
+-
+-    for (i=0; i < strlen(key1); i++) {
+-        if (key1[i] == ' ') {
+-            spaces1 += 1;
+-        }
+-        if ((key1[i] >= 48) && (key1[i] <= 57)) {
+-            num1 = num1 * 10 + (key1[i] - 48);
+-        }
+-    }
+-    num1 = num1 / spaces1;
+ 
+-    for (i=0; i < strlen(key2); i++) {
+-        if (key2[i] == ' ') {
+-            spaces2 += 1;
+-        }
+-        if ((key2[i] >= 48) && (key2[i] <= 57)) {
+-            num2 = num2 * 10 + (key2[i] - 48);
+-        }
+-    }
+-    num2 = num2 / spaces2;
+-
+-    /* Pack it big-endian */
+-    buf[0] = (num1 & 0xff000000) >> 24;
+-    buf[1] = (num1 & 0xff0000) >> 16;
+-    buf[2] = (num1 & 0xff00) >> 8;
+-    buf[3] =  num1 & 0xff;
+-
+-    buf[4] = (num2 & 0xff000000) >> 24;
+-    buf[5] = (num2 & 0xff0000) >> 16;
+-    buf[6] = (num2 & 0xff00) >> 8;
+-    buf[7] =  num2 & 0xff;
+-
+-    strncpy((char *)buf+8, key3, 8);
+-    buf[16] = '\0';
+-
+-    iov[0].iov_base = buf;
+-    iov[0].iov_len = 16;
+-    digestmd5(iov, 1, target);
+-    target[16] = '\0';
+-
+-    return;
+-}
+-
+-static int
+-webSocketsEncodeHixie(rfbClientPtr cl, const char *src, int len, char **dst)
+-{
+-    int sz = 0;
+-    ws_ctx_t *wsctx = (ws_ctx_t *)cl->wsctx;
+-
+-    wsctx->codeBufEncode[sz++] = '\x00';
+-    len = b64_ntop((unsigned char *)src, len, wsctx->codeBufEncode+sz, sizeof(wsctx->codeBufEncode) - (sz + 1));
+-    if (len < 0) {
+-        return len;
+-    }
+-    sz += len;
+-
+-    wsctx->codeBufEncode[sz++] = '\xff';
+-    *dst = wsctx->codeBufEncode;
+-    return sz;
+-}
+-
+-static int
+-ws_read(rfbClientPtr cl, char *buf, int len)
++static size_t
++ws_read(void *ctxPtr, char *buf, size_t len)
+ {
+     int n;
++    rfbClientPtr cl = ctxPtr;
+     if (cl->sslctx) {
+-	n = rfbssl_read(cl, buf, len);
++        n = rfbssl_read(cl, buf, len);
+     } else {
+-	n = read(cl->sock, buf, len);
++        n = read(cl->sock, buf, len);
+     }
+     return n;
+ }
+ 
+-static int
+-ws_peek(rfbClientPtr cl, char *buf, int len)
++static size_t
++ws_write(void *ctxPtr, char *buf, size_t len)
+ {
+-    int n;
+-    if (cl->sslctx) {
+-	n = rfbssl_peek(cl, buf, len);
+-    } else {
+-	while (-1 == (n = recv(cl->sock, buf, len, MSG_PEEK))) {
+-	    if (errno != EAGAIN)
+-		break;
+-	}
+-    }
+-    return n;
++  int n;
++  rfbClientPtr cl = ctxPtr;
++  if (cl->sslctx) {
++    n = rfbssl_write(cl, buf, len);
++  } else {
++    n = write(cl->sock, buf, len);
++  }
++  return n;
+ }
+ 
+-static int
+-webSocketsDecodeHixie(rfbClientPtr cl, char *dst, int len)
++static size_t
++encodeSockTotal(ws_encoding_ctx_t *ctx)
+ {
+-    int retlen = 0, n, i, avail, modlen, needlen;
+-    char *buf, *end = NULL;
+-    ws_ctx_t *wsctx = (ws_ctx_t *)cl->wsctx;
+-
+-    buf = wsctx->codeBufDecode;
+-
+-    n = ws_peek(cl, buf, len*2+2);
+-
+-    if (n <= 0) {
+-        /* save errno because rfbErr() will tamper it */
+-        int olderrno = errno;
+-        rfbErr("%s: peek (%d) %m\n", __func__, errno);
+-        errno = olderrno;
+-        return n;
+-    }
+-
+-
+-    /* Base64 encoded WebSockets stream */
+-
+-    if (buf[0] == '\xff') {
+-        i = ws_read(cl, buf, 1); /* Consume marker */
+-        buf++;
+-        n--;
+-    }
+-    if (n == 0) {
+-        errno = EAGAIN;
+-        return -1;
+-    }
+-    if (buf[0] == '\x00') {
+-        i = ws_read(cl, buf, 1); /* Consume marker */
+-        buf++;
+-        n--;
+-    }
+-    if (n == 0) {
+-        errno = EAGAIN;
+-        return -1;
+-    }
+-
+-    /* end = memchr(buf, '\xff', len*2+2); */
+-    end = memchr(buf, '\xff', n);
+-    if (!end) {
+-        end = buf + n;
+-    }
+-    avail = end - buf;
+-
+-    len -= wsctx->carrylen;
+-
+-    /* Determine how much base64 data we need */
+-    modlen = len + (len+2)/3;
+-    needlen = modlen;
+-    if (needlen % 4) {
+-        needlen += 4 - (needlen % 4);
+-    }
+-
+-    if (needlen > avail) {
+-        /* rfbLog("Waiting for more base64 data\n"); */
+-        errno = EAGAIN;
+-        return -1;
+-    }
+-
+-    /* Any carryover from previous decode */
+-    for (i=0; i < wsctx->carrylen; i++) {
+-        /* rfbLog("Adding carryover %d\n", wsctx->carryBuf[i]); */
+-        dst[i] = wsctx->carryBuf[i];
+-        retlen += 1;
+-    }
+-
+-    /* Decode the rest of what we need */
+-    buf[needlen] = '\x00';  /* Replace end marker with end of string */
+-    /* rfbLog("buf: %s\n", buf); */
+-    n = b64_pton(buf, (unsigned char *)dst+retlen, 2+len);
+-    if (n < len) {
+-        rfbErr("Base64 decode error\n");
+-        errno = EIO;
+-        return -1;
+-    }
+-    retlen += n;
+-
+-    /* Consume the data from socket */
+-    i = ws_read(cl, buf, needlen);
+-
+-    wsctx->carrylen = n - len;
+-    retlen -= wsctx->carrylen;
+-    for (i=0; i < wsctx->carrylen; i++) {
+-        /* rfbLog("Saving carryover %d\n", dst[retlen + i]); */
+-        wsctx->carryBuf[i] = dst[retlen + i];
+-    }
+-
+-    /* rfbLog("<< webSocketsDecode, retlen: %d\n", retlen); */
+-    return retlen;
++    return ctx->header.headerLen + ctx->header.payloadLen;
+ }
+ 
+-static int
+-webSocketsDecodeHybi(rfbClientPtr cl, char *dst, int len)
++static size_t
++encodeSockRemaining(ws_encoding_ctx_t *ctx)
+ {
+-    char *buf, *payload;
+-    uint32_t *payload32;
+-    int ret = -1, result = -1;
+-    int total = 0;
+-    ws_mask_t mask;
+-    ws_header_t *header;
+-    int i;
+-    unsigned char opcode;
+-    ws_ctx_t *wsctx = (ws_ctx_t *)cl->wsctx;
+-    int flength, fhlen;
+-    /* int fin; */ /* not used atm */ 
+-
+-    /* rfbLog(" <== %s[%d]: %d cl: %p, wsctx: %p-%p (%d)\n", __func__, gettid(), len, cl, wsctx, (char *)wsctx + sizeof(ws_ctx_t), sizeof(ws_ctx_t)); */
+-
+-    if (wsctx->readbuflen) {
+-      /* simply return what we have */
+-      if (wsctx->readbuflen > len) {
+-	memcpy(dst, wsctx->readbuf +  wsctx->readbufstart, len);
+-	result = len;
+-	wsctx->readbuflen -= len;
+-	wsctx->readbufstart += len;
+-      } else {
+-	memcpy(dst, wsctx->readbuf +  wsctx->readbufstart, wsctx->readbuflen);
+-	result = wsctx->readbuflen;
+-	wsctx->readbuflen = 0;
+-	wsctx->readbufstart = 0;
+-      }
+-      goto spor;
+-    }
+-
+-    buf = wsctx->codeBufDecode;
+-    header = (ws_header_t *)wsctx->codeBufDecode;
++    return encodeSockTotal(ctx) - (ctx->readPos - ctx->codeBufEncode);
++}
+ 
+-    ret = ws_peek(cl, buf, B64LEN(len) + WSHLENMAX);
++static size_t
++encodeSockWritten(ws_encoding_ctx_t *ctx)
++{
++  return ctx->readPos - ctx->codeBufEncode;
++}
+ 
+-    if (ret < 2) {
+-        /* save errno because rfbErr() will tamper it */
+-        if (-1 == ret) {
+-            int olderrno = errno;
+-            rfbErr("%s: peek; %m\n", __func__);
+-            errno = olderrno;
+-        } else if (0 == ret) {
+-            result = 0;
++static size_t
++encodeWritten(ws_encoding_ctx_t *ctx, int base64)
++{
++    size_t nSockWritten = encodeSockWritten(ctx);
++    //rfbLog("%s: nSockWritten=%d\n", __func__, nSockWritten);
++    if (nSockWritten <= ctx->header.headerLen) {
++      return 0;
++    } else {
++        if (base64) {
++            size_t ret = B64_ENCODABLE_WITH_BUF_SIZE(nSockWritten - ctx->header.headerLen);
++            /* the last 4 bytes may encode 1, 2 or 3 bytes paylaod;
++             * check with the original number of bytes in that case */
++            ret = ret > ctx->nToWrite ? ctx->nToWrite : ret;
++            return ret;
+         } else {
+-            errno = EAGAIN;
++            return nSockWritten - ctx->header.headerLen;
+         }
+-        goto spor;
+     }
++}
+ 
+-    opcode = header->b0 & 0x0f;
+-    /* fin = (header->b0 & 0x80) >> 7; */ /* not used atm */
+-    flength = header->b1 & 0x7f;
+-
+-    /*
+-     * 4.3. Client-to-Server Masking
+-     *
+-     * The client MUST mask all frames sent to the server.  A server MUST
+-     * close the connection upon receiving a frame with the MASK bit set to 0.
+-    **/
+-    if (!(header->b1 & 0x80)) {
+-	rfbErr("%s: got frame without mask\n", __func__, ret);
+-	errno = EIO;
+-	goto spor;
+-    }
+ 
+-    if (flength < 126) {
+-	fhlen = 2;
+-	mask = header->u.m;
+-    } else if (flength == 126 && 4 <= ret) {
+-	flength = WS_NTOH16(header->u.s16.l16);
+-	fhlen = 4;
+-	mask = header->u.s16.m16;
+-    } else if (flength == 127 && 10 <= ret) {
+-	flength = WS_NTOH64(header->u.s64.l64);
+-	fhlen = 10;
+-	mask = header->u.s64.m64;
++static size_t
++encodeRemaining(ws_encoding_ctx_t *ctx, int base64)
++{
++  size_t nSockWritten = encodeSockTotal(ctx) - encodeSockRemaining(ctx);
++  if (nSockWritten <= ctx->header.headerLen) {
++    if (base64) {
++        return B64_ENCODABLE_WITH_BUF_SIZE(ctx->header.payloadLen);
+     } else {
+-      /* Incomplete frame header */
+-      rfbErr("%s: incomplete frame header\n", __func__, ret);
+-      errno = EIO;
+-      goto spor;
++        return ctx->header.payloadLen;
+     }
+-
+-    /* absolute length of frame */
+-    total = fhlen + flength + 4;
+-    payload = buf + fhlen + 4; /* header length + mask */
+-
+-    if (-1 == (ret = ws_read(cl, buf, total))) {
+-      int olderrno = errno;
+-      rfbErr("%s: read; %m", __func__);
+-      errno = olderrno;
+-      return ret;
+-    } else if (ret < total) {
+-      /* GT TODO: hmm? */
+-      rfbLog("%s: read; got partial data\n", __func__);
++  } else {
++    if (base64) {
++        return ctx->nToWrite - encodeWritten(ctx, base64);
+     } else {
+-      buf[ret] = '\0';
+-    }
+-
+-    /* process 1 frame (32 bit op) */
+-    payload32 = (uint32_t *)payload;
+-    for (i = 0; i < flength / 4; i++) {
+-	payload32[i] ^= mask.u;
++        return encodeSockRemaining(ctx);
+     }
+-    /* process the remaining bytes (if any) */
+-    for (i*=4; i < flength; i++) {
+-	payload[i] ^= mask.c[i % 4];
+-    }
+-
+-    switch (opcode) {
+-      case WS_OPCODE_CLOSE:
+-	rfbLog("got closure, reason %d\n", WS_NTOH16(((uint16_t *)payload)[0]));
+-	errno = ECONNRESET;
+-	break;
+-      case WS_OPCODE_TEXT_FRAME:
+-	if (-1 == (flength = b64_pton(payload, (unsigned char *)wsctx->codeBufDecode, sizeof(wsctx->codeBufDecode)))) {
+-	  rfbErr("%s: Base64 decode error; %m\n", __func__);
+-	  break;
+-	}
+-	payload = wsctx->codeBufDecode;
+-	/* fall through */
+-      case WS_OPCODE_BINARY_FRAME:
+-	if (flength > len) {
+-	  memcpy(wsctx->readbuf, payload + len, flength - len);
+-	  wsctx->readbufstart = 0;
+-	  wsctx->readbuflen = flength - len;
+-	  flength = len;
+-	}
+-	memcpy(dst, payload, flength);
+-	result = flength;
+-	break;
+-      default:
+-	rfbErr("%s: unhandled opcode %d, b0: %02x, b1: %02x\n", __func__, (int)opcode, header->b0, header->b1);
+-    }
+-
+-    /* single point of return, if someone has questions :-) */
+-spor:
+-    /* rfbLog("%s: ret: %d/%d\n", __func__, result, len); */
+-    return result;
++  }
+ }
+-
++/**
++ * We encode a write request as a single websocket frame,
++ * as long as our buffer can handle it. When the buffer is too large,
++ * we take as many bytes as we can handle, put them into a websocket frame
++ * and return the length of the raw payload data written to the underlying
++ * socket.
++ *
++ * If the underlying socket suspends writing in the middle of a b64 encoding,
++ * we return the completely written bytes and remember the position we stopped.
++ * The next call continues writing bytes at this position.
++ */
+ static int
+-webSocketsEncodeHybi(rfbClientPtr cl, const char *src, int len, char **dst)
++webSocketsEncodeHybi(ws_ctx_t *wsctx, const char *src, int len)
+ {
+-    int blen, ret = -1, sz = 0;
++    int framePayloadLen;
++    int nSock = -1;
++    int n = 0;
++    int ret = 0;
++    size_t nWritten = 0;
++    int toEncode = len;
+     unsigned char opcode = '\0'; /* TODO: option! */
+-    ws_header_t *header;
+-    ws_ctx_t *wsctx = (ws_ctx_t *)cl->wsctx;
+-
++    ws_encoding_ctx_t *enc_ctx = &(wsctx->enc);
+ 
++    //rfbLog("%s: src=%p len=%d\n", __func__, src, len);
+     /* Optional opcode:
+      *   0x0 - continuation
+      *   0x1 - text frame (base64 encode buf)
+@@ -823,124 +479,143 @@ webSocketsEncodeHybi(rfbClientPtr cl, const char *src, int len, char **dst)
+      *   0xA - pong
+     **/
+     if (!len) {
+-	  /* nothing to encode */
+-	  return 0;
++        /* nothing to encode */
++        return 0;
+     }
+ 
+-    header = (ws_header_t *)wsctx->codeBufEncode;
++    if (enc_ctx->state == WS_STATE_ENCODING_IDLE) {
++        int nMax = 0;
++        /* create websocket frame header */
++        enc_ctx->header.data = (ws_header_t *)enc_ctx->codeBufEncode;
++        ws_header_t *header = enc_ctx->header.data;
+ 
+-    if (wsctx->base64) {
+-	opcode = WS_OPCODE_TEXT_FRAME;
+-	/* calculate the resulting size */
+-	blen = B64LEN(len);
+-    } else {
+-	opcode = WS_OPCODE_BINARY_FRAME;
+-	blen = len;
+-    }
++        if (wsctx->base64) {
++            opcode = WS_OPCODE_TEXT_FRAME;
++
++            /* for simplicity, assume maximum header length here */
++            nMax = B64_ENCODABLE_WITH_BUF_SIZE(ARRAYSIZE(enc_ctx->codeBufEncode) - WS_HYBI_HEADER_LEN_LONG_NOTMASKED);
++
++            /* calculate the resulting size, but make sure it fits the buffer */
++            if (len > nMax) {
++                framePayloadLen = B64LEN(nMax);
++                toEncode = nMax;
++            } else {
++                framePayloadLen = B64LEN(len);
++                toEncode = len;
++            }
++        } else {
++            opcode = WS_OPCODE_BINARY_FRAME;
++            nMax = ARRAYSIZE(enc_ctx->codeBufEncode) - WS_HYBI_HEADER_LEN_LONG_NOTMASKED;
++            toEncode = len > nMax ? nMax : len;
++            framePayloadLen = toEncode;
++        }
++
++        enc_ctx->nToWrite = toEncode;
++        enc_ctx->header.payloadLen = framePayloadLen;
++        header->b0 = 0x80 | (opcode & 0x0f);
++        if (framePayloadLen <= 125) {
++          header->b1 = (uint8_t)framePayloadLen;
++          enc_ctx->header.headerLen = WS_HYBI_HEADER_LEN_SHORT_NOTMASKED;
++        } else if (framePayloadLen < 65536) {
++          header->b1 = 0x7e;
++          header->u.s16.l16 = WS_HTON16((uint16_t)framePayloadLen);
++          enc_ctx->header.headerLen = WS_HYBI_HEADER_LEN_EXTENDED_NOTMASKED;
++        } else {
++          header->b1 = 0x7f;
++          header->u.s64.l64 = WS_HTON64(framePayloadLen);
++          enc_ctx->header.headerLen = WS_HYBI_HEADER_LEN_LONG_NOTMASKED;
++        }
+ 
+-    header->b0 = 0x80 | (opcode & 0x0f);
+-    if (blen <= 125) {
+-      header->b1 = (uint8_t)blen;
+-      sz = 2;
+-    } else if (blen <= 65536) {
+-      header->b1 = 0x7e;
+-      header->u.s16.l16 = WS_HTON16((uint16_t)blen);
+-      sz = 4;
++        if (wsctx->base64) {
++            //rfbLog("%s: trying to encode %d bytes into encode buffer of size %d, framePayloadLen=%d\n", __func__, toEncode, ARRAYSIZE(enc_ctx->codeBufEncode), framePayloadLen);
++            if (-1 == (nSock = b64_ntop((unsigned char *)src, toEncode, enc_ctx->codeBufEncode + enc_ctx->header.headerLen, ARRAYSIZE(enc_ctx->codeBufEncode) - enc_ctx->header.headerLen))) {
++                rfbErr("%s: Base 64 encode failed\n", __func__);
++            } else {
++              if (nSock != framePayloadLen) {
++                rfbErr("%s: Base 64 encode; something weird happened\n", __func__);
++              }
++              //rfbLog("%s: encoded %d source bytes to %d b64 bytes\n", __func__, toEncode, nSock);
++              nSock += enc_ctx->header.headerLen;
++            }
++        } else {
++            memcpy(enc_ctx->codeBufEncode + enc_ctx->header.headerLen, src, framePayloadLen);
++            nSock =  enc_ctx->header.headerLen + framePayloadLen;
++        }
++
++        while (nWritten < enc_ctx->header.headerLen + B64LEN(1)) {
++            n = wsctx->ctxInfo.writeFunc(wsctx->ctxInfo.ctxPtr, enc_ctx->codeBufEncode + nWritten, nSock - nWritten);
++            if (n < 0) {
++                if (errno != EAGAIN && errno != EWOULDBLOCK) {
++                  int olderrno = errno;
++                  rfbErr("%s: writing to sock caused err; returning it\n", __func__);
++                  errno = olderrno;
++                  return -1;
++                }
++            } else {
++                nWritten += n;
++            }
++            //rfbLog("%s: written %d bytes to sock; nWritten=%d, ret=%d, remaining=%d\n", __func__, n, nWritten, nSock, nSock - nWritten);
++        }
++        enc_ctx->readPos = enc_ctx->codeBufEncode + nWritten;
++        ret = encodeWritten(enc_ctx, wsctx->base64);
++        //rfbLog("%s: write in state %d (IDLE); nWritten=%d ret=%d\n", __func__, enc_ctx->state, nWritten, ret);
++    } else if (enc_ctx->state == WS_STATE_ENCODING_FRAME_PENDING) {
++        int nRemaining = encodeRemaining(enc_ctx, wsctx->base64);
++
++        do {
++          /* write from where we left until the end of a frame */
++          n = wsctx->ctxInfo.writeFunc(wsctx->ctxInfo.ctxPtr, enc_ctx->readPos, encodeSockRemaining(enc_ctx));
++          if (n < 0) {
++            int olderrno = errno;
++            rfbErr("%s: failed writing to socket\n");
++            errno = olderrno;
++            return -1;
++          }
++          enc_ctx->readPos += n;
++          ret = nRemaining - encodeRemaining(enc_ctx, wsctx->base64);
++          //rfbLog("%s: wrote %d bytes to socket; ret=%d nRemaining=%d encodeRemaining=%d\n", __func__, n, ret, nRemaining, encodeRemaining(enc_ctx, wsctx->base64));
++        } while (ret < 1);
++        //rfbLog("%s: write in state %d; nRemaining=%d n=%d ret=%d\n", __func__, enc_ctx->state, nRemaining, n, ret);
+     } else {
+-      header->b1 = 0x7f;
+-      header->u.s64.l64 = WS_HTON64(blen);
+-      sz = 10;
++        rfbErr("%s: invalid state (%d)\n", __func__, enc_ctx->state);
++        errno = EIO;
++        return -1;
+     }
+-
+-    if (wsctx->base64) {
+-        if (-1 == (ret = b64_ntop((unsigned char *)src, len, wsctx->codeBufEncode + sz, sizeof(wsctx->codeBufEncode) - sz))) {
+-	  rfbErr("%s: Base 64 encode failed\n", __func__);
+-	} else {
+-	  if (ret != blen)
+-	    rfbErr("%s: Base 64 encode; something weird happened\n", __func__);
+-	  ret += sz;
+-	}
++    int bytesRemaining = encodeSockRemaining(enc_ctx);
++    /* check if we are finished tranmitting the whole frame */
++    if (bytesRemaining == 0) {
++      //rfbLog("%s: transmission finished; cleaning up\n", __func__);
++      wsEncodeCleanup(enc_ctx);
+     } else {
+-      memcpy(wsctx->codeBufEncode + sz, src, len);
+-      ret =  sz + len;
++      //rfbLog("%s: %d bytes remaining\n", __func__, bytesRemaining);
++      enc_ctx->state = WS_STATE_ENCODING_FRAME_PENDING;
+     }
+ 
+-    *dst = wsctx->codeBufEncode;
+-
++    //rfbLog("%s: returning %d nextState=%d\n", __func__, ret, enc_ctx->state);
+     return ret;
+ }
+ 
+ int
+-webSocketsEncode(rfbClientPtr cl, const char *src, int len, char **dst)
++webSocketsEncode(rfbClientPtr cl, const char *src, int len)
+ {
+-    return ((ws_ctx_t *)cl->wsctx)->encode(cl, src, len, dst);
++    ws_ctx_t *wsctx = (ws_ctx_t *)cl->wsctx;
++    if (wsctx == NULL) {
++      rfbErr("%s: websocket used uninitialized\n", __func__);
++      errno = EIO;
++      return -1;
++    }
++    wsctx->ctxInfo.ctxPtr = cl;
++    wsctx->ctxInfo.writeFunc = ws_write;
++    return webSocketsEncodeHybi(wsctx, src, len);
+ }
+ 
+ int
+ webSocketsDecode(rfbClientPtr cl, char *dst, int len)
+ {
+-    return ((ws_ctx_t *)cl->wsctx)->decode(cl, dst, len);
+-}
+-
+-
+-/* returns TRUE if client sent a close frame or a single 'end of frame'
+- * marker was received, FALSE otherwise
+- *
+- * Note: This is a Hixie-only hack!
+- **/
+-rfbBool
+-webSocketCheckDisconnect(rfbClientPtr cl)
+-{
+     ws_ctx_t *wsctx = (ws_ctx_t *)cl->wsctx;
+-    /* With Base64 encoding we need at least 4 bytes */
+-    char peekbuf[4];
+-    int n;
+-
+-    if (wsctx->version == WEBSOCKETS_VERSION_HYBI)
+-	return FALSE;
+-
+-    if (cl->sslctx)
+-	n = rfbssl_peek(cl, peekbuf, 4);
+-    else
+-	n = recv(cl->sock, peekbuf, 4, MSG_PEEK);
+-
+-    if (n <= 0) {
+-	if (n != 0)
+-	    rfbErr("%s: peek; %m", __func__);
+-	rfbCloseClient(cl);
+-	return TRUE;
+-    }
+-
+-    if (peekbuf[0] == '\xff') {
+-	int doclose = 0;
+-	/* Make sure we don't miss a client disconnect on an end frame
+-	 * marker. Because we use a peek buffer in some cases it is not
+-	 * applicable to wait for more data per select(). */
+-	switch (n) {
+-	    case 3:
+-		if (peekbuf[1] == '\xff' && peekbuf[2] == '\x00')
+-		    doclose = 1;
+-		break;
+-	    case 2:
+-		if (peekbuf[1] == '\x00')
+-		    doclose = 1;
+-		break;
+-	    default:
+-		return FALSE;
+-	}
+-
+-	if (cl->sslctx)
+-	    n = rfbssl_read(cl, peekbuf, n);
+-	else
+-	    n = read(cl->sock, peekbuf, n);
+-
+-	if (doclose) {
+-	    rfbErr("%s: websocket close frame received\n", __func__);
+-	    rfbCloseClient(cl);
+-	}
+-	return TRUE;
+-    }
+-    return FALSE;
++    wsctx->ctxInfo.ctxPtr = cl;
++    wsctx->ctxInfo.readFunc = ws_read;
++    return webSocketsDecodeHybi(wsctx, dst, len);
+ }
+ 
+ /* returns TRUE if there is data waiting to be read in our internal buffer
+@@ -951,8 +626,8 @@ webSocketsHasDataInBuffer(rfbClientPtr cl)
+ {
+     ws_ctx_t *wsctx = (ws_ctx_t *)cl->wsctx;
+ 
+-    if (wsctx && wsctx->readbuflen)
+-      return TRUE;
++    if (wsctx && wsctx->dec.readlen)
++        return TRUE;
+ 
+     return (cl->sslctx && rfbssl_pending(cl) > 0);
+ }
+diff --git a/libvncserver/ws_decode.c b/libvncserver/ws_decode.c
+new file mode 100644
+index 0000000..501c01a
+--- /dev/null
++++ b/libvncserver/ws_decode.c
+@@ -0,0 +1,550 @@
++#include "ws_decode.h"
++
++#include <string.h>
++#include <errno.h>
++
++void wsHeaderCleanup(ws_header_data_t *header)
++{
++  header->opcode = WS_OPCODE_INVALID;
++  header->payloadLen = 0;
++  header->mask.u = 0;
++  header->headerLen = 0;
++  header->data = NULL;
++  header->nDone= 0;
++}
++static inline int
++isControlFrame(ws_header_data_t *head)
++{
++  return 0 != (head->opcode & 0x08);
++}
++
++static uint64_t
++hybiRemaining(ws_decoding_ctx_t *wsctx)
++{
++  return wsctx->header.payloadLen - wsctx->nReadPayload;
++}
++
++static void
++hybiDecodeCleanupBasics(ws_decoding_ctx_t *wsctx)
++{
++  wsHeaderCleanup(&(wsctx->header));
++  wsctx->nReadPayload = 0;
++  wsctx->carrylen = 0;
++  wsctx->readPos = (unsigned char *)wsctx->codeBufDecode;
++  wsctx->readlen = 0;
++  wsctx->hybiDecodeState = WS_STATE_DECODING_HEADER_PENDING;
++  wsctx->writePos = NULL;
++}
++
++static void
++hybiDecodeCleanupForContinuation(ws_decoding_ctx_t *wsctx)
++{
++  hybiDecodeCleanupBasics(wsctx);
++  //rfbLog("clean up frame, but expect continuation with opcode %d\n", wsctx->continuation_opcode);
++}
++
++void
++hybiDecodeCleanupComplete(ws_decoding_ctx_t *wsctx)
++{
++  hybiDecodeCleanupBasics(wsctx);
++  wsctx->continuation_opcode = WS_OPCODE_INVALID;
++  //rfbLog("cleaned up wsctx completely\n");
++}
++
++
++/**
++ * Return payload data that has been decoded/unmasked from
++ * a websocket frame.
++ *
++ * @param[out]     dst destination buffer
++ * @param[in]      len bytes to copy to destination buffer
++ * @param[in,out]  wsctx internal state of decoding procedure
++ * @param[out]     number of bytes actually written to dst buffer
++ * @return next hybi decoding state
++ */
++static int
++hybiReturnData(char *dst, int len, ws_decoding_ctx_t *wsctx, int *nWritten)
++{
++  int nextState = WS_STATE_ERR;
++
++  /* if we have something already decoded copy and return */
++  if (wsctx->readlen > 0) {
++    /* simply return what we have */
++    if (wsctx->readlen > len) {
++      //rfbLog("copy to %d bytes to dst buffer; readPos=%p, readLen=%d\n", len, wsctx->readPos, wsctx->readlen);
++      memcpy(dst, wsctx->readPos, len);
++      *nWritten = len;
++      wsctx->readlen -= len;
++      wsctx->readPos += len;
++      nextState = WS_STATE_DECODING_DATA_AVAILABLE;
++    } else {
++      //rfbLog("copy to %d bytes to dst buffer; readPos=%p, readLen=%d\n", wsctx->readlen, wsctx->readPos, wsctx->readlen);
++      memcpy(dst, wsctx->readPos, wsctx->readlen);
++      *nWritten = wsctx->readlen;
++      wsctx->readlen = 0;
++      wsctx->readPos = NULL;
++      if (hybiRemaining(wsctx) == 0) {
++        nextState = WS_STATE_DECODING_FRAME_COMPLETE;
++      } else {
++        nextState = WS_STATE_DECODING_DATA_NEEDED;
++      }
++    }
++    //rfbLog("after copy: readPos=%p, readLen=%d\n", wsctx->readPos, wsctx->readlen);
++  } else {
++    /* it may happen that we read some bytes but could not decode them,
++     * in that case, set errno to EAGAIN and return -1 */
++    nextState = wsctx->hybiDecodeState;
++    errno = EAGAIN;
++    *nWritten = -1;
++  }
++  return nextState;
++}
++
++/**
++ * Read an RFC 6455 websocket frame (IETF hybi working group).
++ *
++ * Internal state is updated according to bytes received and the
++ * decoding of header information.
++ *
++ * @param[in]   cl client ptr with ptr to raw socket and ws_decoding_ctx_t ptr
++ * @param[out]  sockRet emulated recv return value
++ * @param[out]  nPayload number of payload bytes already read
++ * @return next hybi decoding state; WS_STATE_DECODING_HEADER_PENDING indicates
++ *         that the header was not received completely.
++ */
++static int
++hybiReadHeader(ws_ctx_t *ctx, int *sockRet, int *nPayload)
++{
++  int ret;
++  ws_decoding_ctx_t *wsctx = &ctx->dec;
++  char *headerDst = wsctx->codeBufDecode + wsctx->header.nDone;
++  int n = ((uint64_t)WSHLENMAX) - wsctx->header.nDone;
++
++  //rfbLog("header_read to %p with len=%d\n", headerDst, n);
++  ret = ctx->ctxInfo.readFunc(ctx->ctxInfo.ctxPtr, headerDst, n);
++  //rfbLog("read %d bytes from socket\n", ret);
++  if (ret <= 0) {
++    if (-1 == ret) {
++      /* save errno because rfbErr() will tamper it */
++      int olderrno = errno;
++      rfbErr("%s: read; %s\n", __func__, strerror(errno));
++      errno = olderrno;
++      goto err_cleanup_state;
++    } else {
++      *sockRet = 0;
++      goto err_cleanup_state_sock_closed;
++    }
++  }
++
++  wsctx->header.nDone += ret;
++  if (wsctx->header.nDone < 2) {
++    /* cannot decode header with less than two bytes */
++    goto ret_header_pending;
++  }
++
++  /* first two header bytes received; interpret header data and get rest */
++  wsctx->header.data = (ws_header_t *)wsctx->codeBufDecode;
++
++  wsctx->header.opcode = wsctx->header.data->b0 & 0x0f;
++  wsctx->header.fin = (wsctx->header.data->b0 & 0x80) >> 7;
++  if (isControlFrame(&wsctx->header)) {
++    //rfbLog("is control frame\n");
++    /* is a control frame, leave remembered continuation opcode unchanged;
++     * just check if there is a wrong fragmentation */
++    if (wsctx->header.fin == 0) {
++
++      /* we only accept text/binary continuation frames; RFC6455:
++       * Control frames (see Section 5.5) MAY be injected in the middle of
++       * a fragmented message.  Control frames themselves MUST NOT be
++       * fragmented. */
++      rfbErr("control frame with FIN bit cleared received, aborting\n");
++      errno = EPROTO;
++      goto err_cleanup_state;
++    }
++  } else {
++    //rfbLog("not a control frame\n");
++    /* not a control frame, check for continuation opcode */
++    if (wsctx->header.opcode == WS_OPCODE_CONTINUATION) {
++      //rfbLog("cont_frame\n");
++      /* do we have state (i.e., opcode) for continuation frame? */
++      if (wsctx->continuation_opcode == WS_OPCODE_INVALID) {
++        rfbErr("no continuation state\n");
++        errno = EPROTO;
++        goto err_cleanup_state;
++      }
++
++      /* otherwise, set opcode = continuation_opcode */
++      wsctx->header.opcode = wsctx->continuation_opcode;
++      //rfbLog("set opcode to continuation_opcode: %d\n", wsctx->header.opcode);
++    } else {
++      if (wsctx->header.fin == 0) {
++        wsctx->continuation_opcode = wsctx->header.opcode;
++      } else {
++        wsctx->continuation_opcode = WS_OPCODE_INVALID;
++      }
++      //rfbLog("set continuation_opcode to %d\n", wsctx->continuation_opcode);
++    }
++  }
++
++  wsctx->header.payloadLen = (uint64_t)(wsctx->header.data->b1 & 0x7f);
++  //rfbLog("first header bytes received; opcode=%d lenbyte=%d fin=%d\n", wsctx->header.opcode, wsctx->header.payloadLen, wsctx->header.fin);
++
++  /*
++   * 4.3. Client-to-Server Masking
++   *
++   * The client MUST mask all frames sent to the server.  A server MUST
++   * close the connection upon receiving a frame with the MASK bit set to 0.
++  **/
++  if (!(wsctx->header.data->b1 & 0x80)) {
++    rfbErr("%s: got frame without mask; ret=%d\n", __func__, ret);
++    errno = EPROTO;
++    goto err_cleanup_state;
++  }
++
++
++  if (wsctx->header.payloadLen < 126 && wsctx->header.nDone >= 6) {
++    wsctx->header.headerLen = WS_HYBI_HEADER_LEN_SHORT_MASKED;
++    wsctx->header.mask = wsctx->header.data->u.m;
++  } else if (wsctx->header.payloadLen == 126 && 8 <= wsctx->header.nDone) {
++    wsctx->header.headerLen = WS_HYBI_HEADER_LEN_EXTENDED_MASKED;
++    wsctx->header.payloadLen = WS_NTOH16(wsctx->header.data->u.s16.l16);
++    wsctx->header.mask = wsctx->header.data->u.s16.m16;
++  } else if (wsctx->header.payloadLen == 127 && 14 <= wsctx->header.nDone) {
++    wsctx->header.headerLen = WS_HYBI_HEADER_LEN_LONG_MASKED;
++    wsctx->header.payloadLen = WS_NTOH64(wsctx->header.data->u.s64.l64);
++    wsctx->header.mask = wsctx->header.data->u.s64.m64;
++  } else {
++    /* Incomplete frame header, try again */
++    rfbErr("%s: incomplete frame header; ret=%d\n", __func__, ret);
++    goto ret_header_pending;
++  }
++
++  char *h = wsctx->codeBufDecode;
++  int i;
++  //rfbLog("Header:\n");
++  for (i=0; i <10; i++) {
++    //rfbLog("0x%02X\n", (unsigned char)h[i]);
++  }
++  //rfbLog("\n");
++
++  /* while RFC 6455 mandates that lengths MUST be encoded with the minimum
++   * number of bytes, it does not specify for the server how to react on
++   * 'wrongly' encoded frames --- this implementation rejects them*/
++  if ((wsctx->header.headerLen > WS_HYBI_HEADER_LEN_SHORT_MASKED
++      && wsctx->header.payloadLen < (uint64_t)126)
++      || (wsctx->header.headerLen > WS_HYBI_HEADER_LEN_EXTENDED_MASKED
++        && wsctx->header.payloadLen < (uint64_t)65536)) {
++    rfbErr("%s: invalid length field; headerLen=%d payloadLen=%llu\n", __func__, wsctx->header.headerLen, wsctx->header.payloadLen);
++    errno = EPROTO;
++    goto err_cleanup_state;
++  }
++
++  /* update write position for next bytes */
++  wsctx->writePos = wsctx->codeBufDecode + wsctx->header.nDone;
++
++  /* set payload pointer just after header */
++  wsctx->readPos = (unsigned char *)(wsctx->codeBufDecode + wsctx->header.headerLen);
++
++  *nPayload = wsctx->header.nDone - wsctx->header.headerLen;
++  wsctx->nReadPayload = *nPayload;
++
++  //rfbLog("header complete: state=%d headerlen=%d payloadlen=%llu writeTo=%p nPayload=%d\n", wsctx->hybiDecodeState, wsctx->header.headerLen, wsctx->header.payloadLen, wsctx->writePos, *nPayload);
++
++  return WS_STATE_DECODING_DATA_NEEDED;
++
++ret_header_pending:
++  errno = EAGAIN;
++  *sockRet = -1;
++  return WS_STATE_DECODING_HEADER_PENDING;
++
++err_cleanup_state:
++  *sockRet = -1;
++err_cleanup_state_sock_closed:
++  hybiDecodeCleanupComplete(wsctx);
++  return WS_STATE_ERR;
++}
++
++static int
++hybiWsFrameComplete(ws_decoding_ctx_t *wsctx)
++{
++  return wsctx != NULL && hybiRemaining(wsctx) == 0;
++}
++
++static char *
++hybiPayloadStart(ws_decoding_ctx_t *wsctx)
++{
++  return wsctx->codeBufDecode + wsctx->header.headerLen;
++}
++
++
++/**
++ * Read the remaining payload bytes from associated raw socket.
++ *
++ *  - try to read remaining bytes from socket
++ *  - unmask all multiples of 4
++ *  - if frame incomplete but some bytes are left, these are copied to
++ *      the carry buffer
++ *  - if opcode is TEXT: Base64-decode all unmasked received bytes
++ *  - set state for reading decoded data
++ *  - reset write position to begin of buffer (+ header)
++ *      --> before we retrieve more data we let the caller clear all bytes
++ *          from the reception buffer
++ *  - execute return data routine
++ *
++ *  Sets errno corresponding to what it gets from the underlying
++ *  socket or EPROTO if some invalid data is in the received frame
++ *  or ECONNRESET if a close reason + message is received. EIO is used if
++ *  an internal sanity check fails.
++ *
++ *  @param[in]  cl client ptr with raw socket reference
++ *  @param[out] dst  destination buffer
++ *  @param[in]  len  size of destination buffer
++ *  @param[out] sockRet emulated recv return value
++ *  @param[in]  nInBuf number of undecoded bytes before writePos from header read
++ *  @return next hybi decode state
++ */
++static int
++hybiReadAndDecode(ws_ctx_t *wsctx, char *dst, int len, int *sockRet, int nInBuf)
++{
++  int n;
++  int i;
++  int toReturn; /* number of data bytes to return */
++  int toDecode; /* number of bytes to decode starting at dec_ctx->writePos */
++  int bufsize;
++  int nextRead;
++  unsigned char *data;
++  uint32_t *data32;
++  ws_decoding_ctx_t *dec_ctx = &(wsctx->dec);
++
++  /* if data was carried over, copy to start of buffer */
++  memcpy(dec_ctx->writePos, dec_ctx->carryBuf, dec_ctx->carrylen);
++  dec_ctx->writePos += dec_ctx->carrylen;
++
++  /* -1 accounts for potential '\0' terminator for base64 decoding */
++  bufsize = dec_ctx->codeBufDecode + ARRAYSIZE(dec_ctx->codeBufDecode) - dec_ctx->writePos - 1;
++  //rfbLog("bufsize=%d\n", bufsize);
++  if (hybiRemaining(dec_ctx) > bufsize) {
++    nextRead = bufsize;
++  } else {
++    nextRead = hybiRemaining(dec_ctx);
++  }
++
++  //rfbLog("calling read with buf=%p and len=%d (decodebuf=%p headerLen=%d)\n", dec_ctx->writePos, nextRead, dec_ctx->codeBufDecode, dec_ctx->header.headerLen);
++
++  if (nextRead > 0) {
++    /* decode more data */
++    if (-1 == (n = wsctx->ctxInfo.readFunc(wsctx->ctxInfo.ctxPtr, dec_ctx->writePos, nextRead))) {
++      int olderrno = errno;
++      rfbErr("%s: read; %s", __func__, strerror(errno));
++      errno = olderrno;
++      *sockRet = -1;
++      return WS_STATE_ERR;
++    } else if (n == 0) {
++      *sockRet = 0;
++      return WS_STATE_ERR;
++    } else {
++      //rfbLog("read %d bytes from socket; nRead=%d\n", n, dec_ctx->nReadPayload);
++    }
++  } else {
++    n = 0;
++  }
++
++  dec_ctx->nReadPayload += n;
++  dec_ctx->writePos += n;
++
++  if (hybiRemaining(dec_ctx) == 0) {
++    dec_ctx->hybiDecodeState = WS_STATE_DECODING_FRAME_COMPLETE;
++  }
++
++  /* number of not yet unmasked payload bytes: what we read here + what was
++   * carried over + what was read with the header */
++  toDecode = n + dec_ctx->carrylen + nInBuf;
++  //rfbLog("toDecode=%d from n=%d carrylen=%d headerLen=%d\n", toDecode, n, dec_ctx->carrylen, dec_ctx->header.headerLen);
++  if (toDecode < 0) {
++    rfbErr("%s: internal error; negative number of bytes to decode: %d", __func__, toDecode);
++    errno=EIO;
++    *sockRet = -1;
++    return WS_STATE_ERR;
++  }
++
++  /* for a possible base64 decoding, we decode multiples of 4 bytes until
++   * the whole frame is received and carry over any remaining bytes in the carry buf*/
++  data = (unsigned char *)(dec_ctx->writePos - toDecode);
++  data32= (uint32_t *)data;
++
++  for (i = 0; i < (toDecode >> 2); i++) {
++    data32[i] ^= dec_ctx->header.mask.u;
++  }
++  //rfbLog("mask decoding; i=%d toDecode=%d\n", i, toDecode);
++
++  if (dec_ctx->hybiDecodeState == WS_STATE_DECODING_FRAME_COMPLETE) {
++    /* process the remaining bytes (if any) */
++    for (i*=4; i < toDecode; i++) {
++      data[i] ^= dec_ctx->header.mask.c[i % 4];
++    }
++
++    /* all data is here, no carrying */
++    dec_ctx->carrylen = 0;
++  } else {
++    /* carry over remaining, non-multiple-of-four bytes */
++    dec_ctx->carrylen = toDecode - (i * 4);
++    if (dec_ctx->carrylen < 0 || dec_ctx->carrylen > ARRAYSIZE(dec_ctx->carryBuf)) {
++      rfbErr("%s: internal error, invalid carry over size: carrylen=%d, toDecode=%d, i=%d", __func__, dec_ctx->carrylen, toDecode, i);
++      *sockRet = -1;
++      errno = EIO;
++      return WS_STATE_ERR;
++    }
++    //rfbLog("carrying over %d bytes from %p to %p\n", dec_ctx->carrylen, dec_ctx->writePos + (i * 4), dec_ctx->carryBuf);
++    memcpy(dec_ctx->carryBuf, data + (i * 4), dec_ctx->carrylen);
++    dec_ctx->writePos -= dec_ctx->carrylen;
++  }
++
++  toReturn = toDecode - dec_ctx->carrylen;
++
++  switch (dec_ctx->header.opcode) {
++    case WS_OPCODE_CLOSE:
++      /* this data is not returned as payload data */
++      if (hybiWsFrameComplete(dec_ctx)) {
++        *(dec_ctx->writePos) = '\0';
++        //rfbLog("got close cmd %d, reason %d: %s\n", (int)(dec_ctx->writePos - hybiPayloadStart(dec_ctx)), WS_NTOH16(((uint16_t *)hybiPayloadStart(dec_ctx))[0]), &hybiPayloadStart(dec_ctx)[2]);
++        errno = ECONNRESET;
++        *sockRet = -1;
++        return WS_STATE_DECODING_FRAME_COMPLETE;
++      } else {
++        //rfbLog("got close cmd; waiting for %d more bytes to arrive\n", hybiRemaining(dec_ctx));
++        *sockRet = -1;
++        errno = EAGAIN;
++        return WS_STATE_DECODING_CLOSE_REASON_PENDING;
++      }
++      break;
++    case WS_OPCODE_TEXT_FRAME:
++      data[toReturn] = '\0';
++      //rfbLog("Initiate Base64 decoding in %p with max size %d and '\\0' at %p\n", data, bufsize, data + toReturn);
++      if (-1 == (dec_ctx->readlen = b64_pton((char *)data, data, bufsize))) {
++        rfbErr("%s: Base64 decode error; %s\n", __func__, strerror(errno));
++      }
++      dec_ctx->writePos = hybiPayloadStart(dec_ctx);
++      break;
++    case WS_OPCODE_BINARY_FRAME:
++      dec_ctx->readlen = toReturn;
++      dec_ctx->writePos = hybiPayloadStart(dec_ctx);
++      //rfbLog("set readlen=%d writePos=%p\n", dec_ctx->readlen, dec_ctx->writePos);
++      break;
++    default:
++      rfbErr("%s: unhandled opcode %d, b0: %02x, b1: %02x\n", __func__, (int)dec_ctx->header.opcode, dec_ctx->header.data->b0, dec_ctx->header.data->b1);
++  }
++  dec_ctx->readPos = data;
++
++  return hybiReturnData(dst, len, dec_ctx, sockRet);
++}
++
++/**
++ * Read function for websocket-socket emulation.
++ *
++ *    0                   1                   2                   3
++ *    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++ *   +-+-+-+-+-------+-+-------------+-------------------------------+
++ *   |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
++ *   |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
++ *   |N|V|V|V|       |S|             |   (if payload len==126/127)   |
++ *   | |1|2|3|       |K|             |                               |
++ *   +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
++ *   |     Extended payload length continued, if payload len == 127  |
++ *   + - - - - - - - - - - - - - - - +-------------------------------+
++ *   |                               |Masking-key, if MASK set to 1  |
++ *   +-------------------------------+-------------------------------+
++ *   | Masking-key (continued)       |          Payload Data         |
++ *   +-------------------------------- - - - - - - - - - - - - - - - +
++ *   :                     Payload Data continued ...                :
++ *   + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
++ *   |                     Payload Data continued ...                |
++ *   +---------------------------------------------------------------+
++ *
++ * Using the decode buffer, this function:
++ *  - reads the complete header from the underlying socket
++ *  - reads any remaining data bytes
++ *  - unmasks the payload data using the provided mask
++ *  - decodes Base64 encoded text data
++ *  - copies len bytes of decoded payload data into dst
++ *
++ * Emulates a read call on a socket.
++ */
++int
++webSocketsDecodeHybi(ws_ctx_t *wsctx, char *dst, int len)
++{
++    int result = -1;
++    ws_decoding_ctx_t *dec_ctx = &(wsctx->dec);
++    /* rfbLog("%s_enter: len=%d; "
++                      "CTX: readlen=%d readPos=%p "
++                      "writeTo=%p "
++                      "state=%d payloadtoRead=%d payloadRemaining=%llu "
++                      " nReadPayload=%d carrylen=%d carryBuf=%p\n",
++                      __func__, len,
++                      dec_ctx->readlen, dec_ctx->readPos,
++                      dec_ctx->writePos,
++                      dec_ctx->hybiDecodeState, dec_ctx->header.payloadLen, hybiRemaining(dec_ctx),
++                      dec_ctx->nReadPayload, dec_ctx->carrylen, dec_ctx->carryBuf); */
++
++    switch (dec_ctx->hybiDecodeState){
++      int nInBuf;
++      case WS_STATE_DECODING_HEADER_PENDING:
++        dec_ctx->hybiDecodeState = hybiReadHeader(wsctx, &result, &nInBuf);
++        if (dec_ctx->hybiDecodeState == WS_STATE_ERR) {
++          goto spor;
++        }
++        if (dec_ctx->hybiDecodeState != WS_STATE_DECODING_HEADER_PENDING) {
++
++          /* when header is complete, try to read some more data */
++          dec_ctx->hybiDecodeState = hybiReadAndDecode(wsctx, dst, len, &result, nInBuf);
++        }
++        break;
++      case WS_STATE_DECODING_DATA_AVAILABLE:
++        dec_ctx->hybiDecodeState = hybiReturnData(dst, len, dec_ctx, &result);
++        break;
++      case WS_STATE_DECODING_DATA_NEEDED:
++        dec_ctx->hybiDecodeState = hybiReadAndDecode(wsctx, dst, len, &result, 0);
++        break;
++      case WS_STATE_DECODING_CLOSE_REASON_PENDING:
++        dec_ctx->hybiDecodeState = hybiReadAndDecode(wsctx, dst, len, &result, 0);
++        break;
++      default:
++        /* invalid state */
++        rfbErr("%s: called with invalid state %d\n", dec_ctx->hybiDecodeState);
++        result = -1;
++        errno = EIO;
++        dec_ctx->hybiDecodeState = WS_STATE_ERR;
++    }
++
++    /* single point of return, if someone has questions :-) */
++spor:
++    /* //rfbLog("%s: ret: %d/%d\n", __func__, result, len); */
++    if (dec_ctx->hybiDecodeState == WS_STATE_DECODING_FRAME_COMPLETE) {
++      //rfbLog("frame received successfully, cleaning up: read=%d hlen=%d plen=%d\n", dec_ctx->nReadPayload, dec_ctx->header.headerLen, dec_ctx->header.payloadLen);
++      if (dec_ctx->header.fin && !isControlFrame(&dec_ctx->header)) {
++        /* frame finished, cleanup state */
++        hybiDecodeCleanupComplete(dec_ctx);
++      } else {
++        /* always retain continuation opcode for unfinished data frames
++         * or control frames, which may interleave with data frames */
++        hybiDecodeCleanupForContinuation(dec_ctx);
++      }
++    } else if (dec_ctx->hybiDecodeState == WS_STATE_ERR) {
++      hybiDecodeCleanupComplete(dec_ctx);
++    }
++
++    /* rfbLog("%s_exit: len=%d; "
++                      "CTX: readlen=%d readPos=%p "
++                      "writePos=%p "
++                      "state=%d payloadtoRead=%d payloadRemaining=%d "
++                      "nRead=%d carrylen=%d carryBuf=%p "
++                      "result=%d "
++                      "errno=%d\n",
++                      __func__, len,
++                      dec_ctx->readlen, dec_ctx->readPos,
++                      dec_ctx->writePos,
++                      dec_ctx->hybiDecodeState, dec_ctx->header.payloadLen, hybiRemaining(dec_ctx),
++                      dec_ctx->nReadPayload, dec_ctx->carrylen, dec_ctx->carryBuf,
++                      result,
++                      errno); */
++    return result;
++}
+diff --git a/libvncserver/ws_decode.h b/libvncserver/ws_decode.h
+new file mode 100644
+index 0000000..33a1aa9
+--- /dev/null
++++ b/libvncserver/ws_decode.h
+@@ -0,0 +1,179 @@
++#ifndef _WS_DECODE_H_
++#define _WS_DECODE_H_
++
++#include <stdint.h>
++#include <rfb/rfb.h>
++#ifndef _MSC_VER
++#include <resolv.h> /* __b64_ntop */
++#endif
++
++#if defined(__APPLE__)
++
++#include <libkern/OSByteOrder.h>
++#define WS_NTOH64(n) OSSwapBigToHostInt64(n)
++#define WS_NTOH32(n) OSSwapBigToHostInt32(n)
++#define WS_NTOH16(n) OSSwapBigToHostInt16(n)
++#define WS_HTON64(n) OSSwapHostToBigInt64(n)
++#define WS_HTON16(n) OSSwapHostToBigInt16(n)
++
++#else
++
++#define WS_NTOH64(n) htobe64(n)
++#define WS_NTOH32(n) htobe32(n)
++#define WS_NTOH16(n) htobe16(n)
++#define WS_HTON64(n) htobe64(n)
++#define WS_HTON16(n) htobe16(n)
++
++#endif
++
++#define B64LEN(__x) ((((__x) + 2) / 3) * 12 / 3)
++#define B64_ENCODABLE_WITH_BUF_SIZE(__x) (((__x) / 4) * 3)
++
++#define WS_HYBI_MASK_LEN 4
++#define WS_HYBI_HEADER_LEN_SHORT_MASKED 2 + WS_HYBI_MASK_LEN
++#define WS_HYBI_HEADER_LEN_EXTENDED_MASKED 4 + WS_HYBI_MASK_LEN
++#define WS_HYBI_HEADER_LEN_LONG_MASKED 10 + WS_HYBI_MASK_LEN
++#define WS_HYBI_HEADER_LEN_SHORT_NOTMASKED 2 
++#define WS_HYBI_HEADER_LEN_EXTENDED_NOTMASKED 4 
++#define WS_HYBI_HEADER_LEN_LONG_NOTMASKED 10 
++
++#define WSHLENMAX WS_HYBI_HEADER_LEN_LONG_MASKED /* 2 + sizeof(uint64_t) + sizeof(uint32_t) */
++
++#define ARRAYSIZE(a) ((sizeof(a) / sizeof((a[0]))) / (size_t)(!(sizeof(a) % sizeof((a[0])))))
++
++struct ws_ctx_s;
++typedef struct ws_ctx_s ws_ctx_t;
++
++typedef int (*wsEncodeFunc)(ws_ctx_t *wsctx, const char *src, int len);
++typedef int (*wsDecodeFunc)(ws_ctx_t *wsctx, char *dst, int len);
++
++typedef size_t (*wsReadFunc)(void *ctx, char *dst, size_t len);
++typedef size_t (*wsWriteFunc)(void *ctx, char *dst, size_t len);
++
++typedef struct ctxInfo_s{
++  void *ctxPtr;
++  wsReadFunc readFunc;
++  wsWriteFunc writeFunc;
++} ctxInfo_t;
++
++enum {
++  /* header not yet received completely */
++  WS_STATE_DECODING_HEADER_PENDING,
++  /* data available */
++  WS_STATE_DECODING_DATA_AVAILABLE,
++  WS_STATE_DECODING_DATA_NEEDED,
++  /* received a complete frame */
++  WS_STATE_DECODING_FRAME_COMPLETE,
++  /* received part of a 'close' frame */
++  WS_STATE_DECODING_CLOSE_REASON_PENDING,
++  /* */
++  WS_STATE_ERR,
++  /* clean state, no frame in transition */
++  WS_STATE_ENCODING_IDLE,
++  /* started a frame, underlying socket did not transmit everything */
++  WS_STATE_ENCODING_FRAME_PENDING,
++};
++
++
++typedef union ws_mask_s {
++  char c[4];
++  uint32_t u;
++} ws_mask_t;
++
++/* XXX: The union and the structs do not need to be named.
++ *      We are working around a bug present in GCC < 4.6 which prevented
++ *      it from recognizing anonymous structs and unions.
++ *      See http://gcc.gnu.org/bugzilla/show_bug.cgi?id=4784
++ */
++typedef struct 
++#if __GNUC__
++__attribute__ ((__packed__)) 
++#endif
++ws_header_s {
++  unsigned char b0;
++  unsigned char b1;
++  union {
++    struct 
++#if __GNUC__
++    __attribute__ ((__packed__)) 
++#endif
++           {
++      uint16_t l16;
++      ws_mask_t m16;
++    } s16;
++    struct
++#if __GNUC__
++__attribute__ ((__packed__)) 
++#endif
++           {
++      uint64_t l64;
++      ws_mask_t m64;
++    } s64;
++    ws_mask_t m;
++  } u;
++} ws_header_t;
++
++typedef struct ws_header_data_s {
++  ws_header_t *data;
++  /** bytes read */
++  int nDone;
++  /** mask value */
++  ws_mask_t mask;
++  /** length of frame header including payload len, but without mask */
++  int headerLen;
++  /** length of the payload data */
++  uint64_t payloadLen;
++  /** opcode */
++  unsigned char opcode;
++  /** fin bit */
++  unsigned char fin;
++} ws_header_data_t;
++
++typedef struct ws_encoding_ctx_s {
++    /* encoding state */
++    char codeBufEncode[B64LEN(UPDATE_BUF_SIZE) + WSHLENMAX]; /* base64 + maximum frame header length */
++    int state;
++    char *readPos;
++    int nToWrite;
++    ws_header_data_t header;
++} ws_encoding_ctx_t; 
++
++typedef struct ws_decoing_ctx_s {
++    char codeBufDecode[2048 + WSHLENMAX]; /* base64 + maximum frame header length */
++    char *writePos;
++    unsigned char *readPos;
++    int readlen;
++    int hybiDecodeState;
++    char carryBuf[3];                      /* For base64 carry-over */
++    int carrylen;
++    ws_header_data_t header;
++    uint64_t nReadPayload;
++    unsigned char continuation_opcode;
++} ws_decoding_ctx_t;
++
++typedef struct ws_ctx_s {
++    ws_decoding_ctx_t dec;
++    ws_encoding_ctx_t enc;
++    int base64;
++    wsEncodeFunc encode;
++    wsDecodeFunc decode;
++    ctxInfo_t ctxInfo;
++} ws_ctx_t;
++
++enum
++{
++    WS_OPCODE_CONTINUATION = 0x00,
++    WS_OPCODE_TEXT_FRAME = 0x01,
++    WS_OPCODE_BINARY_FRAME = 0x02,
++    WS_OPCODE_CLOSE = 0x08,
++    WS_OPCODE_PING = 0x09,
++    WS_OPCODE_PONG = 0x0A,
++    WS_OPCODE_INVALID = 0xFF
++};
++
++int webSocketsDecodeHybi(ws_ctx_t *wsctx, char *dst, int len);
++
++void hybiDecodeCleanupComplete(ws_decoding_ctx_t *wsctx);
++void wsEncodeCleanup(ws_encoding_ctx_t *wsctx);
++void cleanupHeader(ws_header_data_t* header);
++#endif
+diff --git a/m4/.gitignore b/m4/.gitignore
+deleted file mode 100644
+index 7c9f9ac..0000000
+--- a/m4/.gitignore
++++ /dev/null
+@@ -1 +0,0 @@
+-*.m4
+\ No newline at end of file
+diff --git a/m4/ax_prefix_config_h.m4 b/m4/ax_prefix_config_h.m4
+deleted file mode 100644
+index c17563f..0000000
+--- a/m4/ax_prefix_config_h.m4
++++ /dev/null
+@@ -1,203 +0,0 @@
+-# ===========================================================================
+-#    http://www.gnu.org/software/autoconf-archive/ax_prefix_config_h.html
+-# ===========================================================================
+-#
+-# SYNOPSIS
+-#
+-#   AX_PREFIX_CONFIG_H [(OUTPUT-HEADER [,PREFIX [,ORIG-HEADER]])]
+-#
+-# DESCRIPTION
+-#
+-#   Generate an installable config.h.
+-#
+-#   A package should not normally install its config.h as a system header,
+-#   but if it must, this macro can be used to avoid namespace pollution by
+-#   making a copy of config.h with a prefix added to all the macro names.
+-#
+-#   Each "#define SOMEDEF" line of the configuration header has the given
+-#   prefix added, in the same case as the first character of the macro name.
+-#
+-#   Defaults:
+-#
+-#     OUTPUT-HEADER = $PACKAGE-config.h
+-#     PREFIX = $PACKAGE
+-#     ORIG-HEADER, from AM_CONFIG_HEADER(config.h)
+-#
+-#   Your configure.ac script should contain both macros in this order.
+-#
+-#   Example:
+-#
+-#     AC_INIT(config.h.in)        # config.h.in as created by "autoheader"
+-#     AM_INIT_AUTOMAKE(testpkg, 0.1.1)    # makes #undef VERSION and PACKAGE
+-#     AM_CONFIG_HEADER(config.h)          # prep config.h from config.h.in
+-#     AX_PREFIX_CONFIG_H(mylib/_config.h) # prep mylib/_config.h from it..
+-#     AC_MEMORY_H                         # makes "#undef NEED_MEMORY_H"
+-#     AC_C_CONST_H                        # makes "#undef const"
+-#     AC_OUTPUT(Makefile)                 # creates the "config.h" now
+-#                                         # and also mylib/_config.h
+-#
+-#   If the argument to AX_PREFIX_CONFIG_H would have been omitted then the
+-#   default output file would have been called simply "testpkg-config.h",
+-#   but even under the name "mylib/_config.h" it contains prefix-defines
+-#   like
+-#
+-#     #ifndef TESTPKG_VERSION
+-#     #define TESTPKG_VERSION "0.1.1"
+-#     #endif
+-#     #ifndef TESTPKG_NEED_MEMORY_H
+-#     #define TESTPKG_NEED_MEMORY_H 1
+-#     #endif
+-#     #ifndef _testpkg_const
+-#     #define _testpkg_const _const
+-#     #endif
+-#
+-#   and this "mylib/_config.h" can be installed along with other header
+-#   files, which is most convenient when creating a shared library (that has
+-#   some headers) whose functionality depends on features detected at
+-#   compile-time. No need to invent some "mylib-confdefs.h.in" manually.
+-#
+-#   Note that some AC_DEFINEs that end up in the config.h file are actually
+-#   self-referential - e.g. AC_C_INLINE, AC_C_CONST, and the AC_TYPE_OFF_T
+-#   say that they "will define inline|const|off_t if the system does not do
+-#   it by itself". You might want to clean up about these - consider an
+-#   extra mylib/conf.h that reads something like:
+-#
+-#     #include <mylib/_config.h>
+-#     #ifndef _testpkg_const
+-#     #define _testpkg_const const
+-#     #endif
+-#
+-#   and then start using _testpkg_const in the header files. That is also a
+-#   good thing to differentiate whether some library-user has starting to
+-#   take up with a different compiler, so perhaps it could read something
+-#   like this:
+-#
+-#     #ifdef _MSC_VER
+-#     #include <mylib/_msvc.h>
+-#     #else
+-#     #include <mylib/_config.h>
+-#     #endif
+-#     #ifndef _testpkg_const
+-#     #define _testpkg_const const
+-#     #endif
+-#
+-# LICENSE
+-#
+-#   Copyright (c) 2014 Reuben Thomas <rrt@sc3d.org>
+-#   Copyright (c) 2008 Guido U. Draheim <guidod@gmx.de>
+-#   Copyright (c) 2008 Marten Svantesson
+-#   Copyright (c) 2008 Gerald Point <Gerald.Point@labri.fr>
+-#
+-#   This program is free software; you can redistribute it and/or modify it
+-#   under the terms of the GNU General Public License as published by the
+-#   Free Software Foundation; either version 3 of the License, or (at your
+-#   option) any later version.
+-#
+-#   This program is distributed in the hope that it will be useful, but
+-#   WITHOUT ANY WARRANTY; without even the implied warranty of
+-#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+-#   Public License for more details.
+-#
+-#   You should have received a copy of the GNU General Public License along
+-#   with this program. If not, see <http://www.gnu.org/licenses/>.
+-#
+-#   As a special exception, the respective Autoconf Macro's copyright owner
+-#   gives unlimited permission to copy, distribute and modify the configure
+-#   scripts that are the output of Autoconf when processing the Macro. You
+-#   need not follow the terms of the GNU General Public License when using
+-#   or distributing such scripts, even though portions of the text of the
+-#   Macro appear in them. The GNU General Public License (GPL) does govern
+-#   all other use of the material that constitutes the Autoconf Macro.
+-#
+-#   This special exception to the GPL applies to versions of the Autoconf
+-#   Macro released by the Autoconf Archive. When you make and distribute a
+-#   modified version of the Autoconf Macro, you may extend this special
+-#   exception to the GPL to apply to your modified version as well.
+-
+-#serial 15
+-
+-AC_DEFUN([AX_PREFIX_CONFIG_H],[dnl
+-AC_PREREQ([2.62])
+-AC_BEFORE([AC_CONFIG_HEADERS],[$0])dnl
+-AC_CONFIG_COMMANDS(m4_default([$1], [$PACKAGE-config.h]),[dnl
+-AS_VAR_PUSHDEF([_OUT],[ac_prefix_conf_OUT])dnl
+-AS_VAR_PUSHDEF([_DEF],[ac_prefix_conf_DEF])dnl
+-AS_VAR_PUSHDEF([_PKG],[ac_prefix_conf_PKG])dnl
+-AS_VAR_PUSHDEF([_LOW],[ac_prefix_conf_LOW])dnl
+-AS_VAR_PUSHDEF([_UPP],[ac_prefix_conf_UPP])dnl
+-AS_VAR_PUSHDEF([_INP],[ac_prefix_conf_INP])dnl
+-m4_pushdef([_script],[conftest.prefix])dnl
+-m4_pushdef([_symbol],[m4_cr_Letters[]m4_cr_digits[]_])dnl
+-_OUT=`echo m4_default([$1], [$PACKAGE-config.h])`
+-_DEF=`echo _$_OUT | sed -e "y:m4_cr_letters:m4_cr_LETTERS[]:" -e "s/@<:@^m4_cr_Letters@:>@/_/g"`
+-_PKG=`echo m4_default([$2], [$PACKAGE])`
+-_LOW=`echo _$_PKG | sed -e "y:m4_cr_LETTERS-:m4_cr_letters[]_:"`
+-_UPP=`echo $_PKG | sed -e "y:m4_cr_letters-:m4_cr_LETTERS[]_:"  -e "/^@<:@m4_cr_digits@:>@/s/^/_/"`
+-_INP=`echo "$3" | sed -e 's/ *//'`
+-if test ".$_INP" = "."; then
+-   for ac_file in : $CONFIG_HEADERS; do test "_$ac_file" = _: && continue
+-     case "$ac_file" in
+-        *.h) _INP=$ac_file ;;
+-        *)
+-     esac
+-     test ".$_INP" != "." && break
+-   done
+-fi
+-if test ".$_INP" = "."; then
+-   case "$_OUT" in
+-      */*) _INP=`basename "$_OUT"`
+-      ;;
+-      *-*) _INP=`echo "$_OUT" | sed -e "s/@<:@_symbol@:>@*-//"`
+-      ;;
+-      *) _INP=config.h
+-      ;;
+-   esac
+-fi
+-if test -z "$_PKG" ; then
+-   AC_MSG_ERROR([no prefix for _PREFIX_PKG_CONFIG_H])
+-else
+-  if test ! -f "$_INP" ; then if test -f "$srcdir/$_INP" ; then
+-     _INP="$srcdir/$_INP"
+-  fi fi
+-  AC_MSG_NOTICE(creating $_OUT - prefix $_UPP for $_INP defines)
+-  if test -f $_INP ; then
+-    AS_ECHO(["s/^@%:@undef  *\\(@<:@m4_cr_LETTERS[]_@:>@\\)/@%:@undef $_UPP""_\\1/"]) > _script
+-    AS_ECHO(["s/^@%:@undef  *\\(@<:@m4_cr_letters@:>@\\)/@%:@undef $_LOW""_\\1/"]) >> _script
+-    AS_ECHO(["s/^@%:@def[]ine  *\\(@<:@m4_cr_LETTERS[]_@:>@@<:@_symbol@:>@*\\)\\(.*\\)/@%:@ifndef $_UPP""_\\1\\"]) >> _script
+-    AS_ECHO(["@%:@def[]ine $_UPP""_\\1\\2\\"]) >> _script
+-    AS_ECHO(["@%:@endif/"]) >> _script
+-    AS_ECHO(["s/^@%:@def[]ine  *\\(@<:@m4_cr_letters@:>@@<:@_symbol@:>@*\\)\\(.*\\)/@%:@ifndef $_LOW""_\\1\\"]) >> _script
+-    AS_ECHO(["@%:@define $_LOW""_\\1\\2\\"]) >> _script
+-    AS_ECHO(["@%:@endif/"]) >> _script
+-    # now executing _script on _DEF input to create _OUT output file
+-    echo "@%:@ifndef $_DEF"      >$tmp/pconfig.h
+-    echo "@%:@def[]ine $_DEF 1" >>$tmp/pconfig.h
+-    echo ' ' >>$tmp/pconfig.h
+-    echo /'*' $_OUT. Generated automatically at end of configure. '*'/ >>$tmp/pconfig.h
+-
+-    sed -f _script $_INP >>$tmp/pconfig.h
+-    echo ' ' >>$tmp/pconfig.h
+-    echo '/* once:' $_DEF '*/' >>$tmp/pconfig.h
+-    echo "@%:@endif" >>$tmp/pconfig.h
+-    if cmp -s $_OUT $tmp/pconfig.h 2>/dev/null; then
+-      AC_MSG_NOTICE([$_OUT is unchanged])
+-    else
+-      ac_dir=`AS_DIRNAME(["$_OUT"])`
+-      AS_MKDIR_P(["$ac_dir"])
+-      rm -f "$_OUT"
+-      mv $tmp/pconfig.h "$_OUT"
+-    fi
+-  else
+-    AC_MSG_ERROR([input file $_INP does not exist - skip generating $_OUT])
+-  fi
+-  rm -f conftest.*
+-fi
+-m4_popdef([_symbol])dnl
+-m4_popdef([_script])dnl
+-AS_VAR_POPDEF([_INP])dnl
+-AS_VAR_POPDEF([_UPP])dnl
+-AS_VAR_POPDEF([_LOW])dnl
+-AS_VAR_POPDEF([_PKG])dnl
+-AS_VAR_POPDEF([_DEF])dnl
+-AS_VAR_POPDEF([_OUT])dnl
+-],[PACKAGE="$PACKAGE"])])
+diff --git a/m4/ax_type_socklen_t.m4 b/m4/ax_type_socklen_t.m4
+deleted file mode 100644
+index 834c4cf..0000000
+--- a/m4/ax_type_socklen_t.m4
++++ /dev/null
+@@ -1,61 +0,0 @@
+-# ===========================================================================
+-#     http://www.gnu.org/software/autoconf-archive/ax_type_socklen_t.html
+-# ===========================================================================
+-#
+-# SYNOPSIS
+-#
+-#   AX_TYPE_SOCKLEN_T
+-#
+-# DESCRIPTION
+-#
+-#   Check whether sys/socket.h defines type socklen_t. Please note that some
+-#   systems require sys/types.h to be included before sys/socket.h can be
+-#   compiled.
+-#
+-# LICENSE
+-#
+-#   Copyright (c) 2008 Lars Brinkhoff <lars@nocrew.org>
+-#
+-#   This program is free software; you can redistribute it and/or modify it
+-#   under the terms of the GNU General Public License as published by the
+-#   Free Software Foundation; either version 2 of the License, or (at your
+-#   option) any later version.
+-#
+-#   This program is distributed in the hope that it will be useful, but
+-#   WITHOUT ANY WARRANTY; without even the implied warranty of
+-#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+-#   Public License for more details.
+-#
+-#   You should have received a copy of the GNU General Public License along
+-#   with this program. If not, see <http://www.gnu.org/licenses/>.
+-#
+-#   As a special exception, the respective Autoconf Macro's copyright owner
+-#   gives unlimited permission to copy, distribute and modify the configure
+-#   scripts that are the output of Autoconf when processing the Macro. You
+-#   need not follow the terms of the GNU General Public License when using
+-#   or distributing such scripts, even though portions of the text of the
+-#   Macro appear in them. The GNU General Public License (GPL) does govern
+-#   all other use of the material that constitutes the Autoconf Macro.
+-#
+-#   This special exception to the GPL applies to versions of the Autoconf
+-#   Macro released by the Autoconf Archive. When you make and distribute a
+-#   modified version of the Autoconf Macro, you may extend this special
+-#   exception to the GPL to apply to your modified version as well.
+-
+-#serial 5
+-
+-AU_ALIAS([TYPE_SOCKLEN_T], [AX_TYPE_SOCKLEN_T])
+-AC_DEFUN([AX_TYPE_SOCKLEN_T],
+-[AC_CACHE_CHECK([for socklen_t], ac_cv_ax_type_socklen_t,
+-[
+-  AC_TRY_COMPILE(
+-  [#include <sys/types.h>
+-   #include <sys/socket.h>],
+-  [socklen_t len = 42; return 0;],
+-  ac_cv_ax_type_socklen_t=yes,
+-  ac_cv_ax_type_socklen_t=no)
+-])
+-  if test $ac_cv_ax_type_socklen_t != yes; then
+-    AC_DEFINE(socklen_t, int, [Substitute for socklen_t])
+-  fi
+-])
+diff --git a/m4/libgcrypt.m4 b/m4/libgcrypt.m4
+deleted file mode 100644
+index 831dc0c..0000000
+--- a/m4/libgcrypt.m4
++++ /dev/null
+@@ -1,123 +0,0 @@
+-dnl Autoconf macros for libgcrypt
+-dnl       Copyright (C) 2002, 2004 Free Software Foundation, Inc.
+-dnl
+-dnl This file is free software; as a special exception the author gives
+-dnl unlimited permission to copy and/or distribute it, with or without
+-dnl modifications, as long as this notice is preserved.
+-dnl
+-dnl This file is distributed in the hope that it will be useful, but
+-dnl WITHOUT ANY WARRANTY, to the extent permitted by law; without even the
+-dnl implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+-
+-
+-dnl AM_PATH_LIBGCRYPT([MINIMUM-VERSION,
+-dnl                   [ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND ]]])
+-dnl Test for libgcrypt and define LIBGCRYPT_CFLAGS and LIBGCRYPT_LIBS.
+-dnl MINIMUN-VERSION is a string with the version number optionalliy prefixed
+-dnl with the API version to also check the API compatibility. Example:
+-dnl a MINIMUN-VERSION of 1:1.2.5 won't pass the test unless the installed
+-dnl version of libgcrypt is at least 1.2.5 *and* the API number is 1.  Using
+-dnl this features allows to prevent build against newer versions of libgcrypt
+-dnl with a changed API.
+-dnl
+-AC_DEFUN([AM_PATH_LIBGCRYPT],
+-[ AC_ARG_WITH(libgcrypt-prefix,
+-            AC_HELP_STRING([--with-libgcrypt-prefix=PFX],
+-                           [prefix where LIBGCRYPT is installed (optional)]),
+-     libgcrypt_config_prefix="$withval", libgcrypt_config_prefix="")
+-  if test x$libgcrypt_config_prefix != x ; then
+-     if test x${LIBGCRYPT_CONFIG+set} != xset ; then
+-        LIBGCRYPT_CONFIG=$libgcrypt_config_prefix/bin/libgcrypt-config
+-     fi
+-  fi
+-
+-  AC_PATH_TOOL(LIBGCRYPT_CONFIG, libgcrypt-config, no)
+-  tmp=ifelse([$1], ,1:1.2.0,$1)
+-  if echo "$tmp" | grep ':' >/dev/null 2>/dev/null ; then
+-     req_libgcrypt_api=`echo "$tmp"     | sed 's/\(.*\):\(.*\)/\1/'`
+-     min_libgcrypt_version=`echo "$tmp" | sed 's/\(.*\):\(.*\)/\2/'`
+-  else
+-     req_libgcrypt_api=0
+-     min_libgcrypt_version="$tmp"
+-  fi
+-
+-  AC_MSG_CHECKING(for LIBGCRYPT - version >= $min_libgcrypt_version)
+-  ok=no
+-  if test "$LIBGCRYPT_CONFIG" != "no" ; then
+-    req_major=`echo $min_libgcrypt_version | \
+-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\1/'`
+-    req_minor=`echo $min_libgcrypt_version | \
+-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\2/'`
+-    req_micro=`echo $min_libgcrypt_version | \
+-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\)/\3/'`
+-    libgcrypt_config_version=`$LIBGCRYPT_CONFIG --version`
+-    major=`echo $libgcrypt_config_version | \
+-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\).*/\1/'`
+-    minor=`echo $libgcrypt_config_version | \
+-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\).*/\2/'`
+-    micro=`echo $libgcrypt_config_version | \
+-               sed 's/\([[0-9]]*\)\.\([[0-9]]*\)\.\([[0-9]]*\).*/\3/'`
+-    if test "$major" -gt "$req_major"; then
+-        ok=yes
+-    else
+-        if test "$major" -eq "$req_major"; then
+-            if test "$minor" -gt "$req_minor"; then
+-               ok=yes
+-            else
+-               if test "$minor" -eq "$req_minor"; then
+-                   if test "$micro" -ge "$req_micro"; then
+-                     ok=yes
+-                   fi
+-               fi
+-            fi
+-        fi
+-    fi
+-  fi
+-  if test $ok = yes; then
+-    AC_MSG_RESULT([yes ($libgcrypt_config_version)])
+-  else
+-    AC_MSG_RESULT(no)
+-  fi
+-  if test $ok = yes; then
+-     # If we have a recent libgcrypt, we should also check that the
+-     # API is compatible
+-     if test "$req_libgcrypt_api" -gt 0 ; then
+-        tmp=`$LIBGCRYPT_CONFIG --api-version 2>/dev/null || echo 0`
+-        if test "$tmp" -gt 0 ; then
+-           AC_MSG_CHECKING([LIBGCRYPT API version])
+-           if test "$req_libgcrypt_api" -eq "$tmp" ; then
+-             AC_MSG_RESULT([okay])
+-           else
+-             ok=no
+-             AC_MSG_RESULT([does not match. want=$req_libgcrypt_api got=$tmp])
+-           fi
+-        fi
+-     fi
+-  fi
+-  if test $ok = yes; then
+-    LIBGCRYPT_CFLAGS=`$LIBGCRYPT_CONFIG --cflags`
+-    LIBGCRYPT_LIBS=`$LIBGCRYPT_CONFIG --libs`
+-    ifelse([$2], , :, [$2])
+-    if test x"$host" != x ; then
+-      libgcrypt_config_host=`$LIBGCRYPT_CONFIG --host 2>/dev/null || echo none`
+-      if test x"$libgcrypt_config_host" != xnone ; then
+-        if test x"$libgcrypt_config_host" != x"$host" ; then
+-  AC_MSG_WARN([[
+-***
+-*** The config script $LIBGCRYPT_CONFIG was
+-*** built for $libgcrypt_config_host and thus may not match the
+-*** used host $host.
+-*** You may want to use the configure option --with-libgcrypt-prefix
+-*** to specify a matching config script.
+-***]])
+-        fi
+-      fi
+-    fi
+-  else
+-    LIBGCRYPT_CFLAGS=""
+-    LIBGCRYPT_LIBS=""
+-    ifelse([$3], , :, [$3])
+-  fi
+-  AC_SUBST(LIBGCRYPT_CFLAGS)
+-  AC_SUBST(LIBGCRYPT_LIBS)
+-])
+diff --git a/rfb/rfb.h b/rfb/rfb.h
+index f982b40..246c910 100644
+--- a/rfb/rfb.h
++++ b/rfb/rfb.h
+@@ -763,8 +763,7 @@ extern rfbBool rfbSetNonBlocking(int sock);
+ /* websockets.c */
+ 
+ extern rfbBool webSocketsCheck(rfbClientPtr cl);
+-extern rfbBool webSocketCheckDisconnect(rfbClientPtr cl);
+-extern int webSocketsEncode(rfbClientPtr cl, const char *src, int len, char **dst);
++extern int webSocketsEncode(rfbClientPtr cl, const char *src, int len);
+ extern int webSocketsDecode(rfbClientPtr cl, char *dst, int len);
+ extern rfbBool webSocketsHasDataInBuffer(rfbClientPtr cl);
+ #endif
+diff --git a/rfb/rfbproto.h b/rfb/rfbproto.h
+index ba643b1..f0d6ea1 100644
+--- a/rfb/rfbproto.h
++++ b/rfb/rfbproto.h
+@@ -64,11 +64,9 @@
+ 
+ #if defined(WIN32) && !defined(__MINGW32__)
+ #define LIBVNCSERVER_WORDS_BIGENDIAN
+-#define rfbBool int
++typedef int8_t rfbBool;
+ #include <sys/timeb.h>
+ #include <winsock2.h>
+-#undef SOCKET
+-#define SOCKET int
+ #else
+ #include <rfb/rfbconfig.h>
+ #endif
+diff --git a/test/Makefile.am b/test/Makefile.am
+deleted file mode 100644
+index f07fc82..0000000
+--- a/test/Makefile.am
++++ /dev/null
+@@ -1,28 +0,0 @@
+-check_PROGRAMS =
+-
+-if HAVE_LIBJPEG
+-# TurboJPEG wrapper tests
+-check_PROGRAMS += tjunittest tjbench
+-tjunittest_SOURCES=tjunittest.c ../common/turbojpeg.c ../common/turbojpeg.h \
+-	tjutil.c tjutil.h
+-tjbench_SOURCES=tjbench.c ../common/turbojpeg.c ../common/turbojpeg.h \
+-	tjutil.c tjutil.h bmp.c bmp.h
+-tjbench_LDADD=$(LDADD) -lm
+-endif
+-
+-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/common
+-LDADD = ../libvncserver/libvncserver.la ../libvncclient/libvncclient.la @WSOCKLIB@
+-
+-if HAVE_LIBPTHREAD
+-BACKGROUND_TEST=blooptest
+-ENCODINGS_TEST=encodingstest
+-endif
+-
+-copyrecttest_LDADD=$(LDADD) -lm
+-
+-check_PROGRAMS += $(ENCODINGS_TEST) cargstest copyrecttest $(BACKGROUND_TEST) \
+-	cursortest
+-
+-test: encodingstest$(EXEEXT) cargstest$(EXEEXT) copyrecttest$(EXEEXT)
+-	./encodingstest && ./cargstest
+-
+diff --git a/test/copyrecttest.c b/test/copyrecttest.c
+index cd2a504..b3d3ada 100644
+--- a/test/copyrecttest.c
++++ b/test/copyrecttest.c
+@@ -2,6 +2,7 @@
+ #define _BSD_SOURCE
+ #endif
+ #include <rfb/rfb.h>
++#define _USE_MATH_DEFINES
+ #include <math.h>
+ 
+ static void initBackground(rfbScreenInfoPtr server)
+diff --git a/test/wsmaketestframe.py b/test/wsmaketestframe.py
+new file mode 100755
+index 0000000..fc03e39
+--- /dev/null
++++ b/test/wsmaketestframe.py
+@@ -0,0 +1,131 @@
++#!/usr/bin/env python3
++# Copyright (C)2017 Andreas Weigel.  All Rights Reserved.
++#
++# Redistribution and use in source and binary forms, with or without
++# modification, are permitted provided that the following conditions are met:
++#
++# - Redistributions of source code must retain the above copyright notice,
++#   this list of conditions and the following disclaimer.
++# - Redistributions in binary form must reproduce the above copyright notice,
++#   this list of conditions and the following disclaimer in the documentation
++#   and/or other materials provided with the distribution.
++#
++# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS",
++# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++# ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
++# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++# POSSIBILITY OF SUCH DAMAGE.
++
++import websockets
++import base64
++
++'''
++    Create websocket frames for the wstest websocket decoding unit test.
++
++    Generates c ws_frame_test structure definitions
++    included by wstest.c.
++'''
++
++
++def add_field(s, name, value, first=False):
++    deli = ",\n\t\t"
++    if first:
++        deli = "\t\t"
++    s += "{2}.{0}={1}".format(name, value, deli)
++    return s
++
++
++class Testframe():
++    def __init__(self, frame, descr, modify_bytes={}, experrno=0, mask=True, opcode_overwrite=False):
++        self.frame = frame
++        self.descr = descr
++        self.modify_bytes = modify_bytes
++        self.experrno = experrno
++        self.b64 = True if frame.opcode == 1 or opcode_overwrite == 1 else False
++        self.mask = mask
++
++    def to_carray_initializer(self, buf):
++        values = []
++        for i in range(len(buf)):
++            values.append("0X{0:02X}".format(buf[i]))
++
++        if self.modify_bytes != {}:
++            for k in self.modify_bytes:
++                values[k] = "0X{0:02X}".format(self.modify_bytes[k])
++
++        return "{{{0}}}".format(",".join(values))
++
++
++    def set_frame_buf(self, buf):
++        self.frame_carray = self.to_carray_initializer(buf)
++        self.framelen = len(buf)
++
++    def __str__(self):
++        print("processing frame: {0}".format(self.descr))
++        the_frame = self.frame
++        if self.b64:
++            olddata = self.frame.data
++            newdata = base64.b64encode(self.frame.data)
++            #print("converting\n{0}\nto{1}\n".format(olddata, newdata))
++            the_frame = websockets.framing.Frame(self.frame.fin, self.frame.opcode, base64.b64encode(olddata))
++        websockets.framing.write_frame(the_frame, self.set_frame_buf, self.mask)
++        s = "\t{\n"
++        s = add_field(s, "frame", "{0}".format(self.frame_carray), True)
++        s = add_field(s, "expectedDecodeBuf", self.to_carray_initializer(self.frame.data))
++        s = add_field(s, "frame_len", self.framelen)
++        s = add_field(s, "raw_payload_len", len(self.frame.data))
++        s = add_field(s, "expected_errno", self.experrno)
++        s = add_field(s, "descr", "\"{0}\"".format(self.descr))
++        s = add_field(s, "i", "0")
++        s = add_field(s, "simulate_sock_malfunction_at", "0")
++        s = add_field(s, "errno_val", "0")
++        s = add_field(s, "close_sock_at", "0")
++        s += "\n\t}"
++        return s
++
++### create test frames
++flist = []
++### standard text frames with different lengths
++flist.append(Testframe(websockets.framing.Frame(1, 1, bytearray("Testit", encoding="utf-8")), "Short valid text frame"))
++flist.append(Testframe(websockets.framing.Frame(1, 1, bytearray("Frame2 does contain much more text and even goes beyond the 126 byte len field. Frame2 does contain much more text and even goes beyond the 126 byte len field.", encoding="utf-8")),
++    "Mid-long valid text frame"))
++#flist.append(Testframe(websockets.framing.Frame(1, 1, bytearray([(x % 26) + 65 for x in range(100000)])), "100k text frame (ABC..YZABC..)"))
++
++### standard binary frames with different lengths
++flist.append(Testframe(websockets.framing.Frame(1, 2, bytearray("Testit", encoding="utf-8")), "Short valid binary frame"))
++flist.append(Testframe(websockets.framing.Frame(1, 2, bytearray("Frame2 does contain much more text and even goes beyond the 126 byte len field. Frame2 does contain much more text and even goes beyond the 126 byte len field.", encoding="utf-8")),
++    "Mid-long valid binary frame"))
++#flist.append(Testframe(websockets.framing.Frame(1, 2, bytearray([(x % 26) + 65 for x in range(100000)])), "100k binary frame (ABC..YZABC..)"))
++
++### some conn reset frames, one with no close message, one with close message
++flist.append(Testframe(websockets.framing.Frame(1, 8, bytearray(list([0x03, 0xEB]))), "Close frame (Reason 1003)", experrno="ECONNRESET"))
++flist.append(Testframe(websockets.framing.Frame(1, 8, bytearray(list([0x03, 0xEB])) + bytearray("I'm a close reason and much more than that!", encoding="utf-8")), "Close frame (Reason 1003) and msg", experrno="ECONNRESET"))
++
++### invalid header values
++flist.append(Testframe(websockets.framing.Frame(1, 1, bytearray("Testit", encoding="utf-8")), "Invalid frame: Wrong masking", experrno="EPROTO", mask=False))
++flist.append(Testframe(websockets.framing.Frame(1, 1, bytearray("..Lore Ipsum", encoding="utf-8")), "Invalid frame: Length of < 126 with add. 16 bit len field", experrno="EPROTO", modify_bytes={ 1: 0xFE, 2: 0x00, 3: 0x0F}))
++flist.append(Testframe(websockets.framing.Frame(1, 1, bytearray("........Lore Ipsum", encoding="utf-8")), "Invalid frame: Length of < 126 with add. 64 bit len field", experrno="EPROTO", modify_bytes={ 1: 0xFF, 2: 0x00, 3: 0x00, 4: 0x00, 5: 0x00, 6: 0x00, 7: 0x00, 8: 0x80, 9: 0x40}))
++
++frag1 = websockets.framing.Frame(0, 1, bytearray("This is a fragmented websocket...", encoding="utf-8"))
++frag2 = websockets.framing.Frame(0, 0, bytearray("... and it goes on...", encoding="utf-8"))
++frag3 = websockets.framing.Frame(1, 0, bytearray("and on and stop", encoding="utf-8"))
++flist.append(Testframe(frag1, "Continuation test frag1"))
++flist.append(Testframe(frag2, "Continuation test frag2", opcode_overwrite=1))
++flist.append(Testframe(frag3, "Continuation test frag3", opcode_overwrite=1))
++
++s = "struct ws_frame_test tests[] = {\n"
++for i in range(len(flist)):
++    s += flist[i].__str__()
++    if (i + 1 < len(flist)):
++        s += ","
++    s += "\n"
++s += "};\n"
++
++with open("wstestdata.inc", "w") as cdatafile:
++    cdatafile.write(s)
+diff --git a/test/wstest.c b/test/wstest.c
+new file mode 100644
+index 0000000..042b75b
+--- /dev/null
++++ b/test/wstest.c
+@@ -0,0 +1,206 @@
++/*
++ * Copyright (C)2017 Andreas Weigel.  All Rights Reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are met:
++ *
++ * - Redistributions of source code must retain the above copyright notice,
++ *   this list of conditions and the following disclaimer.
++ * - Redistributions in binary form must reproduce the above copyright notice,
++ *   this list of conditions and the following disclaimer in the documentation
++ *   and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS",
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
++ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ * POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#ifndef _WIN32
++
++#include <ws_decode.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <stdarg.h>
++#include <unistd.h>
++#include <errno.h>
++
++/* incoming data frames should not be larger than that */
++#define TEST_BUF_SIZE B64LEN(131072) + WSHLENMAX
++
++/* seed is fixed deliberately to get reproducible test cases */
++#define RND_SEED 100
++
++enum {
++  OK,
++  FAIL_DATA,
++  FAIL_ERRNO,
++  FAIL_CLOSED,
++};
++
++const char *result_descr[] = {
++  "",
++  "Data buffers do not match",
++  "Wrong errno",
++  "Wrongly reported closed socket",
++  "Internal test error"
++};
++
++struct ws_frame_test {
++  char frame[TEST_BUF_SIZE];
++  char *pos;
++  char expectedDecodeBuf[TEST_BUF_SIZE];
++  uint64_t n_compare;
++  uint64_t frame_len;
++  uint64_t raw_payload_len;
++  int expected_errno;
++  const char *descr;
++  int ret_bytes[16];
++  int ret_bytes_len;
++  int i;
++  int simulate_sock_malfunction_at;
++  int errno_val;
++  int close_sock_at;
++};
++
++#include "wstestdata.inc"
++
++char el_log[1000000];
++char *el_pos;
++
++static void logtest(const char *fmt, ...)
++{
++  va_list args;
++  va_start(args, fmt);
++  size_t left = el_log + sizeof(el_log) - el_pos;
++  size_t off = vsnprintf(el_pos, left, fmt, args);
++  el_pos += off;
++  va_end(args);
++}
++
++static int emu_read(void *ctx, char *dst, size_t len);
++
++static int emu_read(void *ctx, char *dst, size_t len)
++{
++  struct ws_frame_test *ft = (struct ws_frame_test *)ctx;
++  ssize_t nret;
++  int r;
++  ssize_t modu;
++
++  rfbLog("emu_read called with dst=%p and len=%lu\n", dst, len);
++  if (ft->simulate_sock_malfunction_at > 0 && ft->simulate_sock_malfunction_at == ft->i) {
++    rfbLog("simulating IO error with errno=%d\n", ft->errno_val);
++    errno = ft->errno_val;
++    return -1;
++  }
++
++  /* return something */
++  r = rand();
++  modu = (ft->frame + ft->frame_len) - ft->pos;
++  rfbLog("r=%d modu=%ld frame=%p pos=%p\n", r, modu, ft->frame, ft->pos);
++  nret = (r % modu) + 1;
++  nret = nret > len ? len : nret;
++
++  rfbLog("copy and return %ld bytes\n", nret);
++  memcpy(dst, ft->pos, nret);
++  ft->pos += nret;
++  rfbLog("leaving %s; pos=%p framebuf=%p nret=%ld\n", __func__, ft->pos, ft->frame, nret);
++  return nret;
++}
++
++static uint64_t run_test(struct ws_frame_test *ft, ws_ctx_t *ctx)
++{
++  uint64_t nleft = ft->raw_payload_len;
++  char dstbuf[ft->raw_payload_len];
++  char *dst = dstbuf;
++  ssize_t n;
++
++  ft->pos = ft->frame;
++
++  ctx->ctxInfo.ctxPtr = (void *)ft;
++
++  while (nleft > 0) {
++    rfbLog("calling ws_decode with dst=%p, len=%lu\n", dst, nleft);
++    n = ctx->decode(ctx, dst, nleft);
++    rfbLog("read n=%ld\n", n);
++    if (n == 0) {
++      if (ft->close_sock_at > 0) {
++        return OK;
++      } else {
++        return FAIL_CLOSED;
++      }
++    } else if (n < 0) {
++      if (errno == EAGAIN || errno == EWOULDBLOCK) {
++        /* ok, just call again */
++      } else {
++        if (ft->expected_errno == errno) {
++          rfbLog("errno=%d as expected\n", errno);
++          return OK;
++        } else {
++          rfbLog("errno=%d != expected(%d)\n", errno, ft->expected_errno);
++          return FAIL_ERRNO;
++        }
++      }
++    } else {
++      nleft -= n;
++      dst += n;
++      rfbLog("read n=%ld from decode; dst=%p, nleft=%lu\n", n, dst, nleft);
++    }
++  }
++
++  if (memcmp(ft->expectedDecodeBuf, dstbuf, ft->raw_payload_len) != 0) {
++    ft->expectedDecodeBuf[ft->raw_payload_len] = '\0';
++    dstbuf[ft->raw_payload_len] = '\0';
++    rfbLog("decoded result not equal:\nexpected:\n%s\ngot\n%s\n\n", ft->expectedDecodeBuf, dstbuf);
++    return FAIL_DATA;
++  }
++
++  return OK;
++}
++
++
++int main()
++{
++  ws_ctx_t ctx;
++  int retall= 0;
++  int i;
++  srand(RND_SEED);
++  
++  hybiDecodeCleanupComplete(&ctx);
++  ctx.decode = webSocketsDecodeHybi;
++  ctx.ctxInfo.readFunc = emu_read;
++  rfbLog = logtest;
++  rfbErr = logtest;
++
++  for (i = 0; i < ARRAYSIZE(tests); i++) {
++    int ret;
++
++    /* reset output log buffer to begin */
++    el_pos = el_log;
++
++    ret = run_test(&tests[i], &ctx);
++    printf("%s: \"%s\"\n", ret == 0 ? "PASS" : "FAIL", tests[i].descr);
++    if (ret != 0) {
++      *el_pos = '\0';
++      printf("%s", el_log);
++      retall = -1;
++    }
++  }
++  return retall;
++}
++
++#else
++
++int main() {
++  return 0;
++}
++
++#endif
+diff --git a/test/wstestdata.inc b/test/wstestdata.inc
+new file mode 100644
+index 0000000..595b891
+--- /dev/null
++++ b/test/wstestdata.inc
+@@ -0,0 +1,146 @@
++struct ws_frame_test tests[] = {
++	{
++		.frame={0X81,0X88,0X2F,0X2A,0X17,0X41,0X79,0X6D,0X41,0X3B,0X4B,0X6D,0X7B,0X71},
++		.expectedDecodeBuf={0X54,0X65,0X73,0X74,0X69,0X74},
++		.frame_len=14,
++		.raw_payload_len=6,
++		.expected_errno=0,
++		.descr="Short valid text frame",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X81,0XFE,0X00,0XD4,0X66,0X27,0XE5,0X24,0X34,0X49,0XAF,0X4C,0X04,0X70,0XB0,0X5D,0X2F,0X60,0XB7,0X52,0X3C,0X7F,0XA8,0X43,0X3F,0X15,0XDC,0X51,0X02,0X60,0XA3,0X54,0X04,0X4E,0XA7,0X50,0X02,0X70,0XAB,0X4B,0X2F,0X60,0XD4,0X52,0X05,0X4A,0XB0,0X43,0X02,0X60,0XB3,0X10,0X02,0X64,0XA7,0X4C,0X04,0X4A,0XB4,0X43,0X3C,0X7F,0XBF,0X48,0X04,0X4E,0XA7,0X4A,0X04,0X15,0XB3,0X5E,0X2F,0X60,0XAF,0X48,0X03,0X70,0XDC,0X51,0X3C,0X64,0XA7,0X14,0X07,0X60,0XB0,0X43,0X2B,0X73,0XAC,0X16,0X2F,0X60,0XAF,0X11,0X02,0X60,0XB0,0X43,0X04,0X60,0XB3,0X51,0X2F,0X60,0XBF,0X54,0X3C,0X70,0X9D,0X4F,0X2A,0X4E,0XA7,0X63,0X05,0X4A,0XA3,0X50,0X3C,0X73,0XAC,0X43,0X3C,0X60,0XDC,0X48,0X05,0X5E,0XA7,0X4E,0X04,0X15,0XD0,0X14,0X3F,0X70,0X89,0X51,0X2F,0X60,0XD4,0X15,0X3F,0X15,0X82,0X43,0X04,0X70,0XDC,0X5D,0X3C,0X74,0XA7,0X14,0X3C,0X7F,0X8D,0X14,0X2F,0X60,0XA3,0X51,0X3C,0X64,0XA7,0X48,0X02,0X4A,0XB3,0X51,0X2F,0X60,0X81,0X52,0X3C,0X7F,0XA8,0X43,0X3F,0X4A,0XB3,0X11,0X04,0X15,0XD0,0X4F,0X2F,0X6F,0XB7,0X4B,0X3C,0X74,0XA4,0X5C,0X2B,0X4D,0XBC,0X43,0X3F,0X49,0X89,0X14,0X3C,0X74,0XA7,0X57,0X3C,0X70,0XD1,0X43,0X3C,0X4A,0X89,0X48,0X04,0X60,0XB4,0X51},
++		.expectedDecodeBuf={0X46,0X72,0X61,0X6D,0X65,0X32,0X20,0X64,0X6F,0X65,0X73,0X20,0X63,0X6F,0X6E,0X74,0X61,0X69,0X6E,0X20,0X6D,0X75,0X63,0X68,0X20,0X6D,0X6F,0X72,0X65,0X20,0X74,0X65,0X78,0X74,0X20,0X61,0X6E,0X64,0X20,0X65,0X76,0X65,0X6E,0X20,0X67,0X6F,0X65,0X73,0X20,0X62,0X65,0X79,0X6F,0X6E,0X64,0X20,0X74,0X68,0X65,0X20,0X31,0X32,0X36,0X20,0X62,0X79,0X74,0X65,0X20,0X6C,0X65,0X6E,0X20,0X66,0X69,0X65,0X6C,0X64,0X2E,0X20,0X46,0X72,0X61,0X6D,0X65,0X32,0X20,0X64,0X6F,0X65,0X73,0X20,0X63,0X6F,0X6E,0X74,0X61,0X69,0X6E,0X20,0X6D,0X75,0X63,0X68,0X20,0X6D,0X6F,0X72,0X65,0X20,0X74,0X65,0X78,0X74,0X20,0X61,0X6E,0X64,0X20,0X65,0X76,0X65,0X6E,0X20,0X67,0X6F,0X65,0X73,0X20,0X62,0X65,0X79,0X6F,0X6E,0X64,0X20,0X74,0X68,0X65,0X20,0X31,0X32,0X36,0X20,0X62,0X79,0X74,0X65,0X20,0X6C,0X65,0X6E,0X20,0X66,0X69,0X65,0X6C,0X64,0X2E},
++		.frame_len=220,
++		.raw_payload_len=159,
++		.expected_errno=0,
++		.descr="Mid-long valid text frame",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X82,0X86,0XDD,0X9B,0XD8,0X56,0X89,0XFE,0XAB,0X22,0XB4,0XEF},
++		.expectedDecodeBuf={0X54,0X65,0X73,0X74,0X69,0X74},
++		.frame_len=12,
++		.raw_payload_len=6,
++		.expected_errno=0,
++		.descr="Short valid binary frame",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X82,0XFE,0X00,0X9F,0XB5,0X6E,0X7F,0X4C,0XF3,0X1C,0X1E,0X21,0XD0,0X5C,0X5F,0X28,0XDA,0X0B,0X0C,0X6C,0XD6,0X01,0X11,0X38,0XD4,0X07,0X11,0X6C,0XD8,0X1B,0X1C,0X24,0X95,0X03,0X10,0X3E,0XD0,0X4E,0X0B,0X29,0XCD,0X1A,0X5F,0X2D,0XDB,0X0A,0X5F,0X29,0XC3,0X0B,0X11,0X6C,0XD2,0X01,0X1A,0X3F,0X95,0X0C,0X1A,0X35,0XDA,0X00,0X1B,0X6C,0XC1,0X06,0X1A,0X6C,0X84,0X5C,0X49,0X6C,0XD7,0X17,0X0B,0X29,0X95,0X02,0X1A,0X22,0X95,0X08,0X16,0X29,0XD9,0X0A,0X51,0X6C,0XF3,0X1C,0X1E,0X21,0XD0,0X5C,0X5F,0X28,0XDA,0X0B,0X0C,0X6C,0XD6,0X01,0X11,0X38,0XD4,0X07,0X11,0X6C,0XD8,0X1B,0X1C,0X24,0X95,0X03,0X10,0X3E,0XD0,0X4E,0X0B,0X29,0XCD,0X1A,0X5F,0X2D,0XDB,0X0A,0X5F,0X29,0XC3,0X0B,0X11,0X6C,0XD2,0X01,0X1A,0X3F,0X95,0X0C,0X1A,0X35,0XDA,0X00,0X1B,0X6C,0XC1,0X06,0X1A,0X6C,0X84,0X5C,0X49,0X6C,0XD7,0X17,0X0B,0X29,0X95,0X02,0X1A,0X22,0X95,0X08,0X16,0X29,0XD9,0X0A,0X51},
++		.expectedDecodeBuf={0X46,0X72,0X61,0X6D,0X65,0X32,0X20,0X64,0X6F,0X65,0X73,0X20,0X63,0X6F,0X6E,0X74,0X61,0X69,0X6E,0X20,0X6D,0X75,0X63,0X68,0X20,0X6D,0X6F,0X72,0X65,0X20,0X74,0X65,0X78,0X74,0X20,0X61,0X6E,0X64,0X20,0X65,0X76,0X65,0X6E,0X20,0X67,0X6F,0X65,0X73,0X20,0X62,0X65,0X79,0X6F,0X6E,0X64,0X20,0X74,0X68,0X65,0X20,0X31,0X32,0X36,0X20,0X62,0X79,0X74,0X65,0X20,0X6C,0X65,0X6E,0X20,0X66,0X69,0X65,0X6C,0X64,0X2E,0X20,0X46,0X72,0X61,0X6D,0X65,0X32,0X20,0X64,0X6F,0X65,0X73,0X20,0X63,0X6F,0X6E,0X74,0X61,0X69,0X6E,0X20,0X6D,0X75,0X63,0X68,0X20,0X6D,0X6F,0X72,0X65,0X20,0X74,0X65,0X78,0X74,0X20,0X61,0X6E,0X64,0X20,0X65,0X76,0X65,0X6E,0X20,0X67,0X6F,0X65,0X73,0X20,0X62,0X65,0X79,0X6F,0X6E,0X64,0X20,0X74,0X68,0X65,0X20,0X31,0X32,0X36,0X20,0X62,0X79,0X74,0X65,0X20,0X6C,0X65,0X6E,0X20,0X66,0X69,0X65,0X6C,0X64,0X2E},
++		.frame_len=167,
++		.raw_payload_len=159,
++		.expected_errno=0,
++		.descr="Mid-long valid binary frame",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X88,0X82,0X6B,0X33,0X77,0X94,0X68,0XD8},
++		.expectedDecodeBuf={0X03,0XEB},
++		.frame_len=8,
++		.raw_payload_len=2,
++		.expected_errno=ECONNRESET,
++		.descr="Close frame (Reason 1003)",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X88,0XAD,0X4B,0XA1,0XCE,0XE8,0X48,0X4A,0X87,0XCF,0X26,0X81,0XAF,0XC8,0X28,0XCD,0XA1,0X9B,0X2E,0X81,0XBC,0X8D,0X2A,0XD2,0XA1,0X86,0X6B,0XC0,0XA0,0X8C,0X6B,0XCC,0XBB,0X8B,0X23,0X81,0XA3,0X87,0X39,0XC4,0XEE,0X9C,0X23,0XC0,0XA0,0XC8,0X3F,0XC9,0XAF,0X9C,0X6A},
++		.expectedDecodeBuf={0X03,0XEB,0X49,0X27,0X6D,0X20,0X61,0X20,0X63,0X6C,0X6F,0X73,0X65,0X20,0X72,0X65,0X61,0X73,0X6F,0X6E,0X20,0X61,0X6E,0X64,0X20,0X6D,0X75,0X63,0X68,0X20,0X6D,0X6F,0X72,0X65,0X20,0X74,0X68,0X61,0X6E,0X20,0X74,0X68,0X61,0X74,0X21},
++		.frame_len=51,
++		.raw_payload_len=45,
++		.expected_errno=ECONNRESET,
++		.descr="Close frame (Reason 1003) and msg",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X81,0X08,0X56,0X47,0X56,0X7A,0X64,0X47,0X6C,0X30},
++		.expectedDecodeBuf={0X54,0X65,0X73,0X74,0X69,0X74},
++		.frame_len=10,
++		.raw_payload_len=6,
++		.expected_errno=EPROTO,
++		.descr="Invalid frame: Wrong masking",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X81,0XFE,0X00,0X0F,0X71,0XE9,0X29,0X79,0X44,0XA4,0X07,0X23,0X3B,0X85,0X2C,0X55,0X1D,0X9E,0X06,0X23,0X27,0X9D},
++		.expectedDecodeBuf={0X2E,0XFE,0X00,0X0F,0X72,0X65,0X20,0X49,0X70,0X73,0X75,0X6D},
++		.frame_len=22,
++		.raw_payload_len=12,
++		.expected_errno=EPROTO,
++		.descr="Invalid frame: Length of < 126 with add. 16 bit len field",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X81,0XFF,0X00,0X00,0X00,0X00,0X00,0X00,0X80,0X40,0X2F,0X40,0XF3,0X5B,0X2F,0X40,0XF2,0X63,0X01,0X1A,0X8D,0X42,0X2A,0X6C,0XAB,0X59,0X00,0X1A,0X91,0X5A},
++		.expectedDecodeBuf={0X2E,0XFF,0X00,0X00,0X00,0X00,0X00,0X00,0X80,0X40,0X72,0X65,0X20,0X49,0X70,0X73,0X75,0X6D},
++		.frame_len=30,
++		.raw_payload_len=18,
++		.expected_errno=EPROTO,
++		.descr="Invalid frame: Length of < 126 with add. 64 bit len field",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X01,0XAC,0XC9,0X6E,0XC7,0X6E,0X9F,0X29,0XAF,0X1E,0XAA,0X17,0X85,0X1E,0XAA,0X17,0X85,0X06,0X80,0X29,0X9D,0X17,0X90,0X39,0XA3,0X1A,0X93,0X39,0XF2,0X5E,0X93,0X39,0X96,0X09,0XAD,0X5C,0X91,0X07,0XAA,0X5C,0XFE,0X04,0XA8,0X5C,0X91,0X5E,0X85,0X07,0XF3,0X1B},
++		.expectedDecodeBuf={0X54,0X68,0X69,0X73,0X20,0X69,0X73,0X20,0X61,0X20,0X66,0X72,0X61,0X67,0X6D,0X65,0X6E,0X74,0X65,0X64,0X20,0X77,0X65,0X62,0X73,0X6F,0X63,0X6B,0X65,0X74,0X2E,0X2E,0X2E},
++		.frame_len=50,
++		.raw_payload_len=33,
++		.expected_errno=0,
++		.descr="Continuation test frag1",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X00,0X9C,0X52,0XBC,0XD5,0X99,0X1E,0XD5,0XE1,0XEC,0X1B,0XFB,0X93,0XEC,0X08,0XFF,0X97,0XE9,0X36,0XFF,0X97,0XF7,0X30,0X8E,0X83,0XE3,0X1B,0XFB,0XEC,0XEC,0X1E,0XD5,0XE1,0XEC},
++		.expectedDecodeBuf={0X2E,0X2E,0X2E,0X20,0X61,0X6E,0X64,0X20,0X69,0X74,0X20,0X67,0X6F,0X65,0X73,0X20,0X6F,0X6E,0X2E,0X2E,0X2E},
++		.frame_len=34,
++		.raw_payload_len=21,
++		.expected_errno=0,
++		.descr="Continuation test frag2",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	},
++	{
++		.frame={0X80,0X94,0X3B,0X88,0XA1,0XE9,0X62,0XDF,0X94,0X82,0X72,0XCF,0X98,0X9C,0X72,0XCF,0XE7,0X9C,0X61,0XCB,0XE3,0X93,0X5F,0XCF,0X98,0X9E},
++		.expectedDecodeBuf={0X61,0X6E,0X64,0X20,0X6F,0X6E,0X20,0X61,0X6E,0X64,0X20,0X73,0X74,0X6F,0X70},
++		.frame_len=26,
++		.raw_payload_len=15,
++		.expected_errno=0,
++		.descr="Continuation test frag3",
++		.i=0,
++		.simulate_sock_malfunction_at=0,
++		.errno_val=0,
++		.close_sock_at=0
++	}
++};
+diff --git a/webclients/Makefile.am b/webclients/Makefile.am
+deleted file mode 100644
+index 6c2db84..0000000
+--- a/webclients/Makefile.am
++++ /dev/null
+@@ -1,4 +0,0 @@
+-SUBDIRS = java-applet
+-DIST_SUBDIRS = java-applet
+-EXTRA_DIST=index.vnc novnc
+-
+diff --git a/webclients/java-applet/Makefile.am b/webclients/java-applet/Makefile.am
+deleted file mode 100644
+index d6d10e4..0000000
+--- a/webclients/java-applet/Makefile.am
++++ /dev/null
+@@ -1,5 +0,0 @@
+-EXTRA_DIST=VncViewer.jar javaviewer.pseudo_proxy.patch
+-
+-SUBDIRS = ssl
+-DIST_SUBDIRS = ssl
+-
+diff --git a/webclients/java-applet/ssl/Makefile.am b/webclients/java-applet/ssl/Makefile.am
+deleted file mode 100644
+index fd1c201..0000000
+--- a/webclients/java-applet/ssl/Makefile.am
++++ /dev/null
+@@ -1,2 +0,0 @@
+-EXTRA_DIST=VncViewer.jar index.vnc SignedVncViewer.jar proxy.vnc README ss_vncviewer onetimekey UltraViewerSSL.jar SignedUltraViewerSSL.jar ultra.vnc ultrasigned.vnc ultraproxy.vnc
+-

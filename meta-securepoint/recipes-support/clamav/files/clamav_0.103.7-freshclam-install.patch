@@ -1,0 +1,20 @@
+diff -up clamav-0.103.7/freshclam/CMakeLists.txt.freshclam-install clamav-0.103.7/freshclam/CMakeLists.txt
+--- clamav-0.103.7/freshclam/CMakeLists.txt.freshclam-install	2023-02-04 16:30:02.185533836 +0100
++++ clamav-0.103.7/freshclam/CMakeLists.txt	2023-02-04 16:30:24.770979379 +0100
+@@ -35,11 +35,11 @@ else()
+ endif()
+ 
+ # Install an empty database directory
+-if(WIN32)
+-    INSTALL(CODE "FILE(MAKE_DIRECTORY \${ENV}\${CMAKE_INSTALL_PREFIX}/database)")
+-else()
+-    INSTALL(CODE "FILE(MAKE_DIRECTORY \${ENV}\${CMAKE_INSTALL_PREFIX}/share/clamav)")
+-endif()
++#if(WIN32)
++#    INSTALL(CODE "FILE(MAKE_DIRECTORY \${ENV}\${CMAKE_INSTALL_PREFIX}/database)")
++#else()
++#    INSTALL(CODE "FILE(MAKE_DIRECTORY \${ENV}\${CMAKE_INSTALL_PREFIX}/share/clamav)")
++#endif()
+ 
+ # now we rename resman-bin executable to resman using target properties
+ set_target_properties( freshclam-bin

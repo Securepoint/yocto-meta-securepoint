@@ -1,10 +1,12 @@
 # Copyright (C) 2014 Gernot Tenchio <gernot.tenchio@securepoint.de>
 # Released under the MIT license (see COPYING.MIT for the terms)
 
-PACKAGES_prepend += " ${PN}-libs ${PN}-workstation "
+#PACKAGECONFIG = ""
+PACKAGES:prepend = " ${PN}-libs ${PN}-workstation "
+DEPENDS:remove = "util-linux"
 
-FILES_${PN}-libs = "/usr/lib/*.so.*"
-FILES_${PN}-workstation = "\
+FILES:${PN}-libs = "/usr/lib/*.so.*"
+FILES:${PN}-workstation = "\
     /etc/pam.d/ksu \
     /usr/bin/k5srvutil \
     /usr/bin/kadmin \

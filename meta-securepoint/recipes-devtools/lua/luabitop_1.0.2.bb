@@ -19,7 +19,7 @@ S = "${WORKDIR}/LuaBitOp-${PV}"
 inherit autotools-brokensep
 
 EXTRA_OEMAKE += " CC='${CC}' LD='${CC}' PREFIX=/usr DESTDIR=${D}"
-do_compile_prepend(){
+do_compile:prepend(){
    sed -i -e "s;CC= gcc;CC= ${CC};" Makefile
    sed -i -e "s;-I/usr/local/include;;" Makefile
 }
@@ -29,5 +29,5 @@ do_install(){
     install -p bit.so ${D}${libdir}/lua/5.1/
 }
 
-FILES_${PN}-dbg += "${libdir}/lua/5.1/.debug"
-FILES_${PN} += "${libdir}/lua/5.1/"
+FILES:${PN}-dbg += "${libdir}/lua/5.1/.debug"
+FILES:${PN} += "${libdir}/lua/5.1/"

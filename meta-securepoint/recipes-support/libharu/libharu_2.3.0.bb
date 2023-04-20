@@ -17,6 +17,7 @@ LICENSE = "Zlib"
 SECTION = "libs"
 LIC_FILES_CHKSUM = "file://README;beginline=102;endline=121;md5=ee60a116ec6846aad5318080062bdc20"
 PR = "r0"
+DEPENDS = "zlib libpng"
 
 SRC_URI = "\
     https://github.com/libharu/libharu/archive/RELEASE_2_3_0.tar.gz \

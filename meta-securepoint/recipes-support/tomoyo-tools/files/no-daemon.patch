@@ -1,0 +1,121 @@
+Index: a/usr_sbintomoyo-auditd.c
+===================================================================
+--- a/usr_sbin/tomoyo-auditd.c	(revision 6616)
++++ b/usr_sbin/tomoyo-auditd.c	(working copy)
+@@ -24,6 +24,7 @@
+ #include <signal.h>
+ #include <syslog.h>
+ #include <poll.h>
++#include <getopt.h>
+ 
+ #define CCS_AUDITD_CONF "/etc/tomoyo/tools/auditd.conf"
+ 
+@@ -338,11 +339,40 @@
+ 	block_sighup(0);
+ }
+ 
++static void print_usage(char *argv[])
++{
++	fprintf(stderr, "Usage: %s [options]\n"
++		"Options are:\n"
++		"  -n, --no-daemon        stay in foreground, don't daemonize\n"
++		"  -h, --help             print this help\n", argv[0]);
++}
++
+ int main(int argc, char *argv[])
+ {
+ 	unsigned int i;
+ 	int fd_in;
+-	for (i = 1; i < argc; i++) {
++	int daemonize = 1, long_index = 0, opt;
++
++  static struct option long_options[] = {
++		{"help",	no_argument,	   0,  'h' },
++		{"no-daemon",	no_argument,	   0,  'n' },
++		{0,		0,		   0,  0   }
++	};
++
++	while ((opt = getopt_long(argc, argv, "hn", long_options,
++				  &long_index)) != -1) {
++		switch (opt) {
++		case 'n':
++			daemonize = 0;
++			break;
++		case 'h':
++		default:
++			goto usage;
++			exit(EXIT_FAILURE);
++		}
++	}
++
++	for (i = optind; i < argc; i++) {
+ 		char *ptr = argv[i];
+ 		char *cp = strchr(ptr, ':');
+ 		if (!cp)
+@@ -380,28 +410,31 @@
+ 			CCS_PROC_POLICY_AUDIT);
+ 		return 1;
+ 	}
+-	switch (fork()) {
+-	case 0:
+-		break;
+-	case -1:
+-		fprintf(stderr, "Can't fork()\n");
+-		return 1;
+-	default:
+-		return 0;
+-	}
+-	if (setsid() == EOF) {
+-		fprintf(stderr, "Can't setsid()\n");
+-		return 1;
+-	}
+-	switch (fork()) {
+-	case 0:
+-		break;
+-	case -1:
+-		fprintf(stderr, "Can't fork()\n");
+-		return 1;
+-	default:
+-		return 0;
+-	}
++  if (daemonize) {
++    switch (fork()) {
++    case 0:
++      break;
++    case -1:
++      fprintf(stderr, "Can't fork()\n");
++      return 1;
++    default:
++      return 0;
++    }
++    if (setsid() == EOF) {
++      fprintf(stderr, "Can't setsid()\n");
++      return 1;
++    }
++    switch (fork()) {
++    case 0:
++      break;
++    case -1:
++      fprintf(stderr, "Can't fork()\n");
++      return 1;
++    default:
++      return 0;
++    }
++  }
++
+ 	if (chdir("/")) {
+ 		fprintf(stderr, "Can't chdir()\n");
+ 		return 1;
+@@ -474,7 +507,10 @@
+ 	closelog();
+ 	return 1;
+ usage:
+-	fprintf(stderr, "%s [remote_ip:remote_port]\n"
+-		"  See %s for configuration.\n", argv[0], CCS_AUDITD_CONF);
++	fprintf(stderr, "%s [Options] [remote_ip:remote_port]\n"
++		"  See %s for configuration. "
++   	"Options are:\n"
++		"  -n, --no-daemon        stay in foreground, don't daemonize\n"
++		"  -h, --help             print this help\n", argv[0], CCS_AUDITD_CONF);
+ 	return 1;
+ }

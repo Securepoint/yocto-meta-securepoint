@@ -1,0 +1,15 @@
+diff -up nginx-1.12.2/src/os/unix/ngx_user.c.glibc nginx-1.12.2/src/os/unix/ngx_user.c
+--- nginx-1.12.2/src/os/unix/ngx_user.c.glibc	2019-09-18 09:02:35.519683374 +0200
++++ nginx-1.12.2/src/os/unix/ngx_user.c	2019-09-18 09:03:44.339908349 +0200
+@@ -31,11 +31,6 @@ ngx_libc_crypt(ngx_pool_t *pool, u_char
+     struct crypt_data   cd;
+ 
+     cd.initialized = 0;
+-#ifdef __GLIBC__
+-    /* work around the glibc bug */
+-    cd.current_salt[0] = ~salt[0];
+-#endif
+-
+     value = crypt_r((char *) key, (char *) salt, &cd);
+ 
+     if (value) {

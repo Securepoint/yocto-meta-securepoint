@@ -1,0 +1,19 @@
+diff --git a/src/openvpn/multi.c b/src/openvpn/multi.c
+index 5f1b751d..b7a4ccb7 100644
+--- a/src/openvpn/multi.c
++++ b/src/openvpn/multi.c
+@@ -2466,12 +2466,14 @@ multi_client_connect_late_setup(struct multi_context *m,
+     /* authentication complete, calculate dynamic client specific options */
+     if (!multi_client_set_protocol_options(&mi->context))
+     {
++        multi_client_disconnect_script(mi);
+         mi->context.c2.tls_multi->multi_state = CAS_FAILED;
+     }
+     /* Generate data channel keys only if setting protocol options
+      * has not failed */
+     else if (!multi_client_generate_tls_keys(&mi->context))
+     {
++        multi_client_disconnect_script(mi);
+         mi->context.c2.tls_multi->multi_state = CAS_FAILED;
+     }
+ 

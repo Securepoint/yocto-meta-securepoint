@@ -25,6 +25,6 @@ do_install(){
     install -m 555 src/lanes.lua ${D}${datadir}/lua/5.1/
 }
 
-FILES_${PN}-dbg += "${libdir}/lua/5.1/.debug"
-FILES_${PN} += "${libdir}/lua/5.1/ ${datadir}/lua/5.1/"
+FILES:${PN}-dbg += "${libdir}/lua/5.1/.debug"
+FILES:${PN} += "${libdir}/lua/5.1/ ${datadir}/lua/5.1/"
 

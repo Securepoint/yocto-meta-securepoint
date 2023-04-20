@@ -7,7 +7,7 @@ LICENSE = "BSD"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=5f3944d43ae0e4f5ef4f9b20ac96cb9a"
 PR = "r0"
 
-SRC_URI = "git://github.com/udp/json-builder.git;protocol=https \
+SRC_URI = "git://github.com/udp/json-builder.git;protocol=https;branch=master \
            file://0001-escape-all-control-characters.patch \
            file://0002-Replace-json_integer-magic-with-printf-calls.patch \
            file://json-builder-incpath.patch"
@@ -17,9 +17,9 @@ SRC_URI[sha256sum] = "9945755591ec1825a8db75bf6d029f037904c0dfd60a8e2516f32a8309
 SRCREV = "19c739f64d1da157789c35a06911b865486e6c2e"
 S = "${WORKDIR}/git"
 
-REQUIRES = "json-parser"
+DEPENDS = "json-parser"
 
 inherit cmake
 
 OECMAKE_C_FLAGS += " -fPIC "
-RDEPENDS_${PN}-dev = ""
+RDEPENDS:${PN}-dev = ""

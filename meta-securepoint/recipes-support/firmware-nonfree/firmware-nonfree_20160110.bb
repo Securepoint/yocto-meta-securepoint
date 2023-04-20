@@ -27,8 +27,8 @@ DESCRIPTION_${PN}-bnx2x = "Binary firmware for Broadcom NetXtreme II 10Gb networ
 DESCRIPTION_${PN}-ath6k = "Binary firmware for Atheros network adapters supported by the ath6k driver"
 DESCRIPTION_${PN}-ath10k = "Binary firmware for Atheros network adapters supported by the ath10k driver"
 
-FILES_${PN}-r816x = "/lib/firmware/rtl_nic"
-FILES_${PN}-bnx2  = "/lib/firmware/bnx2"
-FILES_${PN}-bnx2x = "/lib/firmware/bnx2x"
-FILES_${PN}-ath6k = "/lib/firmware/ath6k"
-FILES_${PN}-ath10k = "/lib/firmware/ath10k"
+FILES:${PN}-r816x = "/lib/firmware/rtl_nic"
+FILES:${PN}-bnx2  = "/lib/firmware/bnx2"
+FILES:${PN}-bnx2x = "/lib/firmware/bnx2x"
+FILES:${PN}-ath6k = "/lib/firmware/ath6k"
+FILES:${PN}-ath10k = "/lib/firmware/ath10k"

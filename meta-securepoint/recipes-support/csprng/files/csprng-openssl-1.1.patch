@@ -1,0 +1,42 @@
+diff -up csprng-1.1.3/configure.ac.openssl-1.1 csprng-1.1.3/configure.ac
+--- csprng-1.1.3/configure.ac.openssl-1.1	2019-09-27 09:12:25.283398757 +0200
++++ csprng-1.1.3/configure.ac	2019-09-27 09:13:54.499659095 +0200
+@@ -68,7 +68,7 @@ AC_ARG_WITH(
+ )
+ 
+ AC_CHECK_LIB([crypto],[CRYPTO_new_ex_data], [], [AC_MSG_ERROR([OpenSSL libraries required])])
+-AC_CHECK_LIB([ssl],[SSL_library_init], [], [AC_MSG_ERROR([OpenSSL libraries required])])
++AC_CHECK_LIB([ssl],[SSL_free], [], [AC_MSG_ERROR([OpenSSL libraries required])])
+ AC_CHECK_HEADERS([openssl/err.h openssl/rand.h openssl/sha.h openssl/bn.h],[],[AC_MSG_ERROR([OpenSSL headers required])])
+ 
+ ## Checks for header files.
+diff -up csprng-1.1.3/src/csprng.c.rand csprng-1.1.3/src/csprng.c
+--- csprng-1.1.3/src/csprng.c.rand	2019-09-27 09:43:09.468810124 +0200
++++ csprng-1.1.3/src/csprng.c	2019-09-27 09:45:45.089275634 +0200
+@@ -815,7 +815,11 @@ unsigned char* create_seed(const char* f
+     fprintf(stderr, "WARNING: Cannot close file %s. Reported error: %s\n", filename, strerror(errno));
+   }
+   //OPENSSL cryptographically strong pseudo-random bytes
++#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+   if (RAND_get_rand_method() == NULL) RAND_set_rand_method(RAND_SSLeay());
++#else
++  if (RAND_get_rand_method() == NULL) RAND_set_rand_method(RAND_OpenSSL());
++#endif
+ 
+   //Process data through SHA-1 and XOR data with SHA-1 sum
+   p = data;
+diff -up csprng-1.1.3/test/openssl-rand_main.c.rand csprng-1.1.3/test/openssl-rand_main.c
+--- csprng-1.1.3/test/openssl-rand_main.c.rand	2019-09-27 09:49:12.281895420 +0200
++++ csprng-1.1.3/test/openssl-rand_main.c	2019-09-27 09:49:34.245961097 +0200
+@@ -41,7 +41,11 @@ int main(void)
+   uint8_t* buf;
+   const int size = 4096;
+ 
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+   if (RAND_get_rand_method() == NULL) RAND_set_rand_method(RAND_SSLeay());
++#else
++  if (RAND_get_rand_method() == NULL) RAND_set_rand_method(RAND_OpenSSL());
++#endif
+ 
+   buf = malloc(size * sizeof(uint8_t));
+   if ( buf == NULL ) return 1;

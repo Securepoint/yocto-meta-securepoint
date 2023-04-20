@@ -1,8 +1,8 @@
-PACKAGES_prepend += "${PN}-utils "
+PACKAGES:prepend = "${PN}-utils "
 
-RDEPENDS_${PN} = ""
+RDEPENDS:${PN} = ""
 
-FILES_${PN}-utils = "\
+FILES:${PN}-utils = "\
     /usr/bin/callgrind_annotate \
     /usr/bin/callgrind_control \
     /usr/bin/cg_annotate \

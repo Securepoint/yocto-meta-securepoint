@@ -1,0 +1,20 @@
+From efc93aa3c74385fab4b23611db4ae0d27afb701e Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Thu, 6 Jun 2019 16:10:21 +0200
+
+---
+ configure.ac | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configure.ac b/configure.ac
+index 4bffbf4..1f64478 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -27,6 +27,7 @@ m4_include([acinclude/lib-checks.m4])
+ m4_include([acinclude/ax_cxx_compile_stdcxx_11.m4])
+ m4_include([acinclude/ax_cxx_0x_types.m4])
+ 
++HOSTCXX="$BUILD_CXX"
+ PRESET_CFLAGS="$CFLAGS"
+ PRESET_CXXFLAGS="$CXXFLAGS"
+ PRESET_LDFLAGS="$LDFLAGS"

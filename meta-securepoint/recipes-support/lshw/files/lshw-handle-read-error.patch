@@ -1,0 +1,14 @@
+diff --git a/src/core/osutils.cc b/src/core/osutils.cc
+index f023a46..3e0ef84 100644
+--- a/src/core/osutils.cc
++++ b/src/core/osutils.cc
+@@ -174,7 +174,8 @@ const string & def)
+   if (fd >= 0)
+   {
+     char buffer[1024];
+-    size_t count = 0;
++    // read can return -1
++    int count = 0;
+ 
+     memset(buffer, 0, sizeof(buffer));
+     result = "";

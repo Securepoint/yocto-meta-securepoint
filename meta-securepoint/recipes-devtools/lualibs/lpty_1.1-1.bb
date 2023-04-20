@@ -17,5 +17,5 @@ inherit autotools
 
 EXTRA_OEMAKE += "INST_DIR=${D}/usr LUAVERSION=5.1 LUA_INCDIR=. LUA_LIBDIR=."
 
-FILES_${PN}-dbg += "${libdir}/lua/5.1/.debug"
-FILES_${PN} += "${libdir}/lua/5.1/"
+FILES:${PN}-dbg += "${libdir}/lua/5.1/.debug"
+FILES:${PN} += "${libdir}/lua/5.1/"

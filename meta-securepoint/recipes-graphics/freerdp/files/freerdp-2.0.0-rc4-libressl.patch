@@ -1,0 +1,12 @@
+diff -up freerdp-2.0.0-rc4/libfreerdp/crypto/tls.c.libressl freerdp-2.0.0-rc4/libfreerdp/crypto/tls.c
+--- freerdp-2.0.0-rc4/libfreerdp/crypto/tls.c.libressl	2018-12-18 14:47:48.583019138 +0100
++++ freerdp-2.0.0-rc4/libfreerdp/crypto/tls.c	2018-12-18 14:49:57.601440051 +0100
+@@ -656,7 +656,7 @@ static BOOL tls_prepare(rdpTls* tls, BIO
+ #endif
+ 
+ 
+-#if OPENSSL_VERSION_NUMBER >= 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
+ 	SSL_CTX_set_security_level(tls->ctx, settings->TlsSecLevel);
+ #endif
+ 

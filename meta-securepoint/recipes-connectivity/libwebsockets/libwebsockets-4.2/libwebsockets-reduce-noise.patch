@@ -1,0 +1,124 @@
+From 991ebea97a6c98bf91998cc9d8b2b00f78a1310e Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Wed, 1 Jun 2022 14:53:31 +0200
+Subject: [PATCH] reduce noise
+
+---
+ lib/core-net/output.c           |  2 +-
+ lib/roles/netlink/ops-netlink.c |  4 ++--
+ lib/roles/ws/client-parser-ws.c | 10 +++++-----
+ lib/roles/ws/ops-ws.c           |  6 +++---
+ 4 files changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/lib/core-net/output.c b/lib/core-net/output.c
+index a8ff396a..655ddf31 100644
+--- a/lib/core-net/output.c
++++ b/lib/core-net/output.c
+@@ -119,7 +119,7 @@ lws_issue_raw(struct lws *wsi, unsigned char *buf, size_t len)
+ 	else
+ 		m = (unsigned int)lws_ssl_capable_write(wsi, buf, n);
+ 
+-	lwsl_info("%s: ssl_capable_write (%d) says %d\n", __func__, n, m);
++	lwsl_debug("%s: ssl_capable_write (%d) says %d\n", __func__, n, m);
+ 
+ 	/* something got written, it can have been truncated now */
+ 	wsi->could_have_pending = 1;
+diff --git a/lib/roles/netlink/ops-netlink.c b/lib/roles/netlink/ops-netlink.c
+index 09d23239..7c2cc28d 100644
+--- a/lib/roles/netlink/ops-netlink.c
++++ b/lib/roles/netlink/ops-netlink.c
+@@ -41,7 +41,7 @@
+ #define RTA_ALIGNTO 4U
+ 
+ //#define lwsl_netlink lwsl_notice
+-#define lwsl_netlink lwsl_info
++#define lwsl_netlink lwsl_debug
+ 
+ static void
+ lws_netlink_coldplug_done_cb(lws_sorted_usec_list_t *sul)
+@@ -527,7 +527,7 @@ rops_pt_init_destroy_netlink(struct lws_context *context,
+ 
+ 	if (lws_fi(&context->fic, "netlink_bind") ||
+ 	    bind(wsi->desc.sockfd, (struct sockaddr*)&sanl, sizeof(sanl)) < 0) {
+-		lwsl_warn("%s: netlink bind failed\n", __func__);
++		lwsl_debug("%s: netlink bind failed\n", __func__);
+ 		ret = 0; /* some systems deny access, just ignore */
+ 		goto bail2;
+ 	}
+diff --git a/lib/roles/ws/client-parser-ws.c b/lib/roles/ws/client-parser-ws.c
+index 159bb3af..4eb1ceaa 100644
+--- a/lib/roles/ws/client-parser-ws.c
++++ b/lib/roles/ws/client-parser-ws.c
+@@ -426,7 +426,7 @@ spill:
+ 			wsi->ws->close_in_ping_buffer_len =
+ 					(uint8_t)wsi->ws->rx_ubuf_head;
+ 
+-			lwsl_info("%s: scheduling return close as ack\n",
++			lwsl_debug("%s: scheduling return close as ack\n",
+ 				  __func__);
+ 			__lws_change_pollfd(wsi, LWS_POLLIN, 0);
+ 			lws_set_timeout(wsi, PENDING_TIMEOUT_CLOSE_SEND, 3);
+@@ -438,7 +438,7 @@ spill:
+ 			break;
+ 
+ 		case LWSWSOPC_PING:
+-			lwsl_info("received %d byte ping, sending pong\n",
++			lwsl_debug("received %d byte ping, sending pong\n",
+ 				  (int)wsi->ws->rx_ubuf_head);
+ 
+ 			/* he set a close reason on this guy, ignore PING */
+@@ -476,7 +476,7 @@ ping_drop:
+ 			break;
+ 
+ 		case LWSWSOPC_PONG:
+-			lwsl_info("%s: %s received pong\n", __func__, lws_wsi_tag(wsi));
++			lwsl_debug("%s: %s received pong\n", __func__, lws_wsi_tag(wsi));
+ 			lwsl_hexdump(&wsi->ws->rx_ubuf[LWS_PRE],
+ 				     wsi->ws->rx_ubuf_head);
+ 
+@@ -623,9 +623,9 @@ utf8_fail:
+ 				goto already_done;
+ 
+ 			if (callback_action == LWS_CALLBACK_CLIENT_RECEIVE_PONG)
+-				lwsl_info("Client doing pong callback\n");
++				lwsl_debug("Client doing pong callback\n");
+ 			if (callback_action == LWS_CALLBACK_CLIENT_RECEIVE_PING)
+-				lwsl_info("Client doing ping callback\n");
++				lwsl_debug("Client doing ping callback\n");
+ 
+ #if !defined(LWS_WITHOUT_EXTENSIONS)
+ 			if (n == PMDR_HAS_PENDING)
+diff --git a/lib/roles/ws/ops-ws.c b/lib/roles/ws/ops-ws.c
+index 37b11fd3..9a9d4b16 100644
+--- a/lib/roles/ws/ops-ws.c
++++ b/lib/roles/ws/ops-ws.c
+@@ -509,7 +509,7 @@ spill:
+ 			goto process_as_ping;
+ 
+ 		case LWSWSOPC_PING:
+-			lwsl_info("received %d byte ping, sending pong\n",
++			lwsl_debug("received %d byte ping, sending pong\n",
+ 						 (int)wsi->ws->rx_ubuf_head);
+ 
+ 			if (wsi->ws->pong_pending_flag) {
+@@ -542,7 +542,7 @@ ping_drop:
+ 			return 0;
+ 
+ 		case LWSWSOPC_PONG:
+-			lwsl_info("received pong\n");
++			lwsl_debug("received pong\n");
+ 			lwsl_hexdump(&wsi->ws->rx_ubuf[LWS_PRE],
+ 			             wsi->ws->rx_ubuf_head);
+ 
+@@ -709,7 +709,7 @@ utf8_fail:
+ 				    !(already_processed & ALREADY_PROCESSED_NO_CB)) {
+ 					if (callback_action ==
+ 						      LWS_CALLBACK_RECEIVE_PONG)
+-						lwsl_info("Doing pong callback\n");
++						lwsl_debug("Doing pong callback\n");
+ 
+ 					ret = user_callback_handle_rxflow(
+ 						wsi->a.protocol->callback, wsi,
+-- 
+2.35.3
+

@@ -1,0 +1,12 @@
+diff -up csprng-1.1.3/src/havege.c.ror32 csprng-1.1.3/src/havege.c
+--- csprng-1.1.3/src/havege.c.ror32	2013-01-04 02:29:02.000000000 +0100
++++ csprng-1.1.3/src/havege.c	2017-07-04 11:45:59.435469110 +0200
+@@ -404,7 +404,7 @@ static int cache_configure(void)
+                                  default:  goto loop_exit; \
+                                  } \
+                               }
+-#if 0
++#if 1
+ #define ROR32(value,shift)   ((value >> (shift)) ^ (value << (32-shift)))
+ #else
+ inline DATA_TYPE ror32(const DATA_TYPE value, const DATA_TYPE shift) {

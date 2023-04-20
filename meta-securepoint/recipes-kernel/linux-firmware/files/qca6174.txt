@@ -1,0 +1,37 @@
+#!/bin/sh
+#
+# If you don't know what this file exists for, the probability is high that
+# you don't need it.
+#
+
+if [ -z "$1" -o "start" = "$1" ]; then
+	read version < /data/securepoint/debug/QCA6174.txt || exit
+else
+	if [ "list" = "$1" ]; then
+		cd /lib/firmware/ath10k/QCA6174/hw3.0
+		ls -1d 00???
+		exit
+	fi
+	version=$1
+fi
+
+if [ ! -f /lib/firmware/ath10k/QCA6174/hw3.0/${version}/firmware-6.bin ]; then
+	echo "QCA6174 firmware version ${version} does not exists"
+	exit
+fi
+
+cd /etc/firmware/ath10k/QCA6174/hw3.0
+rm -f firmware-6.bin
+ln -s /lib/firmware/ath10k/QCA6174/hw3.0/${version}/firmware-6.bin .
+
+[ -d /data/securepoint/debug ] || mkdir /data/securepoint/debug
+echo $version > /data/securepoint/debug/QCA6174.txt
+echo "QCA6174 firmware set to version ${version}"
+
+# If the module was already loaded, reload it, otherwise wait until it is
+# loaded automatically.
+grep ath10k_pci /proc/modules
+if [ 0 -eq $? ]; then
+	rmmod ath10k_pci
+	modprobe ath10k_pci
+fi

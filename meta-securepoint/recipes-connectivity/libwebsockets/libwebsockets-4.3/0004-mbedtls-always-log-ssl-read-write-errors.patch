@@ -1,0 +1,49 @@
+From 04e8a480d504ae7f90e6f61ecccd1cac05e48ae4 Mon Sep 17 00:00:00 2001
+From: Gernot Tenchio <gernot.tenchio@securepoint.de>
+Date: Thu, 20 Oct 2022 11:43:40 +0200
+Subject: [PATCH 4/4] mbedtls: always log ssl read/write errors
+
+---
+ lib/tls/mbedtls/wrapper/platform/ssl_pm.c | 8 +++-----
+ 1 file changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/lib/tls/mbedtls/wrapper/platform/ssl_pm.c b/lib/tls/mbedtls/wrapper/platform/ssl_pm.c
+index e8a0cb2d..a457f535 100755
+--- a/lib/tls/mbedtls/wrapper/platform/ssl_pm.c
++++ b/lib/tls/mbedtls/wrapper/platform/ssl_pm.c
+@@ -421,8 +421,7 @@ int ssl_pm_read(SSL *ssl, void *buffer, int len)
+ 
+     ret = mbedtls_ssl_read(&ssl_pm->ssl, buffer, (size_t)len);
+     if (ret < 0) {
+-	 //   lwsl_notice("%s: mbedtls_ssl_read says -0x%x\n", __func__, -ret);
+-        SSL_DEBUG(SSL_PLATFORM_ERROR_LEVEL, "mbedtls_ssl_read() return -0x%x", -ret);
++        lwsl_debug("%s: mbedtls_ssl_read() returned -0x%x\n", __func__, -ret);
+         if (ret == MBEDTLS_ERR_NET_CONN_RESET ||
+ #if defined(MBEDTLS_VERSION_NUMBER) && MBEDTLS_VERSION_NUMBER >= 0x03000000
+ 	    ret <= MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE) /* fatal errors */
+@@ -466,11 +465,12 @@ int ssl_pm_send(SSL *ssl, const void *buffer, int len)
+      */
+ 
+     if (ret < 0) {
+-	    SSL_DEBUG(SSL_PLATFORM_ERROR_LEVEL, "mbedtls_ssl_write() return -0x%x", -ret);
+ 	switch (ret) {
+ 	case MBEDTLS_ERR_NET_SEND_FAILED:
+ 	case MBEDTLS_ERR_NET_CONN_RESET:
+ 		ssl->err = SSL_ERROR_SYSCALL;
++	default:
++		lwsl_debug("%s: mbedtls_ssl_write() returned -0x%x\n", __func__, -ret);
+ 		break;
+ 	case MBEDTLS_ERR_SSL_WANT_WRITE:
+ 		ssl->err = SSL_ERROR_WANT_WRITE;
+@@ -478,8 +478,6 @@ int ssl_pm_send(SSL *ssl, const void *buffer, int len)
+ 	case MBEDTLS_ERR_SSL_WANT_READ:
+ 		ssl->err = SSL_ERROR_WANT_READ;
+ 		break;
+-	default:
+-		break;
+ 	}
+ 
+ 	ret = -1;
+-- 
+2.37.2
+

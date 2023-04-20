@@ -14,7 +14,7 @@ inherit gettext autotools-brokensep
 
 EXTRA_OEMAKE += " PREFIX=/usr "
 
-do_configure_prepend(){
+do_configure:prepend(){
     sed -i 's/^PATH=.*//g' configure.in
     sed -i 's/^CPATH=.*//g' configure.in
     sed -i 's/^LIBRARY_PATH=.*//g' configure.in
@@ -28,4 +28,5 @@ do_configure_prepend(){
     autoconf
 }
 
-FILES_${PN} += " /usr/lib/tts*"
+FILES:${PN} += " /usr/lib/tts*"
+FILES:${PN}-dev += " /usr/share/tokyotyrant/doc"

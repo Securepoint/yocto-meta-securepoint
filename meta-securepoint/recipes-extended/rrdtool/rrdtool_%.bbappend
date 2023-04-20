@@ -1,7 +1,8 @@
+DEPENDS:remove = "libxml2"
 
-# remove perl files (adds perl dependency otherwise)
-do_install_append() {
-  rm -rf ${D}${datadir}/rrdtool/examples
-  rmdir --ignore-fail-on-non-empty "${D}/usr/share/rrdtool"
-  rmdir --ignore-fail-on-non-empty "${D}/usr/share"
-}
+PACKAGECONFIG = ""
+PACKAGECONFIG[xml] = "--enable-rrd_restore,--disable-rrd_restore,libxml2"
+
+FILES:${PN}-perl = "${libdir}/perl5"
+
+RDEPENDS:${PN}:remove = "perl"

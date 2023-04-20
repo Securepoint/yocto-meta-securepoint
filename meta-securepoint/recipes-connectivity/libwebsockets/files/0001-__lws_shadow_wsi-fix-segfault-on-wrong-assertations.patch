@@ -1,0 +1,37 @@
+diff --git a/lib/roles/dbus/dbus.c b/lib/roles/dbus/dbus.c
+index c6a1e20a..1d45fd72 100644
+--- a/lib/roles/dbus/dbus.c
++++ b/lib/roles/dbus/dbus.c
+@@ -68,8 +68,8 @@ __lws_shadow_wsi(struct lws_dbus_ctx *ctx, DBusWatch *w, int fd, int create_ok)
+ 	if (!create_ok)
+ 		return NULL;
+ 
+-	lws_context_assert_lock_held(wsi->a.context);
+-	lws_vhost_assert_lock_held(wsi->a.vhost);
++	lws_context_assert_lock_held(ctx->vh->context);
++	lws_vhost_assert_lock_held(ctx->vh);
+ 
+ 	/* requires context lock */
+ 	wsi = __lws_wsi_create_with_role(ctx->vh->context, ctx->tsi, NULL,
+@@ -156,8 +156,10 @@ lws_dbus_add_watch(DBusWatch *w, void *data)
+ 
+ 	lws_context_lock(pt->context, __func__);
+ 	lws_pt_lock(pt, __func__);
++	lws_vhost_lock(ctx->vh);
+ 
+ 	wsi = __lws_shadow_wsi(ctx, w, dbus_watch_get_unix_fd(w), 1);
++	lws_vhost_unlock(ctx->vh);
+ 	if (!wsi) {
+ 		lws_pt_unlock(pt);
+ 		lws_context_unlock(pt->context);
+@@ -238,8 +240,10 @@ lws_dbus_remove_watch(DBusWatch *w, void *data)
+ 
+ 	lws_context_lock(pt->context, __func__);
+ 	lws_pt_lock(pt, __func__);
++	lws_vhost_lock(ctx->vh);
+ 
+ 	wsi = __lws_shadow_wsi(ctx, w, dbus_watch_get_unix_fd(w), 0);
++	lws_vhost_unlock(ctx->vh);
+ 	if (!wsi)
+ 		goto bail;
+ 

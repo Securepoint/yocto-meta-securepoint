@@ -1,0 +1,92 @@
+diff --git a/src/client_side.cc b/src/client_side.cc
+index e19cd718d..136216691 100644
+--- a/src/client_side.cc
++++ b/src/client_side.cc
+@@ -144,6 +144,24 @@
+ #define comm_close comm_lingering_close
+ #endif
+ 
++static void sp_HttpRequest_copy_cf_info(HttpRequest::Pointer const &origin_request, HttpRequest::Pointer const &new_request)
++{
++    /* add cf-info note from first CONNECT to fake CONNECT */
++    if (!origin_request) {
++      debugs(33, 2, "Missing origin_request");
++    } else if (!origin_request->notes()) {
++      debugs(33, 2, "Missing origin_request->notes()");
++    } else {
++      debugs(33, 2, "Search for cf-info");
++      const char *cf_info_note = origin_request->notes()->findFirst("cf-info");
++      if (NULL != cf_info_note) {
++        debugs(33, 2, "Add cf-info value: " << cf_info_note);
++        new_request->notes()->add("cf-info", cf_info_note);
++      } else {
++        debugs(33, 2, "No cf-info value found");
++      }
++    }
++}
+ /// dials clientListenerConnectionOpened call
+ class ListeningStartedDialer: public CallDialer, public Ipc::StartListeningCb
+ {
+@@ -2752,7 +2770,7 @@ httpsSslBumpAccessCheckDone(allow_t answer, void *data)
+         return;
+     }
+ 
+-    if (!connState->fakeAConnectRequest("ssl-bump", connState->inBuf))
++    if (!connState->fakeAConnectRequest(NULL, "ssl-bump", connState->inBuf))
+         connState->clientConnection->close();
+ }
+ #endif
+@@ -3271,7 +3289,7 @@ ConnStateData::splice()
+     if (transparent()) {
+         // For transparent connections, make a new fake CONNECT request, now
+         // with SNI as target. doCallout() checks, adaptations may need that.
+-        return fakeAConnectRequest("splice", preservedClientData);
++        return fakeAConnectRequest(request, "splice", preservedClientData);
+     } else {
+         // For non transparent connections  make a new tunneled CONNECT, which
+         // also sets the HttpRequest::flags::forceTunnel flag to avoid
+@@ -3406,6 +3424,8 @@ ConnStateData::initiateTunneledRequest(HttpRequest::Pointer const &cause, Http::
+     debugs(33, 2, "Request tunneling for " << reason);
+     ClientHttpRequest *http = buildFakeRequest(method, connectHost, connectPort, payload);
+     HttpRequest::Pointer request = http->request;
++    /* add cf-info note from first CONNECT to fake CONNECT */
++    sp_HttpRequest_copy_cf_info(cause, request);
+     request->flags.forceTunnel = true;
+     http->calloutContext = new ClientRequestContext(http);
+     http->doCallouts();
+@@ -3414,7 +3434,7 @@ ConnStateData::initiateTunneledRequest(HttpRequest::Pointer const &cause, Http::
+ }
+ 
+ bool
+-ConnStateData::fakeAConnectRequest(const char *reason, const SBuf &payload)
++ConnStateData::fakeAConnectRequest(HttpRequest::Pointer const &origin_request, const char *reason, const SBuf &payload)
+ {
+     debugs(33, 2, "fake a CONNECT request to force connState to tunnel for " << reason);
+ 
+@@ -3442,6 +3462,8 @@ ConnStateData::fakeAConnectRequest(const char *reason, const SBuf &payload)
+                " on URL: " << http->request->effectiveRequestUri());
+       http->calloutContext->host_header_verify_done = true;
+     }
++    /* add cf-info note from first CONNECT to fake CONNECT */
++    sp_HttpRequest_copy_cf_info(origin_request, request);
+     http->doCallouts();
+     clientProcessRequestFinished(this, request);
+     return true;
+@@ -4222,4 +4244,3 @@ operator <<(std::ostream &os, const ConnStateData::PinnedIdleContext &pic)
+ {
+     return os << pic.connection << ", request=" << pic.request;
+ }
+-
+diff --git a/src/client_side.h b/src/client_side.h
+index 9fe8463b2..4d7f1433c 100644
+--- a/src/client_side.h
++++ b/src/client_side.h
+@@ -297,7 +297,7 @@ public:
+ 
+     /// generate a fake CONNECT request with the given payload
+     /// at the beginning of the client I/O buffer
+-    bool fakeAConnectRequest(const char *reason, const SBuf &payload);
++    bool fakeAConnectRequest(HttpRequest::Pointer const &cause, const char *reason, const SBuf &payload);
+ 
+     /// generates and sends to tunnel.cc a fake request with a given payload
+     bool initiateTunneledRequest(HttpRequest::Pointer const &cause, Http::MethodType const method, const char *reason, const SBuf &payload);

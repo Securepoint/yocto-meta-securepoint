@@ -1,0 +1,117 @@
+diff --git a/lib/tls/mbedtls/mbedtls-client.c b/lib/tls/mbedtls/mbedtls-client.c
+index 187e8605..cbb5729e 100644
+--- a/lib/tls/mbedtls/mbedtls-client.c
++++ b/lib/tls/mbedtls/mbedtls-client.c
+@@ -118,7 +118,7 @@ lws_ssl_client_bio_create(struct lws *wsi)
+ 		/* Enable automatic hostname checks */
+ 	//	X509_VERIFY_PARAM_set_hostflags(param,
+ 	//				X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+-		lwsl_info("%s: setting hostname %s\n", __func__, hostname);
++		lwsl_debug("%s: setting hostname %s\n", __func__, hostname);
+ 		if (X509_VERIFY_PARAM_set1_host(param, hostname, 0) != 1)
+ 			return -1;
+ 	}
+@@ -140,7 +140,7 @@ lws_ssl_client_bio_create(struct lws *wsi)
+ 	protos.len = (uint8_t)lws_alpn_comma_to_openssl(alpn_comma, protos.data,
+ 					       sizeof(protos.data) - 1);
+ 
+-	lwsl_info("%s: %s: client conn sending ALPN list '%s' (protos.len %d)\n",
++	lwsl_debug("%s: %s: client conn sending ALPN list '%s' (protos.len %d)\n",
+ 		  __func__, lws_wsi_tag(wsi), alpn_comma, protos.len);
+ 
+ 	/* with mbedtls, protos is not pointed to after exit from this call */
+@@ -228,7 +228,7 @@ lws_ssl_client_bio_create(struct lws *wsi)
+ 
+ 		/* no wrapper api for check key */
+ 
+-		lwsl_notice("%s: set system client cert %u\n", __func__,
++		lwsl_debug("%s: set system client cert %u\n", __func__,
+ 				wsi->sys_tls_client_cert - 1);
+ 	}
+ 
+@@ -256,7 +256,7 @@ lws_tls_client_connect(struct lws *wsi, char *errbuf, size_t elen)
+ #if defined(LWS_WITH_TLS_SESSIONS)
+ 		lws_tls_session_new_mbedtls(wsi);
+ #endif
+-		lwsl_info("%s: client connect OK\n", __func__);
++		lwsl_debug("%s: client connect OK\n", __func__);
+ 		return LWS_SSL_CAPABLE_DONE;
+ 	}
+ 
+@@ -342,7 +342,7 @@ lws_tls_client_confirm_peer_cert(struct lws *wsi, char *ebuf, size_t ebuf_len)
+ 	}
+ #endif
+ 	if (wsi->tls.use_ssl & avoid) {
+-		lwsl_info("%s: allowing anyway\n", __func__);
++		lwsl_debug("%s: allowing anyway\n", __func__);
+ 
+ 		return 0;
+ 	}
+@@ -421,11 +421,11 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 		vh->tls.x509_client_CA = d2i_X509(NULL, buf, (long)len);
+ 		free(buf);
+ 
+-		lwsl_info("Loading vh %s client CA for verification %s\n", vh->name, ca_filepath);
++		lwsl_debug("Loading vh %s client CA for verification %s\n", vh->name, ca_filepath);
+ #endif
+ 	} else {
+ 		vh->tls.x509_client_CA = d2i_X509(NULL, (uint8_t*)ca_mem, (long)ca_mem_len);
+-		lwsl_info("%s: using mem client CA cert %d\n",
++		lwsl_debug("%s: using mem client CA cert %d\n",
+ 			    __func__, ca_mem_len);
+ 	}
+ 
+@@ -450,7 +450,7 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 		    (info->options & LWS_SERVER_OPTION_IGNORE_MISSING_CERT))
+ 			return 0;
+ 
+-		lwsl_notice("%s: doing cert filepath %s\n", __func__,
++		lwsl_debug("%s: doing cert filepath %s\n", __func__,
+ 				cert_filepath);
+ 
+ 		if (alloc_file(vh->context, cert_filepath, &buf, &amount))
+@@ -468,7 +468,7 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 			return 1;
+ 		}
+ 
+-		lwsl_info("Loaded client cert %s\n", cert_filepath);
++		lwsl_debug("Loaded client cert %s\n", cert_filepath);
+ #endif
+ 	} else if (cert_mem && cert_mem_len) {
+ 		/* lwsl_hexdump_notice(cert_mem, cert_mem_len - 1); */
+@@ -480,7 +480,7 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 			lws_tls_err_describe_clear();
+ 			return 1;
+ 		}
+-		lwsl_info("%s: using mem client cert %d\n",
++		lwsl_debug("%s: using mem client cert %d\n",
+ 			    __func__, cert_mem_len);
+ 	}
+ 
+@@ -490,7 +490,7 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 		uint8_t *buf;
+ 		lws_filepos_t amount;
+ 
+-		lwsl_notice("%s: doing private key filepath %s\n", __func__,
++		lwsl_debug("%s: doing private key filepath %s\n", __func__,
+ 				private_key_filepath);
+ 		if (alloc_file(vh->context, private_key_filepath, &buf, &amount))
+ 			return 1;
+@@ -508,7 +508,7 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 			return 1;
+ 		}
+ 
+-		lwsl_notice("Loaded private key %s\n", private_key_filepath);
++		lwsl_debug("Loaded private key %s\n", private_key_filepath);
+ #endif
+ 	} else if (key_mem && key_mem_len) {
+ 		/* lwsl_hexdump_notice(cert_mem, cert_mem_len - 1); */
+@@ -521,7 +521,7 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 			lws_tls_err_describe_clear();
+ 			return 1;
+ 		}
+-		lwsl_info("%s: using mem private key %d\n",
++		lwsl_debug("%s: using mem private key %d\n",
+ 			    __func__, key_mem_len);
+ 
+ 	}

@@ -1,0 +1,1073 @@
+diff --git a/.appveyor.yml b/.appveyor.yml
+new file mode 100644
+index 0000000..c2fffb5
+--- /dev/null
++++ b/.appveyor.yml
+@@ -0,0 +1,33 @@
++
++os:
++  - Visual Studio 2013
++  - Visual Studio 2015
++
++install:
++  - mkdir deps
++  - cd deps
++  # zlib
++  - curl -fsSL -o zlib.tar.gz https://github.com/madler/zlib/archive/v1.2.8.tar.gz
++  - 7z x zlib.tar.gz -so | 7z x -si -ttar > nul
++  - move zlib-1.2.8 zlib
++  - cd zlib
++  - cmake .
++  - cmake --build .
++  - cd ..
++  # libPNG
++  - curl -fsSL -o libpng.tar.gz ftp://ftp.simplesystems.org/pub/libpng/png/src/libpng16/libpng-1.6.28.tar.gz
++  - 7z x libpng.tar.gz -so | 7z x -si -ttar > nul
++  - move libpng-1.6.28 libpng
++  - cd libpng
++  - cmake . -DZLIB_INCLUDE_DIR=..\zlib -DZLIB_LIBRARY=..\zlib\debug\zlibd.lib
++  - cmake --build .
++  - cd ..
++  # go back to source root
++  - cd ..
++
++
++build_script:
++  - mkdir build
++  - cd build 
++  - cmake .. -DZLIB_INCLUDE_DIR=..\deps\zlib -DZLIB_LIBRARY=..\deps\zlib\debug\zlibd.lib -DPNG_PNG_INCLUDE_DIR=..\deps\libpng -DPNG_LIBRARY=..\deps\libpng\debug\libpng16d.lib
++  - cmake --build .
+diff --git a/.travis.yml b/.travis.yml
+index 99ff4b6..3b1f1b5 100644
+--- a/.travis.yml
++++ b/.travis.yml
+@@ -1,4 +1,6 @@
+ language: c
++dist: trusty
++sudo: required
+ 
+ os:
+   - linux
+@@ -10,6 +12,16 @@ compiler:
+ 
+ before_install:
+ - 'if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export CFLAGS="-I/usr/local/opt/openssl/include $CFLAGS" LDFLAGS="-L/usr/local/opt/openssl/lib $LDFLAGS"; fi'
++- |
++  if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
++    CMAKE_URL="http://www.cmake.org/files/v3.7/cmake-3.7.2-Linux-x86_64.tar.gz"
++    mkdir -p ${TRAVIS_BUILD_DIR}/deps/cmake && travis_retry wget --quiet -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C ${TRAVIS_BUILD_DIR}/deps/cmake
++    export PATH=${TRAVIS_BUILD_DIR}/deps/cmake/bin:${PATH}
++  fi
++
++# Build steps
++script:
++  - mkdir build
++  - cd build
++  - cmake .. && make
+ 
+-# before build script, run autoreconf
+-before_script: autoreconf -fiv
+\ No newline at end of file
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9424d8d..6620b39 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 2.6)
++cmake_minimum_required(VERSION 3.4)
+ cmake_policy(SET CMP0037 NEW)
+ 
+ project(LibVNCServer)
+@@ -14,37 +14,51 @@ set(PACKAGE_NAME           "LibVNCServer")
+ set(FULL_PACKAGE_NAME      "LibVNCServer")
+ set(VERSION_MAJOR          "0")
+ set(VERSION_MINOR          "9")
+-set(VERSION_PATCHLEVEL     "11")
+-set(VERSION_SO             "0")
++set(VERSION_PATCHLEVEL     "12")
++set(VERSION_SO             "1")
+ set(PACKAGE_VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCHLEVEL}")
+-set(PROJECT_BUGREPORT_PATH "http://sourceforge.net/projects/libvncserver")
+-set(CMAKE_C_FLAGS "-O2 -W -Wall -g")
++set(PROJECT_BUGREPORT_PATH "https://github.com/LibVNC/libvncserver/issues")
+ set(LIBVNCSERVER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libvncserver)
+ set(COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common)
+ set(LIBVNCCLIENT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libvncclient)
+-set(LIBVNCSRVTEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/examples)
+-set(LIBVNCCLITEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/client_examples)
++set(LIBVNCSRVEXAMPLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/examples)
++set(LIBVNCCLIEXAMPLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/client_examples)
++set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+ 
+ 
+ include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/libvncserver ${CMAKE_CURRENT_SOURCE_DIR}/common)
+ 
+-find_package(ZLIB)
+-find_package(JPEG)
+-find_package(PNG)
+-find_package(SDL)
+-find_package(GnuTLS)
+-find_package(Threads)
+-find_package(X11)
+-find_package(OpenSSL)
+-find_package(PkgConfig)
+-find_library(LIBGCRYPT_LIBRARIES gcrypt)
+-
+-# Check whether the version of libjpeg we found was libjpeg-turbo and print a
+-# warning if not.
+-set(CMAKE_REQUIRED_LIBRARIES ${JPEG_LIBRARIES})
+-set(CMAKE_REQUIRED_FLAGS -I${JPEG_INCLUDE_DIR})
+-
+-set(JPEG_TEST_SOURCE "\n
++# all the build configuration switches
++option(BUILD_SHARED_LIBS "Build shared libraries" ${UNIX})
++option(WITH_ZLIB "Search for the zlib compression library to support additional encodings" ON)
++option(WITH_JPEG "Search for the libjpeg compression library to support additional encodings" ON)
++option(WITH_PNG "Search for the PNG compression library to support additional encodings" ON)
++option(WITH_SDL "Search for the Simple Direct Media Layer library to build an example SDL vnc client" ON)
++option(WITH_THREADS "Search for a threading library to build with multithreading support" ON)
++option(WITH_GNUTLS "Search for the GnuTLS secure communications library to support encryption" ON)
++option(WITH_OPENSSL "Search for the OpenSSL cryptography library to support encryption" ON)
++option(WITH_SYSTEMD "Search for libsystemd to build with systemd socket activation support" ON)
++option(WITH_GCRYPT "Search for libgcrypt to support additional authentication methods in LibVNCClient" ON)
++option(WITH_TIGHTVNC_FILETRANSFER "Enable filetransfer if there is pthreads support" ON)
++option(WITH_24BPP "Allow 24 bpp" ON)
++option(WITH_IPv6 "Enable IPv6 Support" ON)
++option(WITH_WEBSOCKETS "Build with websockets support" ON)
++
++
++
++if(WITH_ZLIB)
++  find_package(ZLIB)
++endif(WITH_ZLIB)
++
++
++if(WITH_JPEG)
++  find_package(JPEG)
++  # Check whether the version of libjpeg we found was libjpeg-turbo and print a
++  # warning if not.
++  set(CMAKE_REQUIRED_LIBRARIES ${JPEG_LIBRARIES})
++  set(CMAKE_REQUIRED_FLAGS -I${JPEG_INCLUDE_DIR})
++
++  set(JPEG_TEST_SOURCE "\n
+   #include <stdio.h>\n
+   #include <jpeglib.h>\n
+   int main(void) {\n
+@@ -59,19 +73,83 @@ set(JPEG_TEST_SOURCE "\n
+     return 0;\n
+   }")
+ 
+-if(CMAKE_CROSSCOMPILING)
+-  check_c_source_compiles("${JPEG_TEST_SOURCE}" FOUND_LIBJPEG_TURBO)
+-else()
+-  check_c_source_runs("${JPEG_TEST_SOURCE}" FOUND_LIBJPEG_TURBO)
+-endif()
++  if(CMAKE_CROSSCOMPILING)
++    check_c_source_compiles("${JPEG_TEST_SOURCE}" FOUND_LIBJPEG_TURBO)
++  else()
++    check_c_source_runs("${JPEG_TEST_SOURCE}" FOUND_LIBJPEG_TURBO)
++  endif()
+ 
+-set(CMAKE_REQUIRED_LIBRARIES)
+-set(CMAKE_REQUIRED_FLAGS)
+-set(CMAKE_REQUIRED_DEFINITIONS)
++  set(CMAKE_REQUIRED_LIBRARIES)
++  set(CMAKE_REQUIRED_FLAGS)
++  set(CMAKE_REQUIRED_DEFINITIONS)
++
++  if(NOT FOUND_LIBJPEG_TURBO)
++    message(WARNING "*** The libjpeg library you are building against is not libjpeg-turbo.  Performance will be reduced.  You can obtain libjpeg-turbo from:  https://sourceforge.net/projects/libjpeg-turbo/files/ ***")
++  endif()
++endif(WITH_JPEG)
++
++
++if(WITH_PNG)
++  find_package(PNG)
++endif(WITH_PNG)
++
++
++if(WITH_SDL)
++  find_package(SDL)
++endif(WITH_SDL)
++
++
++if(WITH_THREADS)
++  find_package(Threads)
++endif(WITH_THREADS)
++
++
++if(WITH_GNUTLS)
++  find_package(GnuTLS)
++endif(WITH_GNUTLS)
++
++
++if(WITH_OPENSSL)
++  find_package(OpenSSL)
++endif(WITH_OPENSSL)
++
++
++if(WITH_SYSTEMD)
++  find_package(PkgConfig)
++  pkg_check_modules(SYSTEMD "libsystemd")
++endif(WITH_SYSTEMD)
++
++
++if(WITH_GCRYPT)
++  find_library(LIBGCRYPT_LIBRARIES gcrypt)
++endif(WITH_GCRYPT)
++
++
++check_include_file("endian.h"      LIBVNCSERVER_HAVE_ENDIAN_H)
++check_include_file("fcntl.h"       LIBVNCSERVER_HAVE_FCNTL_H)
++check_include_file("netinet/in.h"  LIBVNCSERVER_HAVE_NETINET_IN_H)
++check_include_file("sys/endian.h"  LIBVNCSERVER_HAVE_SYS_ENDIAN_H)
++check_include_file("sys/socket.h"  LIBVNCSERVER_HAVE_SYS_SOCKET_H)
++check_include_file("sys/stat.h"    LIBVNCSERVER_HAVE_SYS_STAT_H)
++check_include_file("sys/time.h"    LIBVNCSERVER_HAVE_SYS_TIME_H)
++check_include_file("sys/types.h"   LIBVNCSERVER_HAVE_SYS_TYPES_H)
++check_include_file("sys/wait.h"    LIBVNCSERVER_HAVE_SYS_WAIT_H)
++check_include_file("unistd.h"      LIBVNCSERVER_HAVE_UNISTD_H)
++check_include_file("sys/uio.h"     LIBVNCSERVER_HAVE_SYS_UIO_H)
++
++
++# headers needed for check_type_size()
++check_include_file("vfork.h"       LIBVNCSERVER_HAVE_VFORK_H)
++check_include_file("ws2tcpip.h"    LIBVNCSERVER_HAVE_WS2TCPIP_H)
++check_include_file("arpa/inet.h"   HAVE_ARPA_INET_H)
++check_include_file("stdint.h"      HAVE_STDINT_H)
++check_include_file("stddef.h"      HAVE_STDDEF_H)
++check_include_file("sys/types.h"   HAVE_SYS_TYPES_H)
++
++check_function_exists(gettimeofday    LIBVNCSERVER_HAVE_GETTIMEOFDAY)
++check_function_exists(vfork           LIBVNCSERVER_HAVE_VFORK)
++check_function_exists(vprintf         LIBVNCSERVER_HAVE_VPRINTF)
+ 
+-if(NOT FOUND_LIBJPEG_TURBO)
+-  message(WARNING "*** The libjpeg library you are building against is not libjpeg-turbo.  Performance will be reduced.  You can obtain libjpeg-turbo from:  https://sourceforge.net/projects/libjpeg-turbo/files/ ***")
+-endif()
+ 
+ # On systems such as GNU/Linux with glibc, __b64_ntop is defined in a
+ # separate library, libresolv. On some others, such as FreeBSD, it is
+@@ -87,13 +165,21 @@ if(NOT HAVE_B64_IN_LIBC)
+     if(HAVE_B64_IN_LIBRESOLV)
+         set(RESOLV_LIB "resolv")
+     endif(HAVE_B64_IN_LIBRESOLV)
++
++    # the function check somehow fails for apple but the function is there
++    if(APPLE)
++        set(RESOLV_LIB "resolv")
++    endif(APPLE)
++
+ endif(NOT HAVE_B64_IN_LIBC)
+ 
+ if(Threads_FOUND)
+-  option(TIGHTVNC_FILETRANSFER "Enable filetransfer" ON)
++  set(ADDITIONAL_LIBS ${ADDITIONAL_LIBS} ${CMAKE_THREAD_LIBS_INIT})
+ endif(Threads_FOUND)
+ if(ZLIB_FOUND)
+   set(LIBVNCSERVER_HAVE_LIBZ 1)
++else()
++  unset(ZLIB_LIBRARIES) # would otherwise contain -NOTFOUND, confusing target_link_libraries()
+ endif(ZLIB_FOUND)
+ if(JPEG_FOUND)
+   set(LIBVNCSERVER_HAVE_LIBJPEG 1)
+@@ -101,71 +187,57 @@ endif(JPEG_FOUND)
+ if(PNG_FOUND)
+   set(LIBVNCSERVER_HAVE_LIBPNG 1)
+ endif(PNG_FOUND)
+-option(LIBVNCSERVER_ALLOW24BPP "Allow 24 bpp" ON)
+-
+-pkg_check_modules(SYSTEMD "libsystemd")
++if(NOT OPENSSL_FOUND)
++    unset(OPENSSL_LIBRARIES) # would otherwise contain -NOTFOUND, confusing target_link_libraries()
++endif()
+ if(SYSTEMD_FOUND)
+-  option(LIBVNCSERVER_WITH_SYSTEMD "Build with systemd socket activation support" ON)
+-endif(SYSTEMD_FOUND)
+-
+-if(LIBVNCSERVER_WITH_SYSTEMD)
+   add_definitions(-DLIBVNCSERVER_WITH_SYSTEMD)
+   include_directories(${SYSTEMD_INCLUDE_DIRS})
+   set(ADDITIONAL_LIBS ${ADDITIONAL_LIBS} ${SYSTEMD_LIBRARIES})
+-endif(LIBVNCSERVER_WITH_SYSTEMD)
++endif(SYSTEMD_FOUND)
+ 
+-if(GNUTLS_FOUND)
+-  set(LIBVNCSERVER_WITH_CLIENT_TLS 1)
+-  option(LIBVNCSERVER_WITH_WEBSOCKETS "Build with websockets support (gnutls)" ON)
+-  set(WEBSOCKET_LIBRARIES ${RESOLV_LIB} ${GNUTLS_LIBRARIES})
+-  set(WSSRCS ${LIBVNCSERVER_DIR}/rfbssl_gnutls ${LIBVNCSERVER_DIR}/rfbcrypto_gnutls)
+-  include_directories(${GNUTLS_INCLUDE_DIR})
+-elseif(OPENSSL_FOUND)
+-  option(LIBVNCSERVER_WITH_WEBSOCKETS "Build with websockets support (openssl)" ON)
+-  set(WEBSOCKET_LIBRARIES ${RESOLV_LIB} ${OPENSSL_LIBRARIES})
+-  set(WSSRCS ${LIBVNCSERVER_DIR}/rfbssl_openssl ${LIBVNCSERVER_DIR}/rfbcrypto_openssl)
+-  include_directories(${OPENSSL_INCLUDE_DIR})
+-else()
+-  option(LIBVNCSERVER_WITH_WEBSOCKETS "Build with websockets support (no ssl)" ON)
+-  set(WEBSOCKET_LIBRARIES ${RESOLV_LIB})
+-  set(WSSRCS ${LIBVNCSERVER_DIR}/rfbssl_none.c ${LIBVNCSERVER_DIR}/rfbcrypto_included.c ${COMMON_DIR}/md5.c ${COMMON_DIR}/sha1.c)
+-endif()
+ 
+-if(LIBGCRYPT_LIBRARIES)
++if(WITH_WEBSOCKETS AND LIBVNCSERVER_HAVE_SYS_UIO_H)
++  set(LIBVNCSERVER_WITH_WEBSOCKETS 1)
++  if(GNUTLS_FOUND)
++    set(LIBVNCSERVER_WITH_CLIENT_TLS 1)
++    message(STATUS "Building websockets with GnuTLS")
++    set(WEBSOCKET_LIBRARIES ${RESOLV_LIB} ${GNUTLS_LIBRARIES})
++    set(WSSRCS ${LIBVNCSERVER_DIR}/rfbssl_gnutls ${LIBVNCSERVER_DIR}/rfbcrypto_gnutls)
++    include_directories(${GNUTLS_INCLUDE_DIR})
++  elseif(OPENSSL_FOUND)
++    message(STATUS "Building websockets with OpenSSL")
++    set(WEBSOCKET_LIBRARIES ${RESOLV_LIB} ${OPENSSL_LIBRARIES})
++    set(WSSRCS ${LIBVNCSERVER_DIR}/rfbssl_openssl ${LIBVNCSERVER_DIR}/rfbcrypto_openssl)
++  else()
++    message(STATUS "Building websockets without SSL")
++    set(WEBSOCKET_LIBRARIES ${RESOLV_LIB})
++    set(WSSRCS ${LIBVNCSERVER_DIR}/rfbssl_none.c ${LIBVNCSERVER_DIR}/rfbcrypto_included.c ${COMMON_DIR}/md5.c ${COMMON_DIR}/sha1.c)
++  endif()
++endif(WITH_WEBSOCKETS AND LIBVNCSERVER_HAVE_SYS_UIO_H)
++
++if(WITH_GCRYPT AND LIBGCRYPT_LIBRARIES)
+   message(STATUS "Found libgcrypt: ${LIBGCRYPT_LIBRARIES}")
+   set(LIBVNCSERVER_WITH_CLIENT_GCRYPT 1)
+   set(ADDITIONAL_LIBS ${ADDITIONAL_LIBS} ${LIBGCRYPT_LIBRARIES})
+-endif(LIBGCRYPT_LIBRARIES)
+-
+-
+-check_include_file("endian.h"      LIBVNCSERVER_HAVE_ENDIAN_H)
+-check_include_file("fcntl.h"       LIBVNCSERVER_HAVE_FCNTL_H)
+-check_include_file("netinet/in.h"  LIBVNCSERVER_HAVE_NETINET_IN_H)
+-check_include_file("sys/endian.h"  LIBVNCSERVER_HAVE_SYS_ENDIAN_H)
+-check_include_file("sys/socket.h"  LIBVNCSERVER_HAVE_SYS_SOCKET_H)
+-check_include_file("sys/stat.h"    LIBVNCSERVER_HAVE_SYS_STAT_H)
+-check_include_file("sys/time.h"    LIBVNCSERVER_HAVE_SYS_TIME_H)
+-check_include_file("sys/types.h"   LIBVNCSERVER_HAVE_SYS_TYPES_H)
+-check_include_file("sys/wait.h"    LIBVNCSERVER_HAVE_SYS_WAIT_H)
+-check_include_file("unistd.h"      LIBVNCSERVER_HAVE_UNISTD_H)
++endif(WITH_GCRYPT AND LIBGCRYPT_LIBRARIES)
+ 
+-# headers needed for check_type_size()
+-check_include_file("vfork.h"       LIBVNCSERVER_HAVE_VFORK_H)
+-check_include_file("ws2tcpip.h"    LIBVNCSERVER_HAVE_WS2TCPIP_H)
+-check_include_file("arpa/inet.h"   HAVE_ARPA_INET_H)
+-check_include_file("stdint.h"      HAVE_STDINT_H)
+-check_include_file("stddef.h"      HAVE_STDDEF_H)
+-check_include_file("sys/types.h"   HAVE_SYS_TYPES_H)
+ 
+-check_function_exists(gettimeofday    LIBVNCSERVER_HAVE_GETTIMEOFDAY)
+-check_function_exists(vfork           LIBVNCSERVER_HAVE_VFORK)
+-check_function_exists(vprintf         LIBVNCSERVER_HAVE_VPRINTF)
++if(WITH_IPv6)
++  if(WIN32 AND LIBVNCSERVER_HAVE_WS2TCPIP_H AND LIBVNCSERVER_HAVE_VPRINTF)
++    set(LIBVNCSERVER_IPv6 1)
++  endif()
++  if(NOT WIN32)
++    set(LIBVNCSERVER_IPv6 1)
++  endif()
++endif(WITH_IPv6)
+ 
+ 
+-if(LIBVNCSERVER_HAVE_WS2TCPIP_H AND LIBVNCSERVER_HAVE_VPRINTF)
+-	option(LIBVNCSERVER_IPv6 "Enable IPv6 Support" ON)
++if(WITH_24BPP)
++  set(LIBVNCSERVER_ALLOW24BPP 1)
+ endif()
+ 
++
+ if(CMAKE_USE_PTHREADS_INIT)
+   set(LIBVNCSERVER_HAVE_LIBPTHREAD 1)
+ endif(CMAKE_USE_PTHREADS_INIT)
+@@ -238,6 +310,7 @@ elseif(OPENSSL_FOUND)
+     ${LIBVNCCLIENT_SOURCES}
+     ${LIBVNCCLIENT_DIR}/tls_openssl.c
+   )
++  include_directories(${OPENSSL_INCLUDE_DIR})
+ else()
+   set(LIBVNCCLIENT_SOURCES
+     ${LIBVNCCLIENT_SOURCES}
+@@ -266,7 +339,6 @@ endif(JPEG_FOUND)
+ if(PNG_FOUND)
+   add_definitions(-DLIBVNCSERVER_HAVE_LIBPNG)
+   include_directories(${PNG_INCLUDE_DIR})
+-  set(TIGHT_C ${LIBVNCSERVER_DIR}/tight.c ${COMMON_DIR}/turbojpeg.c)
+ endif(PNG_FOUND)
+ 
+ set(LIBVNCSERVER_SOURCES
+@@ -274,7 +346,7 @@ set(LIBVNCSERVER_SOURCES
+     ${TIGHT_C}
+ )
+ 
+-if(TIGHTVNC_FILETRANSFER)
++if(WITH_TIGHTVNC_FILETRANSFER AND CMAKE_USE_PTHREADS_INIT)
+   set(LIBVNCSERVER_SOURCES
+     ${LIBVNCSERVER_SOURCES}
+     ${LIBVNCSERVER_DIR}/tightvnc-filetransfer/rfbtightserver.c
+@@ -282,7 +354,7 @@ if(TIGHTVNC_FILETRANSFER)
+     ${LIBVNCSERVER_DIR}/tightvnc-filetransfer/filetransfermsg.c
+     ${LIBVNCSERVER_DIR}/tightvnc-filetransfer/filelistinfo.c
+   )
+-endif(TIGHTVNC_FILETRANSFER)
++endif(WITH_TIGHTVNC_FILETRANSFER AND CMAKE_USE_PTHREADS_INIT)
+ 
+ if(LIBVNCSERVER_WITH_WEBSOCKETS)
+   add_definitions(-DLIBVNCSERVER_WITH_WEBSOCKETS)
+@@ -294,8 +366,8 @@ if(LIBVNCSERVER_WITH_WEBSOCKETS)
+ endif(LIBVNCSERVER_WITH_WEBSOCKETS)
+ 
+ 
+-add_library(vncclient SHARED ${LIBVNCCLIENT_SOURCES})
+-add_library(vncserver SHARED ${LIBVNCSERVER_SOURCES})
++add_library(vncclient ${LIBVNCCLIENT_SOURCES})
++add_library(vncserver ${LIBVNCSERVER_SOURCES})
+ if(WIN32)
+   set(ADDITIONAL_LIBS ${ADDITIONAL_LIBS} ws2_32)
+ endif(WIN32)
+@@ -319,8 +391,8 @@ SET_TARGET_PROPERTIES(vncclient vncserver
+ 		PROPERTIES SOVERSION "${VERSION_SO}" VERSION "${PACKAGE_VERSION}"
+ )
+ 
+-# tests
+-set(LIBVNCSERVER_TESTS
++# EXAMPLES
++set(LIBVNCSERVER_EXAMPLES
+     backchannel
+     camera
+     colourmaptest
+@@ -336,60 +408,89 @@ set(LIBVNCSERVER_TESTS
+     vncev
+   )
+ 
+-if(Threads_FOUND)
+-  set(LIBVNCSERVER_TESTS
+-    ${LIBVNCSERVER_TESTS}
++if(CMAKE_USE_PTHREADS_INIT)
++  set(LIBVNCSERVER_EXAMPLES
++    ${LIBVNCSERVER_EXAMPLES}
+     blooptest
+   )
+-endif(Threads_FOUND)
++endif(CMAKE_USE_PTHREADS_INIT)
+ 
+-if(TIGHTVNC_FILETRANSFER)
+-  set(LIBVNCSERVER_TESTS
+-    ${LIBVNCSERVER_TESTS}
++if(WITH_TIGHTVNC_FILETRANSFER AND CMAKE_USE_PTHREADS_INIT)
++  set(LIBVNCSERVER_EXAMPLES
++    ${LIBVNCSERVER_EXAMPLES}
+     filetransfer
+   )
+-endif(TIGHTVNC_FILETRANSFER)
++endif(WITH_TIGHTVNC_FILETRANSFER AND CMAKE_USE_PTHREADS_INIT)
+ 
+ if(MACOS)
+-  set(LIBVNCSERVER_TESTS
+-    ${LIBVNCSERVER_TESTS}
++  set(LIBVNCSERVER_EXAMPLES
++    ${LIBVNCSERVER_EXAMPLES}
+     mac
+   )
+ endif(MACOS)
+ 
+-set(LIBVNCCLIENT_TESTS
++set(LIBVNCCLIENT_EXAMPLES
+     backchannel
+     ppmtest
+ )
+ 
+ if(SDL_FOUND)
+   include_directories(${SDL_INCLUDE_DIR})
+-  set(LIBVNCCLIENT_TESTS
+-    ${LIBVNCCLIENT_TESTS}
++  set(LIBVNCCLIENT_EXAMPLES
++    ${LIBVNCCLIENT_EXAMPLES}
+     SDLvncviewer
+   )
+   set(SDLvncviewer_EXTRA_SOURCES scrap.c)
+ endif(SDL_FOUND)
+ 
+ if(HAVE_FFMPEG)
+-  set(LIBVNCCLIENT_TESTS
+-    ${LIBVNCCLIENT_TESTS}
++  set(LIBVNCCLIENT_EXAMPLES
++    ${LIBVNCCLIENT_EXAMPLES}
+     vnc2mpg
+   )
+ endif(HAVE_FFMPEG)
+ 
+ 
+ file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/examples)
+-foreach(test ${LIBVNCSERVER_TESTS})
+-  add_executable(examples_${test} ${LIBVNCSRVTEST_DIR}/${test}.c)
+-  target_link_libraries(examples_${test} vncserver ${CMAKE_THREAD_LIBS_INIT})
+-endforeach(test ${LIBVNCSERVER_TESTS})
++foreach(e ${LIBVNCSERVER_EXAMPLES})
++  add_executable(examples_${e} ${LIBVNCSRVEXAMPLE_DIR}/${e}.c)
++  set_target_properties(examples_${e} PROPERTIES OUTPUT_NAME ${e})
++  set_target_properties(examples_${e} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/examples)
++  target_link_libraries(examples_${e} vncserver ${CMAKE_THREAD_LIBS_INIT})
++endforeach(e ${LIBVNCSERVER_EXAMPLES})
+ 
+ file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/client_examples)
+-foreach(test ${LIBVNCCLIENT_TESTS})
+-  add_executable(client_examples_${test} ${LIBVNCCLITEST_DIR}/${test}.c ${LIBVNCCLITEST_DIR}/${${test}_EXTRA_SOURCES} )
+-  target_link_libraries(client_examples_${test} vncclient ${CMAKE_THREAD_LIBS_INIT} ${X11_LIBRARIES} ${SDL_LIBRARY} ${FFMPEG_LIBRARIES})
+-endforeach(test ${LIBVNCCLIENT_TESTS})
++foreach(e ${LIBVNCCLIENT_EXAMPLES})
++  add_executable(client_examples_${e} ${LIBVNCCLIEXAMPLE_DIR}/${e}.c ${LIBVNCCLIEXAMPLE_DIR}/${${e}_EXTRA_SOURCES} )
++  set_target_properties(client_examples_${e} PROPERTIES OUTPUT_NAME ${e})
++  set_target_properties(client_examples_${e} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/client_examples)
++  target_link_libraries(client_examples_${e} vncclient ${CMAKE_THREAD_LIBS_INIT} ${SDL_LIBRARY} ${FFMPEG_LIBRARIES})
++endforeach(e ${LIBVNCCLIENT_EXAMPLES})
++
++# this gets the libraries needed by TARGET in "-libx -liby ..." form
++function(get_link_libraries OUT TARGET)
++    set(RESULT "")
++    get_target_property(LIBRARIES ${TARGET} INTERFACE_LINK_LIBRARIES)
++    foreach(LIB ${LIBRARIES})
++	if("${LIB}" MATCHES ".*NOTFOUND.*")
++	    continue()
++	endif()
++	string(REGEX REPLACE "^.*/lib" "" LIB ${LIB}) # remove leading path and "lib" name prefix
++	string(REGEX REPLACE "-l" "" LIB ${LIB}) # remove leading -l
++	string(REGEX REPLACE "\\.so$" "" LIB ${LIB}) # remove trailing .so
++	list(APPEND RESULT "-l${LIB}")
++    endforeach()
++    list(REMOVE_DUPLICATES RESULT)
++    string(CONCAT RESULT ${RESULT}) # back to string
++    string(REPLACE "-l" " -l" RESULT ${RESULT}) # re-add separators
++    set(${OUT} ${RESULT} PARENT_SCOPE)
++endfunction()
++
++get_link_libraries(PRIVATE_LIBS vncserver)
++configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libvncserver.pc.cmakein ${CMAKE_CURRENT_BINARY_DIR}/libvncserver.pc @ONLY)
++get_link_libraries(PRIVATE_LIBS vncclient)
++configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libvncclient.pc.cmakein ${CMAKE_CURRENT_BINARY_DIR}/libvncclient.pc @ONLY)
++
+ 
+ install_targets(/lib vncserver)
+ install_targets(/lib vncclient)
+@@ -401,3 +502,8 @@ install_files(/include/rfb FILES
+     rfb/rfbproto.h
+     rfb/rfbregion.h
+ )
++
++install_files(/lib/pkgconfig FILES
++    libvncserver.pc
++    libvncclient.pc
++)
+diff --git a/README b/README
+index c930307..f632c9e 100644
+--- a/README
++++ b/README
+@@ -1,4 +1,4 @@
+-[![Build Status](https://travis-ci.org/LibVNC/libvncserver.svg?branch=master)](https://travis-ci.org/LibVNC/libvncserver)
++[![Build Status](https://travis-ci.org/LibVNC/libvncserver.svg?branch=master)](https://travis-ci.org/LibVNC/libvncserver) [![Build status](https://ci.appveyor.com/api/projects/status/fao6m1md3q4g2bwn/branch/master?svg=true)](https://ci.appveyor.com/project/bk138/libvncserver/branch/master)
+ 
+ LibVNCServer: A library for easy implementation of a VNC server.
+ Copyright (C) 2001-2003 Johannes E. Schindelin
+diff --git a/common/md5.c b/common/md5.c
+index c3e3fd7..13e47a8 100644
+--- a/common/md5.c
++++ b/common/md5.c
+@@ -27,12 +27,11 @@
+ # include <string.h>
+ 
+ #include "md5.h"
++#include "rfb/rfbconfig.h"
+ 
+-/* #ifdef _LIBC */
+-# include <endian.h>
+-# if __BYTE_ORDER == __BIG_ENDIAN
++#ifdef LIBVNCSERVER_WORDS_BIGENDIAN
+ #  define WORDS_BIGENDIAN 1
+-# endif
++#endif
+ /* We need to keep the namespace clean so define the MD5 function
+    protected using leading __ .  */
+ # define md5_init_ctx __md5_init_ctx
+diff --git a/common/md5.h b/common/md5.h
+index b48545b..b0daab1 100644
+--- a/common/md5.h
++++ b/common/md5.h
+@@ -88,7 +88,11 @@ struct md5_ctx
+ 
+   md5_uint32 total[2];
+   md5_uint32 buflen;
+-  char buffer[128] __attribute__ ((__aligned__ (__alignof__ (md5_uint32))));
++  char buffer[128]
++#if __GNUC__
++   __attribute__ ((__aligned__ (__alignof__ (md5_uint32))))
++#endif
++  ;
+ };
+ 
+ /*
+@@ -98,21 +102,21 @@ struct md5_ctx
+ 
+ /* Initialize structure containing state of computation.
+    (RFC 1321, 3.3: Step 3)  */
+-extern void __md5_init_ctx (struct md5_ctx *ctx) __THROW;
++extern void __md5_init_ctx (struct md5_ctx *ctx);
+ 
+ /* Starting with the result of former calls of this function (or the
+    initialization function update the context for the next LEN bytes
+    starting at BUFFER.
+    It is necessary that LEN is a multiple of 64!!! */
+ extern void __md5_process_block (const void *buffer, size_t len,
+-                 struct md5_ctx *ctx) __THROW;
++                 struct md5_ctx *ctx);
+ 
+ /* Starting with the result of former calls of this function (or the
+    initialization function update the context for the next LEN bytes
+    starting at BUFFER.
+    It is NOT required that LEN is a multiple of 64.  */
+ extern void __md5_process_bytes (const void *buffer, size_t len,
+-                 struct md5_ctx *ctx) __THROW;
++                 struct md5_ctx *ctx);
+ 
+ /* Process the remaining bytes in the buffer and put result from CTX
+    in first 16 bytes following RESBUF.  The result is always in little
+@@ -121,7 +125,7 @@ extern void __md5_process_bytes (const void *buffer, size_t len,
+ 
+    IMPORTANT: On some systems it is required that RESBUF is correctly
+    aligned for a 32 bits value.  */
+-extern void *__md5_finish_ctx (struct md5_ctx *ctx, void *resbuf) __THROW;
++extern void *__md5_finish_ctx (struct md5_ctx *ctx, void *resbuf);
+ 
+ 
+ /* Put result from CTX in first 16 bytes following RESBUF.  The result is
+@@ -130,19 +134,19 @@ extern void *__md5_finish_ctx (struct md5_ctx *ctx, void *resbuf) __THROW;
+ 
+    IMPORTANT: On some systems it is required that RESBUF is correctly
+    aligned for a 32 bits value.  */
+-extern void *__md5_read_ctx (const struct md5_ctx *ctx, void *resbuf) __THROW;
++extern void *__md5_read_ctx (const struct md5_ctx *ctx, void *resbuf);
+ 
+ 
+ /* Compute MD5 message digest for bytes read from STREAM.  The
+    resulting message digest number will be written into the 16 bytes
+    beginning at RESBLOCK.  */
+-extern int __md5_stream (FILE *stream, void *resblock) __THROW;
++extern int __md5_stream (FILE *stream, void *resblock);
+ 
+ /* Compute MD5 message digest for LEN bytes beginning at BUFFER.  The
+    result is always in little endian byte order, so that a byte-wise
+    output yields to the wanted ASCII representation of the message
+    digest.  */
+ extern void *__md5_buffer (const char *buffer, size_t len,
+-               void *resblock) __THROW;
++               void *resblock);
+ 
+ #endif /* md5.h */
+diff --git a/common/vncauth.c b/common/vncauth.c
+index 0b20f53..2a5d96f 100644
+--- a/common/vncauth.c
++++ b/common/vncauth.c
+@@ -31,7 +31,9 @@
+ #endif
+ #include <stdio.h>
+ #include <stdlib.h>
++#ifdef LIBVNCSERVER_HAVE_UNISTD_H
+ #include <unistd.h>
++#endif
+ #include <rfb/rfbproto.h>
+ #include "d3des.h"
+ 
+diff --git a/examples/vncev.c b/examples/vncev.c
+index b185746..4051d2b 100644
+--- a/examples/vncev.c
++++ b/examples/vncev.c
+@@ -5,10 +5,11 @@
+ #ifdef __STRICT_ANSI__
+ #define _BSD_SOURCE
+ #endif
++#include <rfb/rfbconfig.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <sys/types.h>
+-#ifndef __MINGW32__
++#if LIBVNCSERVER_HAVE_SYS_SOCKET_H
+ #include <sys/socket.h>
+ #endif
+ #include <rfb/rfb.h>
+diff --git a/libvncclient.pc.cmakein b/libvncclient.pc.cmakein
+new file mode 100644
+index 0000000..169a8b7
+--- /dev/null
++++ b/libvncclient.pc.cmakein
+@@ -0,0 +1,14 @@
++prefix=@CMAKE_INSTALL_PREFIX@
++exec_prefix=@CMAKE_INSTALL_PREFIX@
++libdir=@CMAKE_INSTALL_PREFIX@/lib
++includedir=@CMAKE_INSTALL_PREFIX@/include
++
++Name: LibVNCClient
++Description: A library for easy implementation of a VNC client.
++Version: @PACKAGE_VERSION@
++Requires:
++Requires.private: zlib
++Libs: -L${libdir} -lvncclient
++Libs.private: @PRIVATE_LIBS@
++Cflags: -I${includedir}
++
+diff --git a/libvncclient/listen.c b/libvncclient/listen.c
+index e989d6a..8674b3f 100644
+--- a/libvncclient/listen.c
++++ b/libvncclient/listen.c
+@@ -25,7 +25,9 @@
+ #ifdef __STRICT_ANSI__
+ #define _BSD_SOURCE
+ #endif
++#if LIBVNCSERVER_HAVE_UNISTD_H
+ #include <unistd.h>
++#endif
+ #include <sys/types.h>
+ #ifdef WIN32
+ #define close closesocket
+@@ -34,7 +36,9 @@
+ #include <sys/wait.h>
+ #include <sys/utsname.h>
+ #endif
++#if LIBVNCSERVER_HAVE_SYS_TIME_H
+ #include <sys/time.h>
++#endif
+ #include <rfb/rfbclient.h>
+ 
+ /*
+diff --git a/libvncclient/sockets.c b/libvncclient/sockets.c
+index 8ddfd9d..1019580 100644
+--- a/libvncclient/sockets.c
++++ b/libvncclient/sockets.c
+@@ -30,7 +30,9 @@
+ # define _POSIX_SOURCE
+ #endif
+ #endif
++#if LIBVNCSERVER_HAVE_UNISTD_H
+ #include <unistd.h>
++#endif
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <assert.h>
+diff --git a/libvncclient/tls_openssl.c b/libvncclient/tls_openssl.c
+index a531778..1b6c986 100644
+--- a/libvncclient/tls_openssl.c
++++ b/libvncclient/tls_openssl.c
+@@ -189,7 +189,7 @@ ssl_verify (int ok, X509_STORE_CTX *ctx)
+ 
+   ssl = X509_STORE_CTX_get_ex_data (ctx, SSL_get_ex_data_X509_STORE_CTX_idx ());
+ 
+-  client = SSL_CTX_get_app_data (ssl->ctx);
++  client = SSL_CTX_get_app_data (SSL_get_SSL_CTX(ssl));
+ 
+   cert = X509_STORE_CTX_get_current_cert (ctx);
+   err = X509_STORE_CTX_get_error (ctx);
+@@ -287,11 +287,10 @@ open_ssl_connection (rfbClient *client, int sockfd, rfbBool anonTLS)
+     {
+       if (wait_for_data(ssl, n, 1) != 1) 
+       {
+-        finished = 1; 
+-        if (ssl->ctx)
+-          SSL_CTX_free (ssl->ctx);
++        finished = 1;
++        SSL_shutdown(ssl);
+         SSL_free(ssl);
+-        SSL_shutdown (ssl);
++        SSL_CTX_free(ssl_ctx);
+ 
+         return NULL;
+       }
+diff --git a/libvncserver.pc.cmakein b/libvncserver.pc.cmakein
+new file mode 100644
+index 0000000..f38d74f
+--- /dev/null
++++ b/libvncserver.pc.cmakein
+@@ -0,0 +1,13 @@
++prefix=@CMAKE_INSTALL_PREFIX@
++exec_prefix=@CMAKE_INSTALL_PREFIX@
++libdir=@CMAKE_INSTALL_PREFIX@/lib
++includedir=@CMAKE_INSTALL_PREFIX@/include
++
++Name: LibVNCServer
++Description: A library for easy implementation of a VNC server.
++Version: @PACKAGE_VERSION@
++Requires:
++Requires.private: zlib
++Libs: -L${libdir} -lvncserver
++Libs.private: @PRIVATE_LIBS@
++Cflags: -I${includedir}
+diff --git a/libvncserver/httpd.c b/libvncserver/httpd.c
+index 8634b15..26d49af 100644
+--- a/libvncserver/httpd.c
++++ b/libvncserver/httpd.c
+@@ -47,6 +47,7 @@
+ #include <winsock2.h>
+ #include <ws2tcpip.h>
+ #define close closesocket
++#define strcasecmp _stricmp 
+ #if defined(_MSC_VER)
+ #include <BaseTsd.h> /* For the missing ssize_t */
+ #define ssize_t SSIZE_T
+diff --git a/libvncserver/rfbcrypto.h b/libvncserver/rfbcrypto.h
+index 9dc3e63..fec095e 100644
+--- a/libvncserver/rfbcrypto.h
++++ b/libvncserver/rfbcrypto.h
+@@ -1,12 +1,16 @@
+ #ifndef _RFB_CRYPTO_H
+ #define _RFB_CRYPTO_H 1
+ 
+-#include <sys/uio.h>
++#include "rfb/rfbconfig.h"
+ 
+ #define SHA1_HASH_SIZE 20
+ #define MD5_HASH_SIZE 16
+ 
++#ifdef LIBVNCSERVER_HAVE_SYS_UIO_H
++#include <sys/uio.h>
++
+ void digestmd5(const struct iovec *iov, int iovcnt, void *dest);
+ void digestsha1(const struct iovec *iov, int iovcnt, void *dest);
++#endif
+ 
+ #endif
+diff --git a/libvncserver/rfbserver.c b/libvncserver/rfbserver.c
+index bc9cc11..040238d 100644
+--- a/libvncserver/rfbserver.c
++++ b/libvncserver/rfbserver.c
+@@ -37,6 +37,7 @@
+ #include <rfb/rfb.h>
+ #include <rfb/rfbregion.h>
+ #include "private.h"
++#include "rfb/rfbconfig.h"
+ 
+ #ifdef LIBVNCSERVER_HAVE_FCNTL_H
+ #include <fcntl.h>
+@@ -74,7 +75,9 @@
+ /* stst() */
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#if LIBVNCSERVER_HAVE_UNISTD_H
+ #include <unistd.h>
++#endif
+ 
+ #ifndef WIN32
+ /* readdir() */
+diff --git a/libvncserver/scale.c b/libvncserver/scale.c
+index 3ca76dc..2325dc3 100644
+--- a/libvncserver/scale.c
++++ b/libvncserver/scale.c
+@@ -66,7 +66,18 @@
+         (double) ((int) (x)) : (double) ((int) (x) + 1) )
+ #define FLOOR(x) ( (double) ((int) (x)) )
+ 
+-static inline int pad4(int value)
++#ifdef WIN32
++#define InlineX __inline
++#else
++# ifndef __STRICT_ANSI__
++#  define InlineX inline
++# else
++#  define InlineX
++# endif
++#endif
++
++
++static InlineX int pad4(int value)
+ {
+     int remainder = value & 3;
+     if (!remainder) return value;
+diff --git a/libvncserver/tightvnc-filetransfer/filetransfermsg.c b/libvncserver/tightvnc-filetransfer/filetransfermsg.c
+index 153f123..5f84e7f 100644
+--- a/libvncserver/tightvnc-filetransfer/filetransfermsg.c
++++ b/libvncserver/tightvnc-filetransfer/filetransfermsg.c
+@@ -56,7 +56,9 @@
+ #endif
+ 
+ #include <errno.h>
++#if LIBVNCSERVER_HAVE_UNISTD_H
+ #include <unistd.h>
++#endif
+ #include <sys/stat.h>
+ #include <sys/types.h>
+ 
+diff --git a/libvncserver/tightvnc-filetransfer/handlefiletransferrequest.c b/libvncserver/tightvnc-filetransfer/handlefiletransferrequest.c
+index b235fa0..c511eed 100644
+--- a/libvncserver/tightvnc-filetransfer/handlefiletransferrequest.c
++++ b/libvncserver/tightvnc-filetransfer/handlefiletransferrequest.c
+@@ -29,7 +29,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#if LIBVNCSERVER_HAVE_UNISTD_H
+ #include <unistd.h>
++#endif
+ #ifndef _MSC_VER
+ #include <dirent.h>
+ #include <pthread.h>
+diff --git a/libvncserver/websockets.c b/libvncserver/websockets.c
+index bdec8f3..72396c2 100644
+--- a/libvncserver/websockets.c
++++ b/libvncserver/websockets.c
+@@ -49,17 +49,32 @@
+ #endif
+ 
+ #include <string.h>
++#if LIBVNCSERVER_UNISTD_H
+ #include <unistd.h>
++#endif
+ #include "rfb/rfbconfig.h"
+ #include "rfbssl.h"
+ #include "rfbcrypto.h"
+ 
++#if defined(__APPLE__)
++
++#include <libkern/OSByteOrder.h>
++#define WS_NTOH64(n) OSSwapBigToHostInt64(n)
++#define WS_NTOH32(n) OSSwapBigToHostInt32(n)
++#define WS_NTOH16(n) OSSwapBigToHostInt16(n)
++#define WS_HTON64(n) OSSwapHostToBigInt64(n)
++#define WS_HTON16(n) OSSwapHostToBigInt16(n)
++
++#else
++
+ #define WS_NTOH64(n) htobe64(n)
+ #define WS_NTOH32(n) htobe32(n)
+ #define WS_NTOH16(n) htobe16(n)
+ #define WS_HTON64(n) htobe64(n)
+ #define WS_HTON16(n) htobe16(n)
+ 
++#endif
++
+ #define B64LEN(__x) (((__x + 2) / 3) * 12 / 3)
+ #define WSHLENMAX 14  /* 2 + sizeof(uint64_t) + sizeof(uint32_t) */
+ 
+@@ -103,15 +118,27 @@ typedef union ws_mask_s {
+  *      it from recognizing anonymous structs and unions.
+  *      See http://gcc.gnu.org/bugzilla/show_bug.cgi?id=4784
+  */
+-typedef struct __attribute__ ((__packed__)) ws_header_s {
++typedef struct 
++#if __GNUC__
++__attribute__ ((__packed__)) 
++#endif
++ws_header_s {
+   unsigned char b0;
+   unsigned char b1;
+   union {
+-    struct __attribute__ ((__packed__)) {
++    struct 
++#if __GNUC__
++    __attribute__ ((__packed__)) 
++#endif
++           {
+       uint16_t l16;
+       ws_mask_t m16;
+     } s16;
+-    struct __attribute__ ((__packed__)) {
++    struct
++#if __GNUC__
++__attribute__ ((__packed__)) 
++#endif
++           {
+       uint64_t l64;
+       ws_mask_t m64;
+     } s64;
+@@ -194,7 +221,7 @@ static void webSocketsGenSha1Key(char *target, int size, char *key)
+     iov[1].iov_base = GUID;
+     iov[1].iov_len = sizeof(GUID) - 1;
+     digestsha1(iov, 2, hash);
+-    if (-1 == __b64_ntop(hash, sizeof(hash), target, size))
++    if (-1 == b64_ntop(hash, sizeof(hash), target, size))
+ 	rfbErr("b64_ntop failed\n");
+ }
+ 
+@@ -501,7 +528,7 @@ webSocketsEncodeHixie(rfbClientPtr cl, const char *src, int len, char **dst)
+     ws_ctx_t *wsctx = (ws_ctx_t *)cl->wsctx;
+ 
+     wsctx->codeBufEncode[sz++] = '\x00';
+-    len = __b64_ntop((unsigned char *)src, len, wsctx->codeBufEncode+sz, sizeof(wsctx->codeBufEncode) - (sz + 1));
++    len = b64_ntop((unsigned char *)src, len, wsctx->codeBufEncode+sz, sizeof(wsctx->codeBufEncode) - (sz + 1));
+     if (len < 0) {
+         return len;
+     }
+@@ -612,7 +639,7 @@ webSocketsDecodeHixie(rfbClientPtr cl, char *dst, int len)
+     /* Decode the rest of what we need */
+     buf[needlen] = '\x00';  /* Replace end marker with end of string */
+     /* rfbLog("buf: %s\n", buf); */
+-    n = __b64_pton(buf, (unsigned char *)dst+retlen, 2+len);
++    n = b64_pton(buf, (unsigned char *)dst+retlen, 2+len);
+     if (n < len) {
+         rfbErr("Base64 decode error\n");
+         errno = EIO;
+@@ -752,7 +779,7 @@ webSocketsDecodeHybi(rfbClientPtr cl, char *dst, int len)
+ 	errno = ECONNRESET;
+ 	break;
+       case WS_OPCODE_TEXT_FRAME:
+-	if (-1 == (flength = __b64_pton(payload, (unsigned char *)wsctx->codeBufDecode, sizeof(wsctx->codeBufDecode)))) {
++	if (-1 == (flength = b64_pton(payload, (unsigned char *)wsctx->codeBufDecode, sizeof(wsctx->codeBufDecode)))) {
+ 	  rfbErr("%s: Base64 decode error; %m\n", __func__);
+ 	  break;
+ 	}
+@@ -826,7 +853,7 @@ webSocketsEncodeHybi(rfbClientPtr cl, const char *src, int len, char **dst)
+     }
+ 
+     if (wsctx->base64) {
+-        if (-1 == (ret = __b64_ntop((unsigned char *)src, len, wsctx->codeBufEncode + sz, sizeof(wsctx->codeBufEncode) - sz))) {
++        if (-1 == (ret = b64_ntop((unsigned char *)src, len, wsctx->codeBufEncode + sz, sizeof(wsctx->codeBufEncode) - sz))) {
+ 	  rfbErr("%s: Base 64 encode failed\n", __func__);
+ 	} else {
+ 	  if (ret != blen)
+diff --git a/rfb/rfb.h b/rfb/rfb.h
+index c6edc11..f982b40 100644
+--- a/rfb/rfb.h
++++ b/rfb/rfb.h
+@@ -54,6 +54,7 @@ extern "C"
+ 
+ #ifdef WIN32
+ #undef SOCKET
++typedef UINT32 in_addr_t;
+ #include <winsock2.h>
+ #ifdef LIBVNCSERVER_HAVE_WS2TCPIP_H
+ #undef socklen_t
+diff --git a/rfb/rfbclient.h b/rfb/rfbclient.h
+index 4f6f4f4..9fdb008 100644
+--- a/rfb/rfbclient.h
++++ b/rfb/rfbclient.h
+@@ -38,8 +38,12 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#if LIBVNCSERVER_HAVE_SYS_TIME_H
+ #include <sys/time.h>
++#endif
++#if LIBVNCSERVER_HAVE_UNISTD_H
+ #include <unistd.h>
++#endif
+ #include <rfb/rfbproto.h>
+ #include <rfb/keysym.h>
+ 
+diff --git a/rfb/rfbconfig.h.cmake b/rfb/rfbconfig.h.cmake
+index 5bd6569..86f7ae3 100644
+--- a/rfb/rfbconfig.h.cmake
++++ b/rfb/rfbconfig.h.cmake
+@@ -51,6 +51,9 @@
+ /* Define to 1 if you have <sys/wait.h> that is POSIX.1 compatible. */
+ #cmakedefine LIBVNCSERVER_HAVE_SYS_WAIT_H  1 
+ 
++/* Define to 1 if you have <sys/uio.h> */
++#cmakedefine LIBVNCSERVER_HAVE_SYS_UIO_H  1 
++
+ /* Define to 1 if you have the <unistd.h> header file. */
+ #cmakedefine LIBVNCSERVER_HAVE_UNISTD_H  1 
+ 
+diff --git a/rfb/rfbint.h.cmake b/rfb/rfbint.h.cmake
+deleted file mode 100644
+index 17de6cd..0000000
+--- a/rfb/rfbint.h.cmake
++++ /dev/null
+@@ -1,4 +0,0 @@
+-#ifndef _RFB_RFBINT_H
+-#define _RFB_RFBINT_H 1
+-/* empty ... */
+-#endif

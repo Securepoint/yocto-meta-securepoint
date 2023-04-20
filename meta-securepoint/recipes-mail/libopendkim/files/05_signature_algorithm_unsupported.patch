@@ -1,0 +1,13 @@
+diff --git a/libopendkim/dkim-tables.c b/libopendkim/dkim-tables.c
+index 3817a7bf..2e80595b 100644
+--- a/libopendkim/dkim-tables.c
++++ b/libopendkim/dkim-tables.c
+@@ -140,7 +140,7 @@ static struct nametable prv_sigerrors[] =	/* signature parsing errors */
+ 	{ "invalid header canonicalization",	DKIM_SIGERROR_INVALID_HC },
+ 	{ "invalid body canonicalization",	DKIM_SIGERROR_INVALID_BC },
+ 	{ "signature algorithm missing",	DKIM_SIGERROR_MISSING_A },
+-	{ "signature algorithm invalid",	DKIM_SIGERROR_INVALID_A },
++	{ "signature algorithm unsupported",	DKIM_SIGERROR_INVALID_A },
+ 	{ "header list missing",		DKIM_SIGERROR_MISSING_H },
+ 	{ "body length value invalid",		DKIM_SIGERROR_INVALID_L },
+ 	{ "query method invalid",		DKIM_SIGERROR_INVALID_Q },

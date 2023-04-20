@@ -1,0 +1,19 @@
+diff -up adcli-0.8.2/tools/computer.c.fqdn adcli-0.8.2/tools/computer.c
+--- adcli-0.8.2/tools/computer.c.fqdn	2016-07-26 09:48:59.000000000 +0200
++++ adcli-0.8.2/tools/computer.c	2017-07-27 15:57:42.925437186 +0200
+@@ -615,6 +615,7 @@ adcli_tool_computer_reset (adcli_conn *c
+ 		{ "domain", required_argument, NULL, opt_domain },
+ 		{ "domain-realm", required_argument, NULL, opt_domain_realm },
+ 		{ "domain-controller", required_argument, NULL, opt_domain_controller },
++		{ "host-fqdn", required_argument, 0, opt_host_fqdn },
+ 		{ "login-user", required_argument, NULL, opt_login_user },
+ 		{ "login-ccache", optional_argument, NULL, opt_login_ccache },
+ 		{ "login-type", required_argument, NULL, opt_login_type },
+@@ -690,6 +691,7 @@ adcli_tool_computer_delete (adcli_conn *
+ 		{ "domain", required_argument, NULL, opt_domain },
+ 		{ "domain-realm", required_argument, NULL, opt_domain_realm },
+ 		{ "domain-controller", required_argument, NULL, opt_domain_controller },
++		{ "host-fqdn", required_argument, 0, opt_host_fqdn },
+ 		{ "login-user", required_argument, NULL, opt_login_user },
+ 		{ "login-ccache", optional_argument, NULL, opt_login_ccache },
+ 		{ "no-password", no_argument, 0, opt_no_password },

@@ -1,35 +1,36 @@
 #!/bin/sh
 
 # Mount the Linux kernel virtual filesystems if its not already there
-[ -e /proc/uptime ] 	|| mount none -t proc /proc
-[ -d /sys/block ] 	|| mount none -t sysfs /sys
+[ -e /proc/uptime ] || mount none -t proc /proc
+[ -d /sys/block ]   || mount none -t sysfs /sys
 
 # Ensure devtmpfs is mounted, normally its already there from a move mount in initramfs
 if [ ! -e /dev/block ];then
-	mount none -t devtmpfs /dev
-	# Setup PTY infrastructure
-	[ -d /dev/pts ] || mkdir /dev/pts
-	mount none -t devpts /dev/pts
+  mount none -t devtmpfs /dev
+  # Setup PTY infrastructure
+  [ -d /dev/pts ] || mkdir /dev/pts
+  # may also already be mounted...
+  [ -c /dev/pts/ptmx ] || mount devpts -t devpts /dev/pts
 fi
 
 # Allow for distro or local customizations
 if [ -f /etc/rc.local ] ; then
-	. /etc/rc.local
+  . /etc/rc.local
 fi
 
 # if /var/service exists spawn runit
 if [ -d /var/service -a -x /usr/sbin/runit ]; then
-	echo "starting runit"
-	exec /usr/sbin/runit
-	#runsvdir -P /var/service
+  echo "starting runit"
+  exec /usr/sbin/runit
+  #runsvdir -P /var/service
 else
-	# Become session leader and try to find a real tty (e.g. ttyS0)
-	while true; do
-		setsid cttyhack sh
-		getty -L tty0 38400 linux
-		echo "getty failed"
-		setsid cttyhack sh
-		echo "Console sh exited with $?, respawning..."
-		sleep 1
-	done
+  # Become session leader and try to find a real tty (e.g. ttyS0)
+  while true; do
+    setsid cttyhack sh
+    getty -L tty0 38400 linux
+    echo "getty failed"
+    setsid cttyhack sh
+    echo "Console sh exited with $?, respawning..."
+    sleep 1
+  done
 fi

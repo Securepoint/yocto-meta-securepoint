@@ -22,4 +22,4 @@ do_install () {
     install -m 644 ${WORKDIR}/dnsmasq.conf ${D}${sysconfdir}/
 }
 
-CONFFILES_${PN} = "${sysconfdir}/dnsmasq.conf"
+CONFFILES:${PN} = "${sysconfdir}/dnsmasq.conf"

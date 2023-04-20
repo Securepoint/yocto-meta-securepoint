@@ -1,0 +1,22 @@
+diff -ur pam_radius-1.4.0.orig/src/pam_radius_auth.c pam_radius-1.4.0/src/pam_radius_auth.c
+--- pam_radius-1.4.0.orig/src/pam_radius_auth.c	2017-03-24 14:21:48.314545000 +0100
++++ pam_radius-1.4.0/src/pam_radius_auth.c	2017-03-24 14:24:35.839338000 +0100
+@@ -1250,6 +1250,18 @@
+
+	/* Whew! Done the pasword checks, look for an authentication acknowledge */
+	if (response->code == PW_AUTHENTICATION_ACK) {
++    char str_buff[54];
++    unsigned char *ipv4_addr;
++    attribute_t *a_framed_addr;
++    /* Check for FramedIP (Radius Attribute 8) */
++    if((a_framed_addr = find_attribute(response, PW_FRAMED_ADDRESS))){
++      ipv4_addr=(void*)a_framed_addr->data;
++      /*_pam_log(LOG_WARNING, "FramedIP= '%u.%u.%u.%u'",
++	  ipv4_addr[0],ipv4_addr[1],ipv4_addr[2],ipv4_addr[3]);*/
++      snprintf(str_buff,sizeof(str_buff),"%u.%u.%u.%u",
++	  ipv4_addr[0],ipv4_addr[1],ipv4_addr[2],ipv4_addr[3]);
++      (void)rad_converse(pamh, PAM_TEXT_INFO, str_buff, NULL);
++    }
+		retval = PAM_SUCCESS;
+	} else {
+		retval = PAM_AUTH_ERR;	/* authentication failure */

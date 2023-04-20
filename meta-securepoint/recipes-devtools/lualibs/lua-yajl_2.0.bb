@@ -9,13 +9,16 @@ SECTION = "lualibs"
 DEPENDS = "yajl lua5.1"
 PR = "r0"
 
-SRC_URI = "git://github.com/brimworks/lua-yajl;protocol=https"
-SRCREV = "v${PV}"
+SRC_URI = "git://github.com/brimworks/lua-yajl;protocol=https;branch=master \
+file://yajl-rettype.patch \
+"
+#SRCREV = "v${PV}"
+SRCREV = "078e48147e89d34b8224a07129675aa9b5820630"
 S = "${WORKDIR}/git"
 
 inherit cmake
 
 EXTRA_OECMAKE += "-DINSTALL_CMOD=${libdir}/lua/5.1"
 
-FILES_${PN}-dbg += "${libdir}/lua/5.1/.debug"
-FILES_${PN} += "${libdir}/lua/5.1/"
+FILES:${PN}-dbg += "${libdir}/lua/5.1/.debug"
+FILES:${PN} += "${libdir}/lua/5.1/"

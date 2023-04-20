@@ -1,7 +1,7 @@
 # tiny init for SP-Base
 # overwrite Vars from poky-tiny
 
-FILESEXTRAPATHS_prepend := "${THISDIR}/files:"
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 SRC_URI = "file://init \
 	  "
@@ -19,4 +19,4 @@ do_install() {
 	install -m 0755 ${WORKDIR}/init ${D}/sbin/
 }
 
-FILES_${PN} = "/sbin/init"
+FILES:${PN} = "/sbin/init"

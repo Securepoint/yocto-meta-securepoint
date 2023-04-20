@@ -10,7 +10,7 @@ SRC_URI[sha256sum] = "cee661b56555350d26943c5e127fc75dd290b7f75689d5ebc1f04957c4
 
 inherit autotools
 
-do_configure_append() {
+do_configure:append() {
     echo "#define HAVE_FNMATCH 1" >> config.h
     sed -i -e "s/.*rpl_fnmatch.*//" config.h
 }

@@ -1,0 +1,1 @@
+FULL_OPTIMIZATION = "-O2 -pipe ${DEBUG_FLAGS}"

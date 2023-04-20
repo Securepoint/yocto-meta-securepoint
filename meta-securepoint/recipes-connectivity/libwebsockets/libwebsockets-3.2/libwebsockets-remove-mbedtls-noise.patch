@@ -1,0 +1,45 @@
+diff --git a/lib/tls/mbedtls/mbedtls-client.c b/lib/tls/mbedtls/mbedtls-client.c
+index d3de9918..92c5606a 100644
+--- a/lib/tls/mbedtls/mbedtls-client.c
++++ b/lib/tls/mbedtls/mbedtls-client.c
+@@ -233,11 +233,11 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 		}
+ 		vh->tls.x509_client_CA = d2i_X509(NULL, buf, len);
+ 		free(buf);
+-		lwsl_notice("Loading client CA for verification %s\n", ca_filepath);
++		lwsl_debug("Loading client CA for verification %s\n", ca_filepath);
+ #endif
+ 	} else {
+ 		vh->tls.x509_client_CA = d2i_X509(NULL, (uint8_t*)ca_mem, ca_mem_len);
+-		lwsl_notice("%s: using mem client CA cert %d\n",
++		lwsl_debug("%s: using mem client CA cert %d\n",
+ 			    __func__, ca_mem_len);
+ 	}
+ 
+@@ -262,7 +262,7 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 		    (info->options & LWS_SERVER_OPTION_IGNORE_MISSING_CERT))
+ 			return 0;
+ 
+-		lwsl_notice("%s: doing cert filepath %s\n", __func__,
++		lwsl_debug("%s: doing cert filepath %s\n", __func__,
+ 				cert_filepath);
+ 
+ 		if (alloc_file(vh->context, cert_filepath, &buf, &amount))
+@@ -283,7 +283,7 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 			return 1;
+ 		}
+ 
+-		lwsl_notice("Loaded client cert %s\n", cert_filepath);
++		lwsl_debug("Loaded client cert %s\n", cert_filepath);
+ #endif
+ 	} else if (cert_mem && cert_mem_len) {
+ 		// lwsl_hexdump_notice(cert_mem, cert_mem_len - 1);
+@@ -297,7 +297,7 @@ lws_tls_client_create_vhost_context(struct lws_vhost *vh,
+ 			lws_tls_err_describe_clear();
+ 			return 1;
+ 		}
+-		lwsl_notice("%s: using mem client cert %d\n",
++		lwsl_debug("%s: using mem client cert %d\n",
+ 			    __func__, cert_mem_len);
+ 	}
+ 

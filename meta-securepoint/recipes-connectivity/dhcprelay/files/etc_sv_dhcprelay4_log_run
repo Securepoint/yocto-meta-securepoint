@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# pass logger messages, which, by default are only warnings and criticals,
+# to system log
+while read line
+do
+        logger -t dhcprelay4 "$line"
+done
+

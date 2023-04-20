@@ -1,0 +1,18 @@
+fixes a segfault in lws_protocol_init if protocol initialization
+failed, (missing default route in my case)
+
+diff --git a/lib/core-net/vhost.c b/lib/core-net/vhost.c
+index 283b802e..0bb703ab 100644
+--- a/lib/core-net/vhost.c
++++ b/lib/core-net/vhost.c
+@@ -368,7 +368,9 @@ lws_protocol_init(struct lws_context *context)
+ 			if (vh->protocols[n].callback(&wsi,
+ 					LWS_CALLBACK_PROTOCOL_INIT, NULL,
+ 					(void *)pvo, 0)) {
+-				if (vh->protocol_vh_privs[n]) {
++				if (NULL == vh->protocol_vh_privs) {
++					/* */
++				} else if (vh->protocol_vh_privs[n]) {
+ 					lws_free(vh->protocol_vh_privs[n]);
+ 					vh->protocol_vh_privs[n] = NULL;
+ 				}

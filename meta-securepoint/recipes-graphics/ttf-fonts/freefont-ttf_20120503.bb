@@ -3,7 +3,7 @@ HOMEPAGE = "http://ftp.gnu.org/gnu/freefont"
 SECTION = "x11/fonts"
 LICENSE = "GPLv2"
 LIC_FILES_CHKSUM = "file://COPYING;md5=d32239bcb673463ab874e80d47fae504"
-RDEPENDS_${PN} = "fontconfig-utils"
+RDEPENDS:${PN} = "fontconfig-utils"
 
 inherit fontcache
 
@@ -34,8 +34,8 @@ do_install () {
 }
 
 PACKAGES = "gnu-free-sans-fonts gnu-free-mono-fonts gnu-free-serif-fonts gnu-free-fonts-doc"
-FILES_gnu-free-sans-fonts  = "${sysconfdir}/fonts/conf.d/69-gnu-free-sans.conf ${datadir}/fonts/gnu-free/FreeSans*.ttf"
-FILES_gnu-free-mono-fonts  = "${sysconfdir}/fonts/conf.d/69-gnu-free-mono.conf ${datadir}/fonts/gnu-free/FreeMono*.ttf"
-FILES_gnu-free-serif-fonts = "${sysconfdir}/fonts/conf.d/69-gnu-free-serif.conf ${datadir}/fonts/gnu-free/FreeSerif*.ttf"
-FILES_gnu-free-fonts-doc   = "${datadir}/doc/${BPN}"
+FILES:gnu-free-sans-fonts  = "${sysconfdir}/fonts/conf.d/69-gnu-free-sans.conf ${datadir}/fonts/gnu-free/FreeSans*.ttf"
+FILES:gnu-free-mono-fonts  = "${sysconfdir}/fonts/conf.d/69-gnu-free-mono.conf ${datadir}/fonts/gnu-free/FreeMono*.ttf"
+FILES:gnu-free-serif-fonts = "${sysconfdir}/fonts/conf.d/69-gnu-free-serif.conf ${datadir}/fonts/gnu-free/FreeSerif*.ttf"
+FILES:gnu-free-fonts-doc   = "${datadir}/doc/${BPN}"
 

@@ -1,0 +1,4402 @@
+diff --git a/Makefile b/Makefile
+index ed7774e..60ec47a 100644
+--- a/Makefile
++++ b/Makefile
+@@ -82,7 +82,7 @@ SRCS     := $(PCHSRC) tstring.cpp linklist.cpp hashtab.cpp \
+ 	cp1252.cpp
+ 
+ # list all libraries we use
+-LIBS     := stdc++ dl pthread db_cxx gd z maxminddb
++LIBS     := stdc++ dl pthread lmdb gd z maxminddb
+ 
+ # generate a list of object files
+ OBJS := $(SRCS:.cpp=.o)
+diff --git a/src/berkeleydb.h b/src/berkeleydb.h
+index 1035a7c..be2faed 100644
+--- a/src/berkeleydb.h
++++ b/src/berkeleydb.h
+@@ -20,7 +20,7 @@
+ #include "event.h"
+ #include "thread.h"
+ 
+-#include <db_cxx.h>
++#include "lmdb++.h"
+ #include <vector>
+ 
+ // -----------------------------------------------------------------
+@@ -33,14 +33,14 @@ class berkeleydb_t {
+       //
+       // Define BDB callback types (bt_compare_fcn_type, etc are deprecated)
+       //
+-      typedef int (*sc_extract_cb_t)(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++      typedef int (*sc_extract_cb_t)(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ #if DB_VERSION_MAJOR >= 6
+-      typedef int (*bt_compare_cb_t)(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-      typedef int (*dup_compare_cb_t)(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
++      typedef void (*bt_compare_cb_t)(const lmdb::val *dbt1, const lmdb::val *dbt2);
++      typedef int (*dup_compare_cb_t)(const lmdb::val *dbt1, const lmdb::val *dbt2);
+ #else
+-      typedef int (*bt_compare_cb_t)(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-      typedef int (*dup_compare_cb_t)(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++      typedef int (*bt_compare_cb_t)(const MDB_val*dbt1, const MDB_val*dbt2);
++      typedef int (*dup_compare_cb_t)(const MDB_val*dbt1, const MDB_val*dbt2);
+ #endif
+ 
+       //
+@@ -100,6 +100,8 @@ class berkeleydb_t {
+ 
+             virtual const string_t& get_db_path(void) const = 0;
+ 
++            virtual const string_t& get_db_path_base(void) const = 0;
++
+             virtual const string_t& get_tmp_path(void) const = 0;
+ 
+             virtual const string_t& get_db_fname(void) const = 0;
+@@ -125,7 +127,8 @@ class berkeleydb_t {
+       // -----------------------------------------------------------------
+       class cursor_iterator_base {
+          protected:
+-            Dbc         *cursor;
++            lmdb::cursor *cursor_prim;
++            lmdb::cursor *cursor_sec;
+ 
+             int          error;
+ 
+@@ -134,11 +137,11 @@ class berkeleydb_t {
+             cursor_iterator_base& operator = (const cursor_iterator_base&) {return *this;}
+ 
+          public:
+-            cursor_iterator_base(Db *db);
++            cursor_iterator_base(lmdb::dbi *db_prim, lmdb::dbi *db_sc, lmdb::env *env_tmp, lmdb::txn *txn_tmp);
+             
+             ~cursor_iterator_base(void);
+ 
+-            bool is_error(void) const {return (error && error != DB_NOTFOUND) ? true : false;}
++            bool is_error(void) const {return (error && error != MDB_NOTFOUND) ? true : false;}
+ 
+             int get_error(void) const {return error;}
+ 
+@@ -147,23 +150,23 @@ class berkeleydb_t {
+ 
+       class cursor_iterator : public cursor_iterator_base {
+          private:
+-            db_recno_t   count;     // remaining duplicate count (zero if unique)
++            uint32_t   count;     // remaining duplicate count (zero if unique)
+ 
+          public:
+-            cursor_iterator(Db *db) : cursor_iterator_base(db) {count = 0;}
++            cursor_iterator(lmdb::dbi *db_prim, lmdb::dbi *db_sc, lmdb::env *env_tmp, lmdb::txn *txn_tmp) : cursor_iterator_base(db_prim, db_sc, env_tmp, txn_tmp) {count = 0;}
+ 
+-            db_recno_t dup_count(void) const {return count;}
++            uint32_t dup_count(void) const {return count;}
+ 
+-            bool set(Dbt& key, Dbt& data, Dbt *pkey);
++            bool set(lmdb::val *key, lmdb::val *data, lmdb::val *pkey);
+ 
+-            bool next(Dbt& key, Dbt& data, Dbt *pkey, bool dupkey = false);
++            bool next(lmdb::val *key, lmdb::val *data, lmdb::val *pkey, bool dupkey = false);
+       };
+ 
+       class cursor_reverse_iterator : public cursor_iterator_base {
+          public:
+-            cursor_reverse_iterator(Db *db) : cursor_iterator_base(db) {}
++            cursor_reverse_iterator(lmdb::dbi *db_prim, lmdb::dbi *db_sc, lmdb::env *env_tmp, lmdb::txn *txn_tmp) : cursor_iterator_base(db_prim, db_sc, env_tmp, txn_tmp) {}
+ 
+-            bool prev(Dbt& key, Dbt& data, Dbt *pkey);
++            bool prev(lmdb::val *key, lmdb::val *data, lmdb::val *pkey);
+       };
+ 
+    protected:
+@@ -216,26 +219,26 @@ class berkeleydb_t {
+       class table_t {
+          private:
+             struct db_desc_t {
+-               Db                *scdb;      // secondary database
++               lmdb::dbi         *scdb;      // secondary database
+                string_t          dbname;     // database name
+                string_t          dbpath;     // database file path
+                sc_extract_cb_t   sccb;       // secondary database data extract callback
+ 
+                public:
+                db_desc_t(void) {scdb = NULL; sccb = NULL;}
+-               db_desc_t(Db *scdb, const char *dbname, const char *dbpath, sc_extract_cb_t sccb) : scdb(scdb), dbname(dbname), dbpath(dbpath), sccb(sccb) {}
++               db_desc_t(lmdb::dbi *scdb, const char *dbname, const char *dbpath, sc_extract_cb_t sccb) : scdb(scdb), dbname(dbname), dbpath(dbpath), sccb(sccb) {}
+             };
+ 
+          private:
+-            DbEnv                *dbenv;     // shared DB environment
++            lmdb::dbi              *table;     // primary database
+ 
+-            Db                   *table;     // primary database
++            string_t               table_name;
+ 
+-            Db                   *values;    // pointer to the values database (stored in indexes)
++            lmdb::dbi              *values;    // pointer to the values database (stored in indexes)
+ 
+-            Db                   *seqdb;     // shared sequence database
++            lmdb::txn              *txndb;     // transaction of primary database
+ 
+-            DbSequence           *sequence;  // source of primary keys
++            u_int32_t            next_valid_nodeid; // counter for unique node_id's
+ 
+             std::vector<db_desc_t> indexes;  // secondary databases
+ 
+@@ -250,7 +253,7 @@ class berkeleydb_t {
+             db_desc_t *get_sc_desc(const char *dbname);
+ 
+          public:
+-            table_t(DbEnv& env, Db& seqdb, buffer_allocator_t& buffer_allocator);
++            table_t(lmdb::env& env, lmdb::txn& txn, buffer_allocator_t& buffer_allocator, string_t dbname);
+ 
+             table_t(table_t&& other);
+ 
+@@ -278,11 +281,11 @@ class berkeleydb_t {
+ 
+             int close(void);
+ 
+-            int truncate(u_int32_t *count = NULL);
++            void truncate(void);
+ 
+             int compact(u_int& bytes);
+ 
+-            int sync(void);
++            void sync(void);
+ 
+             void set_values_db(const char *dbname) {values = secondary_db(dbname);}
+ 
+@@ -290,17 +293,17 @@ class berkeleydb_t {
+ 
+             int associate(const char *dbname, sc_extract_cb_t sccb, bool rebuild);
+ 
+-            Db *primary_db(void) const {return table;}
++            lmdb::dbi *primary_db(void) const {return table;}
+ 
+-            Db *secondary_db(const char *dbname) const;
++            lmdb::dbi *secondary_db(const char *dbname) const;
+ 
+-            Db *values_db(void) const {return values;}
++            lmdb::dbi *values_db(void) const {return values;}
+ 
+             int open_sequence(const char *colname, int32_t cachesize);
+ 
+-            db_seq_t get_seq_id(int32_t delta = 1);
++            int32_t get_seq_id(int32_t delta = 1);
+             
+-            db_seq_t query_seq_id(void);
++            int32_t query_seq_id(void);
+ 
+             uint64_t count(const char *dbname = NULL) const;
+ 
+@@ -336,7 +339,7 @@ class berkeleydb_t {
+             buffer_allocator_t      *buffer_allocator;
+ 
+          protected:
+-            Dbt& set_dbt_buffer(Dbt& dbt, void *buffer, size_t size) const;
++            lmdb::val *set_dbt_buffer(lmdb::val *dbt, void *buffer, size_t size) const;
+ 
+          public:
+             iterator_base(buffer_allocator_t& buffer_allocator, cursor_iterator_base& cursor);
+@@ -366,7 +369,7 @@ class berkeleydb_t {
+             iterator& operator = (const iterator&) = delete;
+ 
+          public:
+-            iterator(buffer_allocator_t& buffer_allocator, const table_t& table, const char *dbname);
++            iterator(buffer_allocator_t& buffer_allocator, const table_t& table, const char *dbname, lmdb::env *env_tmp, lmdb::txn *txn_tmp);
+ 
+             bool next(node_t& node, typename node_t::s_unpack_cb_t upcb = NULL, void *arg = NULL);
+       };
+@@ -386,7 +389,7 @@ class berkeleydb_t {
+             reverse_iterator& operator = (const reverse_iterator&) = delete;
+ 
+          public:
+-            reverse_iterator(buffer_allocator_t& buffer_allocator, const table_t& table, const char *dbname);
++            reverse_iterator(buffer_allocator_t& buffer_allocator, const table_t& table, const char *dbname, lmdb::env *env_tmp, lmdb::txn *txn_tmp);
+ 
+             bool prev(node_t& node, typename node_t::s_unpack_cb_t upcb = NULL, void *arg = NULL);
+       };
+@@ -415,11 +418,8 @@ class berkeleydb_t {
+       // These functions use placement new operator and initialize
+       // BDB objects using executable-allocated memory.
+       //
+-      static Db *new_db(DbEnv *dbenv, u_int32_t flags);
+-      static void delete_db(Db *db);
+-
+-      static DbSequence *new_db_sequence(Db *seqdb, u_int32_t flags);
+-      static void delete_db_sequence(DbSequence *dbseq);
++      static lmdb::dbi *new_db(lmdb::env *dbenv, lmdb::txn *txn_tmp, u_int32_t flags, string_t dbname);
++      static void delete_db(lmdb::dbi *db);
+       
+       //
+       // Memory management functions for the environment
+@@ -431,8 +431,8 @@ class berkeleydb_t {
+    private:
+       const config_t&   config;
+ 
+-      DbEnv             dbenv;
+-      Db                sequences;
++      lmdb::env             dbenv;
++      lmdb::txn             txn_glob;
+ 
+       buffer_stack_t    buffer_stack;
+ 
+@@ -450,7 +450,7 @@ class berkeleydb_t {
+    protected:
+       void add_table(table_t& table) {tables.push_back(&table);}
+ 
+-      table_t make_table(void) {return table_t(dbenv, sequences, buffer_stack);}
++      table_t make_table(string_t dbname) {return table_t(dbenv, txn_glob, buffer_stack, dbname);}
+ 
+    public:
+       berkeleydb_t(config_t&& config);
+@@ -479,31 +479,34 @@ class berkeleydb_t {
+ // (bottom).
+ //
+ template <s_compare_cb_t compare>
+-int bt_compare_cb(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
++int bt_compare_cb(const MDB_val*dbt1, const MDB_val*dbt2);
++
++template <s_compare_cb_t compare>
++int bt_compare_cb(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
+ 
+ template <s_compare_cb_t compare>
+-int bt_compare_cb(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++int bt_compare_cb(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+ //
+ // B-Tree comparison function template (reverse order)
+ //
+ template <s_compare_cb_t compare>
+-int bt_reverse_compare_cb(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
++int bt_reverse_compare_cb(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
+ 
+ template <s_compare_cb_t compare>
+-int bt_reverse_compare_cb(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++int bt_reverse_compare_cb(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+ //
+ // B-Tree field extraction function template
+ //
+ template <s_field_cb_t extract>
+-int sc_extract_cb(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++int sc_extract_cb(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ //
+ // B-Tree group field extraction function template
+ //
+ template <typename node_t, s_field_cb_t extract>
+-int sc_extract_group_cb(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++int sc_extract_group_cb(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ #endif // BERKELEYDB_H
+ 
+diff --git a/src/berkeleydb_tmpl.cpp b/src/berkeleydb_tmpl.cpp
+index 4e74961..e4c30db 100644
+--- a/src/berkeleydb_tmpl.cpp
++++ b/src/berkeleydb_tmpl.cpp
+@@ -31,57 +31,68 @@
+ //
+ //
+ //
+-#define DBFLAGS               0
++#define DBFLAGS               MDB_CREATE
+ #define DBENVFLAGS            0
+ 
+ #define FILEMASK              0664              // database file access mask (rw-rw-r--)
+ 
+ const size_t DBBUFSIZE = 32768;                 // shared buffer for key and data
+ 
++static lmdb::txn *txn_global = NULL;
++static lmdb::env *dbenv_global = NULL;
++
++typedef int32_t db_seq_t;
++
+ //
+ // B-Tree comparison function template for BDB v6 and up (top) and for prior versions 
+ // (bottom). Only one will be used in any build, but it's cleaner without having to 
+ // use conditional blocks.
+ //
+ template <s_compare_cb_t compare>
+-int bt_compare_cb(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp)
++int bt_compare_cb(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp)
+ {
+-   int64_t diff = compare(dbt1->get_data(), dbt2->get_data());
++   int64_t diff = compare(dbt1->data(), dbt2->data());
+    return diff < 0ll ? -1 : diff > 0ll ? 1 : 0;
+ }
+ 
+ template <s_compare_cb_t compare>
+-int bt_compare_cb(Db *db, const Dbt *dbt1, const Dbt *dbt2)
++int bt_compare_cb(const MDB_val*dbt1, const MDB_val*dbt2)
+ {
+-   int64_t diff = compare(dbt1->get_data(), dbt2->get_data());
++   int64_t diff = compare(dbt1->mv_data, dbt2->mv_data);
+    return diff < 0ll ? -1 : diff > 0ll ? 1 : 0;
+ }
+ 
++template <s_compare_cb_t compare>
++int bt_compare_cb(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2)
++{
++  int64_t diff = compare(dbt1->data(), dbt2->data());
++  return diff < 0ll ? -1 : diff > 0ll ? 1 : 0;
++}
++
+ //
+ // B-Tree comparison function template (reverse order)
+ //
+ template <s_compare_cb_t compare>
+-int bt_reverse_compare_cb(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp)
++int bt_reverse_compare_cb(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp)
+ {
+-   return -compare(dbt1->get_data(), dbt2->get_data());
++   return -compare(dbt1->data(), dbt2->data());
+ }
+ 
+ template <s_compare_cb_t compare>
+-int bt_reverse_compare_cb(Db *db, const Dbt *dbt1, const Dbt *dbt2)
++int bt_reverse_compare_cb(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2)
+ {
+-   return -compare(dbt1->get_data(), dbt2->get_data());
++   return -compare(dbt1->data(), dbt2->data());
+ }
+ 
+ //
+ // B-Tree field extraction function template
+ //
+ template <s_field_cb_t extract>
+-int sc_extract_cb(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result)
++int sc_extract_cb(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result)
+ {
+    size_t dsize;
+-   const void *dptr = extract(data->get_data(), data->get_size(), dsize);
+-   result->set_data(const_cast<void*>(dptr));
+-   result->set_size((u_int32_t) dsize);
++   const void *dptr = extract(data->data(), data->size(), dsize);
++   result->assign(const_cast<void*>(dptr), (u_int32_t) dsize);
+    return 0;
+ }
+ 
+@@ -89,10 +100,10 @@ int sc_extract_cb(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result)
+ // B-Tree group field extraction function template
+ //
+ template <typename node_t, s_field_cb_t extract>
+-int sc_extract_group_cb(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result)
++int sc_extract_group_cb(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result)
+ {
+-   if(!node_t::s_is_group(data->get_data(), data->get_size()))
+-      return DB_DONOTINDEX;
++   if(!node_t::s_is_group(data->data(), data->size()))
++      return (-30998); // DB_DONOTINDEX; from db-4.6.19.h
+ 
+    return sc_extract_cb<extract>(secondary, key, data, result);
+ }
+@@ -102,15 +113,51 @@ int sc_extract_group_cb(Db *secondary, const Dbt *key, const Dbt *data, Dbt *res
+ // berkeleydb_t::cursor_iterator_base
+ //
+ // -----------------------------------------------------------------------
++static bool cursor_get_v2(lmdb::cursor *cursor_prim_tmp, lmdb::cursor *cursor_sec_tmp, MDB_cursor_op action,
++                          lmdb::val *key_tmp, lmdb::val *pkey_tmp, lmdb::val *data_tmp,
++                          int with_count, uint32_t *count){
++  lmdb::val tmp_key;
++  int error = 0;
++
++  if(!data_tmp)
++     return false;
++
++  /* check if cursor for primary db (table) is available */
++  if (cursor_prim_tmp == NULL) {
++    return false;
++  }
++
++  if (pkey_tmp != NULL && cursor_sec_tmp != NULL) {
++    /* get first key/val pair from sub db (table) */
++    if (cursor_sec_tmp->get(*key_tmp, *pkey_tmp, action)) {
++      /* key in sub is same as in main db (table)
++      ** get key/val pair from main db (table) */
++      if (cursor_prim_tmp->get(*pkey_tmp, *data_tmp, MDB_SET_KEY)) {
++        return true;
++      }
++    }
++  } else {
++    /* get key/value pair from primary db (table)
++     * return true if found a key/value pair */
++    if(cursor_prim_tmp->get(*key_tmp, *data_tmp, action)) {
++      return true;
++    }
++  }
++
++  return false;
++}
+ 
+-berkeleydb_t::cursor_iterator_base::cursor_iterator_base(Db *db) 
++berkeleydb_t::cursor_iterator_base::cursor_iterator_base(lmdb::dbi *db_prim, lmdb::dbi *db_sc, lmdb::env *env_tmp, lmdb::txn *txn_tmp)
+ {
+-   cursor = NULL;
++   cursor_prim = NULL;
++   cursor_sec = NULL;
+    error = 0;
+ 
+-   if(db) {
+-      if((error = db->cursor(NULL, &cursor, 0)) != 0)
+-         cursor = NULL;
++   if(db_prim && txn_tmp) {
++      cursor_prim = new lmdb::cursor(lmdb::cursor::open(txn_tmp->handle(), db_prim->handle()));
++   }
++   if(db_sc && txn_tmp) {
++      cursor_sec = new lmdb::cursor(lmdb::cursor::open(txn_tmp->handle(), db_sc->handle()));
+    }
+ }
+ 
+@@ -121,9 +168,17 @@ berkeleydb_t::cursor_iterator_base::~cursor_iterator_base(void)
+ 
+ void berkeleydb_t::cursor_iterator_base::close(void) 
+ {
+-   if(cursor)
+-      error = cursor->close();
+-   cursor = NULL;
++   if(cursor_prim) {
++      cursor_prim->close();
++      delete cursor_prim;
++   }
++   cursor_prim = NULL;
++
++   if(cursor_sec) {
++      cursor_sec->close();
++      delete cursor_sec;
++   }
++   cursor_sec = NULL;
+ }
+ 
+ // -----------------------------------------------------------------------
+@@ -131,23 +186,16 @@ void berkeleydb_t::cursor_iterator_base::close(void)
+ // berkeleydb_t::cursor_iterator
+ //
+ // -----------------------------------------------------------------------
+-
+-bool berkeleydb_t::cursor_iterator::set(Dbt& key, Dbt& data, Dbt *pkey)
++bool berkeleydb_t::cursor_iterator::set(lmdb::val *key, lmdb::val *data, lmdb::val *pkey)
+ {
+-   if(!cursor || is_error())
+-      return false;
++   std::string key_s, pkey_s, data_s;
+ 
+    count = 0;
+ 
+-   if(pkey)
+-      error = cursor->pget(&key, pkey, &data, DB_SET);
+-   else
+-      error = cursor->get(&key, &data, DB_SET);
+-      
+-   if(error)
+-      return false;
++   error = cursor_get_v2(cursor_prim, cursor_sec, MDB_SET_KEY,
++                         key, pkey, data, 1, &count);
+ 
+-   if((error = cursor->count(&count, 0)) != 0)
++   if(!error)
+       return false;
+ 
+    // account for one record returned in this call
+@@ -156,19 +204,19 @@ bool berkeleydb_t::cursor_iterator::set(Dbt& key, Dbt& data, Dbt *pkey)
+    return true;
+ }
+ 
+-bool berkeleydb_t::cursor_iterator::next(Dbt& key, Dbt& data, Dbt *pkey, bool dupkey)
++bool berkeleydb_t::cursor_iterator::next(lmdb::val *key, lmdb::val *data, lmdb::val *pkey, bool dupkey)
+ {
+-   if(!cursor || is_error())
+-      return false;
++   std::string key_s, pkey_s, data_s;
+ 
++   /* if we have a sub db (table) reset postion of primary db (table) cursor */
++   if (cursor_sec != NULL) {
++     cursor_prim->get(NULL, NULL, MDB_FIRST);
++   }
+    if(count) {
+       // we still have duplicates - get the next one
+-      if(pkey)
+-         error = cursor->pget(&key, pkey, &data, DB_NEXT_DUP);
+-      else
+-         error = cursor->get(&key, &data, DB_NEXT_DUP);
+-
+-      if(error)
++      error = cursor_get_v2(cursor_prim, cursor_sec, MDB_NEXT_DUP,
++                            key, pkey, data, 1, &count);
++      if(!error)
+          return false;
+           
+       count--;
+@@ -176,23 +224,14 @@ bool berkeleydb_t::cursor_iterator::next(Dbt& key, Dbt& data, Dbt *pkey, bool du
+    else {
+       // return if a duplicate key is requested
+       if(dupkey) {
+-         error = DB_NOTFOUND;
++         error = MDB_NOTFOUND;
+          return false;
+       }
+-
+-      if(pkey)
+-         error = cursor->pget(&key, pkey, &data, DB_NEXT);
+-      else
+-         error = cursor->get(&key, &data, DB_NEXT);
+-
+-      if(error)
+-         return false;
+-
+       // grab the total number of duplicates for this key
+-      if((error = cursor->count(&count, 0)) != 0) {
+-         count = 0;
++      error = cursor_get_v2(cursor_prim, cursor_sec, MDB_NEXT,
++                            key, pkey, data, 1, &count);
++      if(!error)
+          return false;
+-      }
+ 
+       count--;
+    }
+@@ -205,18 +244,13 @@ bool berkeleydb_t::cursor_iterator::next(Dbt& key, Dbt& data, Dbt *pkey, bool du
+ // berkeleydb_t::cursor_reverse_iterator
+ //
+ // -----------------------------------------------------------------------
+-
+-bool berkeleydb_t::cursor_reverse_iterator::prev(Dbt& key, Dbt& data, Dbt *pkey)
++bool berkeleydb_t::cursor_reverse_iterator::prev(lmdb::val *key, lmdb::val *data, lmdb::val *pkey)
+ {
+-   if(!cursor || is_error())
+-      return false;
+-
+-   if(pkey)
+-      error = cursor->pget(&key, pkey, &data, DB_PREV);
+-   else
+-      error = cursor->get(&key, &data, DB_PREV);
+-
+-   return (!error) ? true : false;
++   /* if we have a sub db (table) reset postion of primary db (table) cursor */
++   if (cursor_sec != NULL) {
++     cursor_prim->get(NULL, NULL, MDB_LAST);
++   }
++   return cursor_get_v2(cursor_prim, cursor_sec, MDB_PREV, key, pkey, data, 0, NULL);
+ }
+ 
+ // -----------------------------------------------------------------------
+@@ -225,69 +259,56 @@ bool berkeleydb_t::cursor_reverse_iterator::prev(Dbt& key, Dbt& data, Dbt *pkey)
+ //
+ // -----------------------------------------------------------------------
+ 
+-berkeleydb_t::table_t::table_t(DbEnv& dbenv, Db& seqdb, buffer_allocator_t& buffer_allocator) :
+-      dbenv(&dbenv),
+-      table(new_db(&dbenv, DBFLAGS)),
++berkeleydb_t::table_t::table_t(lmdb::env& dbenv, lmdb::txn& txn_tmp, buffer_allocator_t& buffer_allocator, string_t dbname) :
++      table(new_db(&dbenv, &txn_tmp, DBFLAGS, dbname)),
+       values(NULL),
+-      seqdb(&seqdb),
+-      sequence(NULL),
+       buffer_allocator(&buffer_allocator),
+       threaded(false),
+       readonly(false)
+ {
++  txndb = &txn_tmp;
++  next_valid_nodeid = 0;
+ }
+ 
+ berkeleydb_t::table_t::table_t(table_t&& other) :
+-      dbenv(other.dbenv),
+       table(other.table),
+       values(other.values),
+-      seqdb(other.seqdb),
+-      sequence(other.sequence),
+       indexes(std::move(other.indexes)),
+       buffer_allocator(other.buffer_allocator),
+       threaded(other.threaded),
+       readonly(other.readonly)
+ {
+-   other.dbenv = NULL;
++   txndb = other.txndb;
++   other.txndb = NULL;
+    other.table = NULL;
+    other.values = NULL;
+-   other.seqdb = NULL;
+-   other.sequence = NULL;
+    other.buffer_allocator = NULL;
+ }
+ 
+ berkeleydb_t::table_t::~table_t(void)
+ {
+    for(u_int index = 0; index < indexes.size(); index++) {
+-      if(indexes[index].scdb)
++      if(indexes[index].scdb) {
+          delete_db(indexes[index].scdb);
++      }
+    }
+-
+-   if(sequence)
+-      delete_db_sequence(sequence);
+-
+-   if(table)
++   if(table) {
+       delete_db(table);
++   }
+ }
+ 
+ berkeleydb_t::table_t& berkeleydb_t::table_t::operator = (table_t&& other)
+ {
+-   dbenv = other.dbenv;
+    table = other.table;
+    values = other.values;
+-   seqdb = other.seqdb;
+-   sequence = other.sequence;
+    buffer_allocator = other.buffer_allocator;
+    indexes = std::move(other.indexes);
+ 
+    threaded = other.threaded;
+    readonly = other.readonly;
+ 
+-   other.dbenv = NULL;
+    other.table = NULL;
+    other.values = NULL;
+-   other.seqdb = NULL;
+-   other.sequence = NULL;
+    other.buffer_allocator = NULL;
+ 
+    return *this;
+@@ -295,34 +316,33 @@ berkeleydb_t::table_t& berkeleydb_t::table_t::operator = (table_t&& other)
+ 
+ void berkeleydb_t::table_t::init_db_handles(void)
+ {
+-   Db *scdb;
++   lmdb::dbi *scdb;
+ 
+    // construct secondary database handles
+    for(u_int index = 0; index < indexes.size(); index++) {
+       if((scdb = indexes[index].scdb) == NULL) 
+          continue;
+ 
+-      new (scdb) Db(dbenv, DBFLAGS);
++      new (scdb) lmdb::dbi(0);
+    }
+-
+    // construct the primary database
+-   new (table) Db(dbenv, DBFLAGS);
++   new (table) lmdb::dbi(0);
+ }
+ 
+ void berkeleydb_t::table_t::destroy_db_handles(void)
+ {
+-   Db *scdb;
++   lmdb::dbi *scdb;
+ 
+    // destroy secondary database handles
+    for(u_int index = 0; index < indexes.size(); index++) {
+       if((scdb = indexes[index].scdb) == NULL) 
+          continue;
+ 
+-      scdb->Db::~Db();
++      scdb->~dbi();
+    }
+ 
+    // destroy the primary database
+-   table->Db::~Db();
++   table->~dbi();
+ }
+ 
+ const berkeleydb_t::table_t::db_desc_t *berkeleydb_t::table_t::get_sc_desc(const char *dbname) const
+@@ -355,73 +375,38 @@ int berkeleydb_t::table_t::open(const char *dbpath, const char *dbname, bt_compa
+ {
+    u_int index;
+    int error;
+-   u_int32_t flags = readonly ? DB_RDONLY : DB_CREATE;
+-
+-   if(threaded)
+-      flags |= DB_THREAD;
+ 
+    // open all secondary databases first
+    for(index = 0; index < indexes.size(); index++) {
+       if(!indexes[index].scdb) 
+          continue;
+ 
+-      if((error = indexes[index].scdb->open(NULL, indexes[index].dbpath, indexes[index].dbname, DB_BTREE, flags, FILEMASK)) != 0)
+-         return error;
++      new (indexes[index].scdb) lmdb::dbi(lmdb::dbi::open(txn_global->handle(), indexes[index].dbname.c_str(), MDB_CREATE));
+    }
+ 
+-   // then configure and open the primary database
+-   if((error = table->set_bt_compare(btcb)) != 0)
+-      return error;
+-
+-   // set little endian byte order
+-   if((error = table->set_lorder(1234)) != 0)
+-      return error;
+-
+-   if((error = table->open(NULL, dbpath, dbname, DB_BTREE, flags, FILEMASK)) != 0)
+-      return error;
+-
+-   // associate all secondary databases with a non-NULL callback
+-   for(index = 0; index < indexes.size(); index++) {
+-      // if the extraction callback is not NULL, associate immediately
+-      if(indexes[index].scdb && indexes[index].sccb) {
+-         if((error = table->associate(NULL, indexes[index].scdb, indexes[index].sccb, 0)) != 0)
+-            return error;
+-      }
+-   }
++   /* save table (db) name - for reopening later */
++   table_name.assign(dbname);
++   new (table) lmdb::dbi(lmdb::dbi::open(txn_global->handle(), dbname, MDB_CREATE));
++   table->set_compare(txn_global->handle(), btcb);
+ 
+    return 0;
+ }
+ 
+ int berkeleydb_t::table_t::close(void)
+ {
+-   int error;
+-
+    for(u_int index = 0; index < indexes.size(); index++) {
+       if(indexes[index].scdb) {
+-         if((error = indexes[index].scdb->close(0)) != 0)
+-            return error;
+          delete_db(indexes[index].scdb);
+       }
+    }
+-
+    indexes.clear();
+-
+    values = NULL;
+-
+-   if(sequence) {
+-      if((error = sequence->close(0)) != 0)
+-         return error;
+-      delete_db_sequence(sequence);
+-      sequence = NULL;
+-   }
+-
+-   return table->close(0);
++   return 0;
+ }
+ 
+-int berkeleydb_t::table_t::truncate(u_int32_t *count)
++void berkeleydb_t::table_t::truncate(void)
+ {
+-   u_int32_t temp;
+-   return table->truncate(NULL, count ? count : &temp, 0);
++  table->drop(txn_global->handle(), 0);
+ }
+ 
+ int berkeleydb_t::table_t::compact(u_int& bytes)
+@@ -467,38 +452,24 @@ int berkeleydb_t::table_t::compact(u_int& bytes)
+ #endif
+ }
+ 
+-int berkeleydb_t::table_t::sync(void)
++void berkeleydb_t::table_t::sync(void)
+ {
+-   int error;
+-
+-   for(u_int index = 0; index < indexes.size(); index++) {
+-      if((error = indexes[index].scdb->sync(0)) != 0)
+-         return error;
+-   }
+-
+-   return table->sync(0);
++   dbenv_global->sync(true);
+ }
+ 
+ int berkeleydb_t::table_t::associate(const char *dbpath, const char *dbname, bt_compare_cb_t btcb, dup_compare_cb_t dpcb, sc_extract_cb_t sccb)
+ {
+    int error;
+-   Db *scdb = new_db(dbenv, DBFLAGS);
+-
+-   // set little endian byte order
+-   if((error = scdb->set_lorder(1234)) != 0)
+-      goto errexit;
++   lmdb::dbi *scdb = NULL;
+ 
+    if(dpcb) {
+-      // if a duplicate comparison callback provided, allow duplicates
+-      if((error = scdb->set_flags(DB_DUPSORT)) != 0)
+-         goto errexit;
+-
+-      if((error = scdb->set_dup_compare(dpcb)) != 0)
++      scdb = new lmdb::dbi(lmdb::dbi::open(txn_global->handle(), dbname, DBFLAGS | MDB_DUPSORT));
++      if(0 == scdb->set_dupsort(txn_global->handle(), dpcb))
+          goto errexit;
++   } else {
++     scdb = new lmdb::dbi(lmdb::dbi::open(txn_global->handle(), dbname, DBFLAGS));
+    }
+-
+-   // set the key comparison callback for the secondary database
+-   if((error = scdb->set_bt_compare(btcb)) != 0)
++   if(0 == scdb->set_compare(txn_global->handle(), btcb))
+       goto errexit;
+ 
+    indexes.push_back(db_desc_t(scdb, dbname, dbpath, sccb));
+@@ -514,7 +485,7 @@ int berkeleydb_t::table_t::associate(const char *dbname, sc_extract_cb_t sccb, b
+ {
+    int error;
+    u_int32_t temp;
+-   u_int32_t flags = rebuild ? DB_CREATE : 0;
++   u_int32_t flags = rebuild ? MDB_CREATE : 0;
+    db_desc_t *desc = get_sc_desc(dbname);
+ 
+    // skip those that have been associated
+@@ -522,14 +493,10 @@ int berkeleydb_t::table_t::associate(const char *dbname, sc_extract_cb_t sccb, b
+       return 0;
+ 
+    if(rebuild) {
+-      // make sure the secondary database is empty
+-      if((error = desc->scdb->truncate(NULL, &temp, 0)) != 0)
+-         return error;
++      desc->scdb->drop(txn_global->handle(), 0);
+    }
+-
+    // associate the secondary, rebuilding if requested
+-   if((error = table->associate(NULL, desc->scdb, sccb, flags)) != 0)
+-      return error;
++   indexes.push_back(db_desc_t(desc->scdb, desc->dbname, desc->dbpath, sccb));
+ 
+    // mark as associated
+    desc->sccb = sccb;
+@@ -537,7 +504,7 @@ int berkeleydb_t::table_t::associate(const char *dbname, sc_extract_cb_t sccb, b
+    return 0;
+ }
+ 
+-Db *berkeleydb_t::table_t::secondary_db(const char *dbname) const
++lmdb::dbi *berkeleydb_t::table_t::secondary_db(const char *dbname) const
+ {
+    const db_desc_t *desc;
+ 
+@@ -549,57 +516,35 @@ Db *berkeleydb_t::table_t::secondary_db(const char *dbname) const
+ 
+ int berkeleydb_t::table_t::open_sequence(const char *colname, int32_t cachesize)
+ {
+-   u_int32_t flags = DB_CREATE;
+-   int error;
+-   Dbt key;
+-
+-   if(threaded)
+-      flags |= DB_THREAD;
+-
+-   if(!sequence)
+-      sequence = new_db_sequence(seqdb, 0);
+-
+-   if((error = sequence->initial_value(1)) != 0)
+-      return error;
+-
+-   if((error = sequence->set_cachesize(cachesize)) != 0)
+-      return error;
++   /* counter for unique node_id's */
++   next_valid_nodeid = table->size(txn_global->handle()) + 1;
+ 
+-   key.set_data(const_cast<char*>(colname));
+-   key.set_size((u_int32_t) strlen(colname));
+-
+-   return sequence->open(NULL, &key, flags);
++   return 0;
+ }
+ 
+ db_seq_t berkeleydb_t::table_t::get_seq_id(int32_t delta)
+ {
+    db_seq_t seqid;
+ 
+-   if(!sequence || sequence->get(NULL, delta, &seqid, 0))
+-      return -1;
++   if (next_valid_nodeid == 0) {
++     open_sequence(table_name.c_str(), 0);
++   }
++
++   seqid = next_valid_nodeid;
++   next_valid_nodeid += delta;
+ 
+    return seqid;
+ }
+ 
+ db_seq_t berkeleydb_t::table_t::query_seq_id(void)
+ {
+-   DB_SEQUENCE_STAT *db_stat;
+-   db_seq_t cur_seq_id;
+-   
+-   if(!sequence || sequence->stat(&db_stat, 0))
+-      return -1;
+-      
+-   cur_seq_id = db_stat->st_current;
+-   
+-   free(db_stat);
+-
+-   return cur_seq_id;
++   return next_valid_nodeid;
+ }
+ 
+ uint64_t berkeleydb_t::table_t::count(const char *dbname) const
+ {
+-   DB_BTREE_STAT *stats;
+-   Db *dbptr = table;
++   MDB_stat stats;
++   lmdb::dbi *dbptr = table;
+    uint64_t nkeys;
+ 
+    if(dbname && *dbname) {
+@@ -607,12 +552,7 @@ uint64_t berkeleydb_t::table_t::count(const char *dbname) const
+          return 0;
+    }
+ 
+-   if(dbptr->stat(NULL, &stats, 0) != 0)
+-      return 0;
+-
+-   nkeys = (uint64_t) stats->bt_nkeys;
+-
+-   free(stats);
++   nkeys = dbptr->size(txn_global->handle());
+ 
+    return nkeys;
+ }
+@@ -636,11 +576,9 @@ berkeleydb_t::iterator_base<node_t>::~iterator_base(void)
+ }
+ 
+ template <typename node_t>
+-Dbt& berkeleydb_t::iterator_base<node_t>::set_dbt_buffer(Dbt& dbt, void *buffer, size_t size) const
++lmdb::val *berkeleydb_t::iterator_base<node_t>::set_dbt_buffer(lmdb::val *dbt, void *buffer, size_t size) const
+ {
+-   dbt.set_data(buffer);
+-   dbt.set_ulen((u_int32_t) size);
+-   dbt.set_flags(DB_DBT_USERMEM);
++   dbt->assign(buffer, (u_int32_t) size);
+ 
+    return dbt;
+ }
+@@ -652,9 +590,9 @@ Dbt& berkeleydb_t::iterator_base<node_t>::set_dbt_buffer(Dbt& dbt, void *buffer,
+ // -----------------------------------------------------------------------
+ 
+ template <typename node_t>
+-berkeleydb_t::iterator<node_t>::iterator(buffer_allocator_t& buffer_allocator, const table_t& table, const char *dbname) : 
++berkeleydb_t::iterator<node_t>::iterator(buffer_allocator_t& buffer_allocator, const table_t& table, const char *dbname, lmdb::env *env_tmp, lmdb::txn *txn_tmp) :
+       iterator_base<node_t>(buffer_allocator, cursor),
+-      cursor(dbname ? table.secondary_db(dbname) : table.primary_db())
++      cursor(table.primary_db(), dbname ? table.secondary_db(dbname) : NULL, env_tmp, txn_tmp)
+ {
+    primdb = (dbname == NULL);
+ }
+@@ -662,32 +600,32 @@ berkeleydb_t::iterator<node_t>::iterator(buffer_allocator_t& buffer_allocator, c
+ template <typename node_t>
+ bool berkeleydb_t::iterator<node_t>::next(node_t& node, typename node_t::s_unpack_cb_t upcb, void *arg)
+ {
+-   Dbt key, data, pkey;
++   lmdb::val key, data, pkey;
+    buffer_holder_t buffer_holder(*buffer_allocator);
+    buffer_t& buffer = buffer_holder.buffer; 
+ 
+    // for a secondary database we retrieve two keys
+    buffer.resize(DBBUFSIZE * (primdb ? 2 : 3));
+ 
+-   set_dbt_buffer(key, buffer, DBBUFSIZE);
+-   set_dbt_buffer(data, buffer + DBBUFSIZE, DBBUFSIZE);
++   set_dbt_buffer(&key, buffer, DBBUFSIZE);
++   set_dbt_buffer(&data, buffer + DBBUFSIZE, DBBUFSIZE);
+ 
+    if(!primdb)
+-      set_dbt_buffer(pkey, buffer + DBBUFSIZE*2, DBBUFSIZE);
++      set_dbt_buffer(&pkey, buffer + DBBUFSIZE*2, DBBUFSIZE);
+ 
+-   if(!cursor.next(key, data, primdb ? NULL : &pkey))
++   if(!cursor.next(&key, &data, primdb ? NULL : &pkey))
+       return false;
+ 
+    if(primdb) {
+-      if(node.s_unpack_key(key.get_data(), key.get_size()) != key.get_size())
++      if(node.s_unpack_key(key.data(), key.size()) != key.size())
+          return false;
+    }
+    else {
+-      if(node.s_unpack_key(pkey.get_data(), pkey.get_size()) != pkey.get_size())
++      if(node.s_unpack_key(pkey.data(), pkey.size()) != pkey.size())
+          return false;
+    }
+ 
+-   if(node.s_unpack_data(data.get_data(), data.get_size(), upcb, arg) != data.get_size())
++   if(node.s_unpack_data(data.data(), data.size(), upcb, arg) != data.size())
+       return false;
+ 
+    return true;
+@@ -700,9 +638,9 @@ bool berkeleydb_t::iterator<node_t>::next(node_t& node, typename node_t::s_unpac
+ // -----------------------------------------------------------------------
+ 
+ template <typename node_t>
+-berkeleydb_t::reverse_iterator<node_t>::reverse_iterator(buffer_allocator_t& buffer_allocator, const table_t& table, const char *dbname) : 
++berkeleydb_t::reverse_iterator<node_t>::reverse_iterator(buffer_allocator_t& buffer_allocator, const table_t& table, const char *dbname, lmdb::env *env_tmp, lmdb::txn *txn_tmp) :
+       iterator_base<node_t>(buffer_allocator, cursor), 
+-      cursor(dbname ? table.secondary_db(dbname) : table.primary_db())
++      cursor(table.primary_db(), dbname ? table.secondary_db(dbname) : NULL, env_tmp, txn_tmp)
+ {
+    primdb = (dbname == NULL);
+ }
+@@ -710,32 +648,32 @@ berkeleydb_t::reverse_iterator<node_t>::reverse_iterator(buffer_allocator_t& buf
+ template <typename node_t>
+ bool berkeleydb_t::reverse_iterator<node_t>::prev(node_t& node, typename node_t::s_unpack_cb_t upcb, void *arg)
+ {
+-   Dbt key, data, pkey;
++   lmdb::val key, data, pkey;
+    buffer_holder_t buffer_holder(*buffer_allocator);
+    buffer_t& buffer = buffer_holder.buffer; 
+ 
+    // for a secondary database we retrieve two keys
+    buffer.resize(DBBUFSIZE * (primdb ? 2 : 3));
+ 
+-   set_dbt_buffer(key, buffer, DBBUFSIZE);
+-   set_dbt_buffer(data, buffer + DBBUFSIZE, DBBUFSIZE);
++   set_dbt_buffer(&key, buffer, DBBUFSIZE);
++   set_dbt_buffer(&data, buffer + DBBUFSIZE, DBBUFSIZE);
+ 
+    if(!primdb)
+-      set_dbt_buffer(pkey, buffer + DBBUFSIZE*2, DBBUFSIZE);
++      set_dbt_buffer(&pkey, buffer + DBBUFSIZE*2, DBBUFSIZE);
+ 
+-   if(!cursor.prev(key, data, primdb ? NULL : &pkey))
++   if(!cursor.prev(&key, &data, primdb ? NULL : &pkey))
+       return false;
+ 
+    if(primdb) {
+-      if(node.s_unpack_key(key.get_data(), key.get_size()) != key.get_size())
++      if(node.s_unpack_key(key.data(), key.size()) == 0)
+          return false;
+    }
+    else {
+-      if(node.s_unpack_key(pkey.get_data(), pkey.get_size()) != pkey.get_size())
++      if(node.s_unpack_key(pkey.data(), pkey.size()) == 0)
+          return false;
+    }
+ 
+-   if(node.s_unpack_data(data.get_data(), data.get_size(), upcb, arg) != data.get_size())
++   if(node.s_unpack_data(data.data(), data.size(), upcb, arg) == 0)
+       return false;
+ 
+    return true;
+@@ -750,7 +688,7 @@ bool berkeleydb_t::reverse_iterator<node_t>::prev(node_t& node, typename node_t:
+ template <typename node_t>
+ bool berkeleydb_t::table_t::put_node(const node_t& node)
+ {
+-   Dbt key, data;
++   lmdb::val key, data, old_data, result;
+    size_t keysize = node.s_key_size(), datasize = node.s_data_size();
+    buffer_holder_t buffer_holder(*buffer_allocator);
+    buffer_t& buffer = buffer_holder.buffer; 
+@@ -763,14 +701,56 @@ bool berkeleydb_t::table_t::put_node(const node_t& node)
+    if(node.s_pack_data(buffer+keysize, datasize) != datasize)
+       return false;
+ 
+-   key.set_data(buffer);
+-   key.set_size((u_int32_t) keysize);
+-
+-   data.set_data(buffer+keysize);
+-   data.set_size((u_int32_t) datasize);
++   key.assign(buffer.get_buffer(), (u_int32_t) keysize);
++   data.assign(buffer.get_buffer() + keysize, (u_int32_t) datasize);
++
++   /* - DOKU -
++   ** a main table is associated with multiple sub tables
++   ** the key of a sub table is a part of the data of the main table
++   ** the data of a sub table is the key of the main table
++   ** it is used to order the keys of the sub tables (by hits, transfer, ...)
++   ** -> iterate through sub table and get all data from associated main table
++   **
++   ** example:
++   ** main table
++   ** key:      1   |    2   |   3
++   ** data:  gghhii | aabbcc | ddeeff
++   **
++   ** sub table
++   ** key:   aa | dd | gg
++   ** data:  2  | 3  | 1
++   */
++   /* check if an entry is already inserted */
++   if (table->get(txn_global->handle(), key, old_data)) {
++     /* delete entry in subtables */
++     for (int index = 0; index < indexes.size(); index++) {
++       if(!indexes[index].scdb) {
++          continue;
++       } else if (!indexes[index].sccb) {
++          continue;
++       } else if (0 == indexes[index].sccb(indexes[index].scdb, &key, &old_data, &result)) {
++          /* delete entry in sub table */
++          indexes[index].scdb->del(txn_global->handle(), result);
++       }  
++     }
++     /* delete entry in main table */
++     table->del(txn_global->handle(), key);
++   }
+ 
+-   if(table->put(NULL, &key, &data, 0)) 
++   // put_v2
++   if(!table->put(txn_global->handle(), key, data, 0))
+       return false;
++   /* update entries in sub db's (tables) */
++   for (int index = 0; index < indexes.size(); index++) {
++     if(!indexes[index].scdb) {
++        continue;
++     } else if (!indexes[index].sccb) {
++        continue;
++     } else if (0 == indexes[index].sccb(indexes[index].scdb, &key, &data, &result)) {
++       /* insert new entry in sub table (key, value)=(result, key) */
++       indexes[index].scdb->put(txn_global->handle(), result, key, 0);
++     }
++   }
+ 
+    // node flags are mutable
+    const_cast<node_t&>(node).dirty = false;
+@@ -782,30 +762,30 @@ bool berkeleydb_t::table_t::put_node(const node_t& node)
+ template <typename node_t>
+ bool berkeleydb_t::table_t::get_node_by_id(node_t& node, typename node_t::s_unpack_cb_t upcb, void *arg) const
+ {
+-   Dbt key, pkey, data;
++   lmdb::val key, pkey, data;
+    size_t keysize = node.s_key_size();
+    buffer_holder_t buffer_holder(*buffer_allocator);
+    buffer_t& buffer = buffer_holder.buffer; 
+ 
+    buffer.resize(keysize+DBBUFSIZE);
+ 
+-   if(node.s_pack_key(buffer, keysize) != keysize)
++   if(node.s_pack_key(buffer, keysize) != keysize) {
++      printf("get_node_by_id: s_pack_key() failed\n");
+       return false;
++   }
+ 
+-   key.set_data(buffer);
+-   key.set_size((u_int32_t) keysize);
+-   key.set_ulen((u_int32_t) keysize);
+-   key.set_flags(DB_DBT_USERMEM);
+-
+-   data.set_data(buffer+keysize);
+-   data.set_ulen(DBBUFSIZE);
+-   data.set_flags(DB_DBT_USERMEM);
++   key.assign(buffer.get_buffer(), (u_int32_t) keysize);
++   data.assign(buffer+keysize, (u_int32_t) DBBUFSIZE);
+ 
+-   if(table->get(NULL, &key, &data, 0))
++   if(!table->get(txn_global->handle(), key, data)) {
++      printf("get_node_by_id: get key/data from table failed\n");
+       return false;
++   }
+ 
+-   if(node.s_unpack_data(data.get_data(), data.get_size(), upcb, arg) != data.get_size())
++   if(node.s_unpack_data(data.data(), data.size(), upcb, arg) != data.size()) {
++      printf("get_node_by_id: s_unpack_data() failed\n");
+       return false;
++   }
+    
+    node.dirty = false;
+    node.storage = true;
+@@ -816,7 +796,7 @@ bool berkeleydb_t::table_t::get_node_by_id(node_t& node, typename node_t::s_unpa
+ template <typename node_t>
+ bool berkeleydb_t::table_t::get_node_by_value(node_t& node, typename node_t::s_unpack_cb_t upcb, void *arg) const
+ {
+-   Dbt key, pkey, data;
++   lmdb::val key, pkey, data;
+    u_int32_t keysize = (u_int32_t) node.s_key_size();
+    uint64_t hashkey;
+    buffer_holder_t buffer_holder(*buffer_allocator);
+@@ -831,35 +811,27 @@ bool berkeleydb_t::table_t::get_node_by_value(node_t& node, typename node_t::s_u
+    hashkey = node.s_hash_value();
+    keysize = (u_int32_t) node.s_hash_value_size();
+ 
+-   key.set_data(&hashkey);
+-   key.set_size(keysize);
+-
+-   // share the key buffer between the key and the value
+-   pkey.set_data(buffer);
+-   pkey.set_ulen(keysize);
+-   pkey.set_flags(DB_DBT_USERMEM);
+-
+-   data.set_data(buffer+keysize);
+-   data.set_ulen(DBBUFSIZE);
+-   data.set_flags(DB_DBT_USERMEM);
++   key.assign(&hashkey, (u_int32_t) keysize);
++   pkey.assign(buffer.get_buffer(), (u_int32_t) keysize);
++   data.assign(buffer+keysize, (u_int32_t) DBBUFSIZE);
+ 
+    // open a cursor
+-   {cursor_iterator cursor(values);
++   {cursor_iterator cursor(table, values, dbenv_global, txn_global);
+ 
+    // find the first value hash and get the primary key and value data
+-   if(!cursor.set(key, data, &pkey))
++   if(!cursor.set(&key, &data, &pkey))
+       return false;
+ 
+    do {
+       // if the node value matched, break out
+-      if(!node.s_compare_value(data.get_data(), data.get_size()))
++      if(!node.s_compare_value(data.data(), data.size()))
+          break;
+ 
+       // if there are no more duplicates, value is not found
+       if(!cursor.dup_count())
+          return false;
+ 
+-   } while(cursor.next(key, data, &pkey, true));
++   } while(cursor.next(&key, &data, &pkey, true));
+ 
+    // the destructor will close the cursor
+    if(cursor.get_error())
+@@ -867,11 +839,11 @@ bool berkeleydb_t::table_t::get_node_by_value(node_t& node, typename node_t::s_u
+    }
+ 
+    // unpack the primary key
+-   if(node.s_unpack_key(pkey.get_data(), pkey.get_size()) != pkey.get_size())
++   if(node.s_unpack_key(pkey.data(), pkey.size()) != pkey.size())
+       return false;
+ 
+    // unpack data
+-   if(node.s_unpack_data(data.get_data(), data.get_size(), upcb, arg) != data.get_size())
++   if(node.s_unpack_data(data.data(), data.size(), upcb, arg) != data.size())
+       return false;
+ 
+    node.dirty = false;
+@@ -882,7 +854,7 @@ bool berkeleydb_t::table_t::get_node_by_value(node_t& node, typename node_t::s_u
+ 
+ bool berkeleydb_t::table_t::delete_node(const keynode_t<uint64_t>& node)
+ {
+-   Dbt key;
++   lmdb::val key, data, result;
+    size_t keysize = node.s_key_size();
+    buffer_holder_t buffer_holder(*buffer_allocator);
+    buffer_t& buffer = buffer_holder.buffer; 
+@@ -892,25 +864,41 @@ bool berkeleydb_t::table_t::delete_node(const keynode_t<uint64_t>& node)
+    if(node.s_pack_key(buffer, keysize) != keysize)
+       return false;
+ 
+-   key.set_data(buffer);
+-   key.set_size((u_int32_t) keysize);
++   key.assign(buffer.get_buffer(), (u_int32_t) keysize);
+ 
+-   if(table->del(NULL, &key, 0))
++   /* get key/value pair from primary db (table) to find entries in sub db (table) */
++   if(!table->get(txn_global->handle(), key, data))
+       return false;
+ 
++   for (int index = 0; index < indexes.size(); index++) {
++     if(!indexes[index].scdb) {
++        continue;
++     } else if (!indexes[index].sccb) {
++        continue;
++     } else if (0 == indexes[index].sccb(indexes[index].scdb, &key, &data, &result)) {
++       if(!indexes[index].scdb->del(txn_global->handle(), key)) {
++         return false;
++       }
++     }
++   }
++   /* delete key/value in primary db (table) */
++   if(!table->del(txn_global->handle(), key)){
++     return false;
++   }
++
+    return true;
+ }
+ 
+ template <typename node_t>
+ berkeleydb_t::iterator<node_t> berkeleydb_t::table_t::begin(const char *dbname) const 
+ {
+-   return iterator<node_t>(*buffer_allocator, *this, dbname);
++   return iterator<node_t>(*buffer_allocator, *this, dbname, dbenv_global, txn_global);
+ }
+ 
+ template <typename node_t>
+ berkeleydb_t::reverse_iterator<node_t> berkeleydb_t::table_t::rbegin(const char *dbname) const 
+ {
+-   return reverse_iterator<node_t>(*buffer_allocator, *this, dbname);
++   return reverse_iterator<node_t>(*buffer_allocator, *this, dbname, dbenv_global, txn_global);
+ }
+ 
+ // -----------------------------------------------------------------------
+@@ -920,12 +908,17 @@ berkeleydb_t::reverse_iterator<node_t> berkeleydb_t::table_t::rbegin(const char
+ // -----------------------------------------------------------------------
+ berkeleydb_t::berkeleydb_t(config_t&& config) :
+       config(config.clone()),
+-      dbenv(DBENVFLAGS),
+-      sequences(&dbenv, DBFLAGS)
++      dbenv(lmdb::env::create(0)),
++      txn_glob(0)
+ {
+-   // configure the environment to use the correct memory manager
+-   if(dbenv.set_alloc(berkeleydb_t::malloc, berkeleydb_t::realloc, berkeleydb_t::free))
+-      throw exception_t(0, "Cannot set memory management functions for the database environment");
++   dbenv_global = &dbenv;
++   dbenv.set_mapsize(512UL * 1024UL * 1024UL);  /* 500MB */
++   dbenv.set_max_dbs(50);                       /* 45 is enough? */
++   dbenv.open(config.get_db_path().c_str(), MDB_NOSUBDIR, FILEMASK);
++
++   /* global transaction for environment */
++   txn_glob = lmdb::txn::begin(dbenv.handle(), NULL, 0);
++   txn_global = &txn_glob;
+ 
+    trickle_thread = 0;                 // $$$
+    trickle_event = NULL;
+@@ -939,12 +932,17 @@ berkeleydb_t::berkeleydb_t(config_t&& config) :
+ berkeleydb_t::~berkeleydb_t()
+ {
+    config.release();
++   if (txn_glob.handle() != NULL) {
++     txn_glob.commit();
++     txn_glob = NULL;
++   }
++   dbenv_global->close();
+ }
+ 
+ void berkeleydb_t::reset_db_handles(void)
+ {
+    //
+-   // Once DbEnv::close and Db::close are called, their object instances 
++   // Once DbEnv::close and lmdb::dbi::close are called, their object instances
+    // become unusable. The code in all reset_db_handles methods calls 
+    // destructors and constructors explicitly, reusing existing memory.
+    //
+@@ -953,15 +951,8 @@ void berkeleydb_t::reset_db_handles(void)
+    for(size_t i = 0; i < tables.size(); i++)
+       tables[i]->destroy_db_handles();
+ 
+-   // destroy the sequences database
+-   sequences.Db::~Db();
+-   
+-   // reconstruct the environment 
+-   dbenv.~DbEnv();
+-   new (&dbenv) DbEnv(DBFLAGS);
+-
+-   // construct the sequence database
+-   new (&sequences) Db(&dbenv, DBFLAGS);
++   /* recreate environment, opening later new environment to create new .mdb file */
++   dbenv = lmdb::env::create(0);
+ 
+    // construct table databases
+    for(size_t i = 0; i < tables.size(); i++)
+@@ -983,65 +974,25 @@ void berkeleydb_t::free(void *block)
+    ::free(block);
+ }
+ 
+-DbSequence *berkeleydb_t::new_db_sequence(Db *seqdb, u_int32_t flags)
+-{
+-   void *dbseq;
+-   
+-   if((dbseq = malloc(sizeof(DbSequence))) == NULL)
+-      return NULL;
+-   
+-   return new (dbseq) DbSequence(seqdb, flags);
+-}
+-
+-void berkeleydb_t::delete_db_sequence(DbSequence *dbseq)
++lmdb::dbi *berkeleydb_t::new_db(lmdb::env *dbenv, lmdb::txn *txn_tmp, u_int32_t flags, string_t dbname)
+ {
+-   if(dbseq) {
+-      dbseq->~DbSequence();
+-      free(dbseq);
+-   }
+-}
++   lmdb::dbi *db = new lmdb::dbi(lmdb::dbi::open(txn_tmp->handle(), dbname.c_str(), flags));
+ 
+-Db *berkeleydb_t::new_db(DbEnv *dbenv, u_int32_t flags)
+-{
+-   void *db;
+-   
+-   if((db = malloc(sizeof(Db))) == NULL)
+-      return NULL;
+-      
+-   return new (db) Db(dbenv, flags);
++   return db;
+ }
+ 
+-void berkeleydb_t::delete_db(Db *db)
++void berkeleydb_t::delete_db(lmdb::dbi *db)
+ {
+    if(db) {
+-      db->~Db();
+-      free(db);
++      db->~dbi();
++      delete db;
+    }
+ }
+ 
+ bool berkeleydb_t::open(void)
+ {
+-   u_int32_t dbflags = readonly ? DB_RDONLY : DB_CREATE;
+-   u_int32_t envflags = DB_CREATE | DB_INIT_LOCK | DB_INIT_MPOOL | DB_PRIVATE;
+-
+-   // do some additional initialization for threaded environment
+-   if(!readonly && trickle) {
+-      // initialize the environment and databases as thread-safe
+-      dbflags |= DB_THREAD;
+-      envflags |= DB_THREAD;
+-
+-      // create an event to indicate that there's something to write
+-      if((trickle_event = event_create(true, false)) == NULL)
+-         return false;
+-   
+-      // create a trickle thread
+-      if((trickle_thread = thread_create(trickle_thread_proc, this)) == 0)
+-         return false;
+-
+-      // initialize table databases as free-threaded
+-      for(size_t i = 0; i < tables.size(); i++)
+-         tables[i]->set_threaded(true);
+-   }
++   u_int32_t dbflags = readonly ? MDB_RDONLY : MDB_CREATE;
++   u_int32_t envflags = 0;
+ 
+    // initialize table databases as read-only, if requested
+    if(readonly) {
+@@ -1049,29 +1000,6 @@ bool berkeleydb_t::open(void)
+          tables[i]->set_readonly(true);
+    }
+ 
+-   // set the temporary directory
+-   if(dbenv.set_tmp_dir(config.get_tmp_path()))
+-      return false;
+-
+-   // if configured cache size is non-zero,
+-   if(config.get_db_cache_size()) {
+-      // set the maximum database cache size
+-      if(dbenv.set_cachesize(0, config.get_db_cache_size(), 0))
+-         return false;
+-
+-      // and the maximum memory-mapped file size (read-only mode)
+-      if(readonly) {
+-         if(dbenv.set_mp_mmapsize(config.get_db_cache_size()))
+-            return false;
+-      }
+-   }
+-
+-   // disable OS buffering, if requested
+-   if(config.get_db_direct()) {
+-      if(dbenv.set_flags(DB_DIRECT_DB, 1))
+-         return false;
+-   }
+-
+    // enable write-through I/O, if requested
+    if(config.get_db_dsync()) {
+ #if DB_VERSION_MAJOR > 4 || DB_VERSION_MAJOR == 4 && DB_VERSION_MINOR >= 4
+@@ -1082,16 +1010,14 @@ bool berkeleydb_t::open(void)
+ #endif
+    }
+ 
+-   // open the DB environment
+-   if(dbenv.open(config.get_db_path(), envflags, FILEMASK))
+-      return false;
+-
+-   //
+-   // create the sequences database (unique node IDs)
+-   //
+-   if(sequences.open(NULL, config.get_db_path(), "sequences", DB_HASH, dbflags, FILEMASK))
+-      return false;
+-
++   if (txn_glob.handle() == NULL) {
++     if (dbenv.handle() != NULL) {
++       dbenv.set_mapsize(512UL * 1024UL * 1024UL);  /* 500MB */
++       dbenv.set_max_dbs(50);                       /* 45 is enough? */
++       dbenv.open(config.get_db_path().c_str(), MDB_NOSUBDIR, FILEMASK);
++       txn_glob = lmdb::txn::begin(dbenv.handle(), NULL, 0);
++     }
++   }
+    return true;
+ }
+ 
+@@ -1112,13 +1038,21 @@ bool berkeleydb_t::close(void)
+          errcnt++;
+    }
+ 
+-   // close the sequences database
+-   if(sequences.close(0))
+-      errcnt++;
+ 
+-   // finally, close the environment
+-   if(dbenv.close(0))
+-      errcnt++;
++   // push all to db
++   if (txn_glob.handle() != NULL) {
++     txn_glob.commit();
++     // txn_glob.~txn();
++     /* commit() and destructor ~txn set handler not to null
++     ** without compile paramter -g ...!?
++     */
++     txn_glob = NULL;
++   }
++   /* now we can close environment */
++   if (dbenv.handle() != NULL) {
++     dbenv.close();
++     dbenv = NULL;
++   }
+ 
+    reset_db_handles();
+ 
+@@ -1142,8 +1076,7 @@ bool berkeleydb_t::truncate(void)
+    u_int errcnt = 0;
+ 
+    for(size_t i = 0; i < tables.size(); i++) {
+-      if(tables[i]->truncate())
+-         errcnt++;
++      tables[i]->truncate();
+    }
+ 
+    return !errcnt ? true : false;
+@@ -1173,12 +1106,10 @@ bool berkeleydb_t::flush(void)
+ {
+    u_int errcnt = 0;
+ 
+-   if(dbenv.memp_sync(NULL))
+-      errcnt++;
++   dbenv.sync(true);
+ 
+    for(size_t i = 0; i < tables.size(); i++) {
+-      if(tables[i]->sync())
+-         errcnt++;
++      tables[i]->sync();
+    }
+ 
+    return !errcnt ? true : false;
+@@ -1220,12 +1151,6 @@ void berkeleydb_t::trickle_thread_proc(void)
+          break;
+       }
+ 
+-      // trickle some dirty pages to disk
+-      if((error = dbenv.memp_trickle(config.get_db_trickle_rate(), &nwrote)) != 0) {
+-         trickle_error.format("Failed to trickle database cache to disk (%d)", error);
+-         break;
+-      }
+-
+       // check if anything was actually written
+       if(!nwrote) {
+          // if there's nothing written, pause trickling
+diff --git a/src/config.cpp b/src/config.cpp
+index 18b169d..612e0b3 100644
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -164,7 +164,7 @@ config_t::config_t(void)
+    html_ext = "html";                         /* HTML file prefix         */
+    dump_ext = "tab";                          /* Dump file prefix         */
+    db_fname = "webalizer";                    // database file name
+-   db_fname_ext = "db";                       // database file extension
++   db_fname_ext = "mdb";                      // database file extension
+    report_db_name = "webalizer";              // report database file name
+ 
+    dns_children = 0;                          /* DNS children (0=don't do)*/
+@@ -1438,6 +1438,11 @@ string_t config_t::get_db_path(void) const
+    return make_path(db_path, (is_default_db()) ? db_fname : report_db_name) + '.' + db_fname_ext;
+ }
+ 
++string_t config_t::get_db_path_base(void) const
++{
++   return db_path;
++}
++
+ void config_t::set_dns_db_path(const char *path)
+ {
+    // ignore if empty path
+@@ -1614,7 +1619,7 @@ int config_t::get_utc_offset(const tstamp_t& tstamp, tm_ranges_t::iterator& dst_
+   /* Original webalizer uses a strange combination of automatically getting the
+    * non-DST offset between system local time and UTC and "manually" configured
+    * DST tables, which also make the webalizer history databases invalid.
+-   * We prefer that a change of the timezone is directly reflected 
++   * We prefer that a change of the timezone is directly reflected
+    */
+ #if 0
+    if(dst_offset && dst_ranges.is_in_range(tstamp, dst_iter))
+diff --git a/src/config.h b/src/config.h
+index dc77811..3779615 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -383,6 +383,7 @@ class config_t {
+       bool is_secure_url(u_char urltype) const;
+ 
+       string_t get_db_path(void) const;
++      string_t get_db_path_base(void) const;
+ 
+       bool is_default_db(void) const;
+ 
+diff --git a/src/database.cpp b/src/database.cpp
+index 77dc2f9..d8d0ae9 100755
+--- a/src/database.cpp
++++ b/src/database.cpp
+@@ -35,22 +35,22 @@
+ 
+ database_t::database_t(const ::config_t& config) : berkeleydb_t(db_config_t(config)),
+       config(config),
+-      urls(make_table()),
+-      hosts(make_table()),
+-      visits(make_table()),
+-      downloads(make_table()),
+-      active_downloads(make_table()),
+-      agents(make_table()),
+-      referrers(make_table()),
+-      search(make_table()),
+-      users(make_table()),
+-      errors(make_table()),
+-      scodes(make_table()),
+-      daily(make_table()),
+-      hourly(make_table()),
+-      totals(make_table()),
+-      countries(make_table()),
+-      system(make_table())
++      urls(make_table(string_t("urls"))),
++      hosts(make_table(string_t("hosts"))),
++      visits(make_table(string_t("visits.active"))),
++      downloads(make_table(string_t("downloads"))),
++      active_downloads(make_table(string_t("downloads.active"))),
++      agents(make_table(string_t("agents"))),
++      referrers(make_table(string_t("referrers"))),
++      search(make_table(string_t("search"))),
++      users(make_table(string_t("users"))),
++      errors(make_table(string_t("errors"))),
++      scodes(make_table(string_t("statuscodes"))),
++      daily(make_table(string_t("totals.daily"))),
++      hourly(make_table(string_t("totals.hourly"))),
++      totals(make_table(string_t("totals"))),
++      countries(make_table(string_t("countries"))),
++      system(make_table(string_t("system")))
+ {
+    // initialize the array to hold table pointers
+    add_table(urls);
+@@ -80,6 +80,10 @@ bool database_t::attach_indexes(bool rebuild)
+    //
+    // urls
+    //
++
++   if(urls.open_sequence("urls.seq", config.db_seq_cache_size))
++      return false;
++
+    if(urls.associate("urls.hits", sc_extract_cb<unode_t::s_field_hits>, rebuild))
+       return false;
+ 
+@@ -101,6 +105,9 @@ bool database_t::attach_indexes(bool rebuild)
+    //
+    // hosts
+    //
++   if(hosts.open_sequence("hosts.seq", config.db_seq_cache_size))
++         return false;
++
+    if(hosts.associate("hosts.hits", sc_extract_cb<hnode_t::s_field_hits>, rebuild))
+       return false;
+ 
+@@ -116,12 +123,18 @@ bool database_t::attach_indexes(bool rebuild)
+    // 
+    // downloads
+    // 
++   if(downloads.open_sequence("downloads.seq", config.db_seq_cache_size))
++            return false;
++
+    if(downloads.associate("downloads.xfer", sc_extract_cb<dlnode_t::s_field_xfer>, rebuild))
+       return false;
+ 
+    //
+    // agents
+    //
++   if(agents.open_sequence("agents.seq", config.db_seq_cache_size))
++         return false;
++
+    if(agents.associate("agents.hits", sc_extract_cb<anode_t::s_field_hits>, rebuild))
+       return false;
+ 
+@@ -134,6 +147,9 @@ bool database_t::attach_indexes(bool rebuild)
+    //
+    // referrers
+    //
++   if(referrers.open_sequence("referrers.seq", config.db_seq_cache_size))
++           return false;
++
+    if(referrers.associate("referrers.hits", sc_extract_cb<rnode_t::s_field_hits>, rebuild))
+       return false;
+ 
+@@ -143,12 +159,18 @@ bool database_t::attach_indexes(bool rebuild)
+    //
+    // search strings
+    //
++   if(search.open_sequence("search.seq", config.db_seq_cache_size))
++              return false;
++
+    if(search.associate("search.hits", sc_extract_cb<snode_t::s_field_hits>, rebuild))
+       return false;
+ 
+    //
+    // users
+    //
++   if(users.open_sequence("users.seq", config.db_seq_cache_size))
++                 return false;
++
+    if(users.associate("users.hits", sc_extract_cb<inode_t::s_field_hits>, rebuild))
+       return false;
+ 
+@@ -158,6 +180,9 @@ bool database_t::attach_indexes(bool rebuild)
+    //
+    // errors
+    //
++   if(errors.open_sequence("errors.seq", config.db_seq_cache_size))
++                   return false;
++
+    if(errors.associate("errors.hits", sc_extract_cb<rcnode_t::s_field_hits>, rebuild))
+       return false;
+ 
+@@ -176,8 +201,7 @@ bool database_t::open(void)
+    //
+    // system
+    //
+-   if(system.open(config.get_db_path(), "system", bt_compare_cb<sysnode_t::s_compare_key>))
+-      return false;
++   system.open(config.get_db_path(), "system", bt_compare_cb<sysnode_t::s_compare_key>);
+ 
+    //
+    // urls
+@@ -192,22 +216,22 @@ bool database_t::open(void)
+ 
+    urls.set_values_db("urls.values");
+ 
+-   if(urls.associate(config.get_db_path(), "urls.hits", bt_compare_cb<unode_t::s_compare_hits>, bt_compare_cb<unode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<unode_t::s_field_hits>) : NULL))
++   if(urls.associate(config.get_db_path(), "urls.hits", bt_compare_cb<unode_t::s_compare_hits>, bt_compare_cb<unode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<unode_t::s_field_hits>)))
+       return false;
+ 
+-   if(urls.associate(config.get_db_path(), "urls.xfer", bt_compare_cb<unode_t::s_compare_xfer>, bt_compare_cb<unode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<unode_t::s_field_xfer>) : NULL))
++   if(urls.associate(config.get_db_path(), "urls.xfer", bt_compare_cb<unode_t::s_compare_xfer>, bt_compare_cb<unode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<unode_t::s_field_xfer>)))
+       return false;
+ 
+-   if(urls.associate(config.get_db_path(), "urls.entry", bt_compare_cb<unode_t::s_compare_entry>, bt_compare_cb<unode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<unode_t::s_field_entry>) : NULL))
++   if(urls.associate(config.get_db_path(), "urls.entry", bt_compare_cb<unode_t::s_compare_entry>, bt_compare_cb<unode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<unode_t::s_field_entry>)))
+       return false;
+ 
+-   if(urls.associate(config.get_db_path(), "urls.exit", bt_compare_cb<unode_t::s_compare_exit>, bt_compare_cb<unode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<unode_t::s_field_exit>) : NULL))
++   if(urls.associate(config.get_db_path(), "urls.exit", bt_compare_cb<unode_t::s_compare_exit>, bt_compare_cb<unode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<unode_t::s_field_exit>)))
+       return false;
+ 
+-   if(urls.associate(config.get_db_path(), "urls.groups.hits", bt_compare_cb<unode_t::s_compare_hits>, bt_compare_cb<unode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__((sc_extract_group_cb<unode_t, unode_t::s_field_hits>)) : NULL))
++   if(urls.associate(config.get_db_path(), "urls.groups.hits", bt_compare_cb<unode_t::s_compare_hits>, bt_compare_cb<unode_t::s_compare_key>, __gcc_bug11407__((sc_extract_group_cb<unode_t, unode_t::s_field_hits>))))
+       return false;
+ 
+-   if(urls.associate(config.get_db_path(), "urls.groups.xfer", bt_compare_cb<unode_t::s_compare_xfer>, bt_compare_cb<unode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__((sc_extract_group_cb<unode_t, unode_t::s_field_xfer>)) : NULL))
++   if(urls.associate(config.get_db_path(), "urls.groups.xfer", bt_compare_cb<unode_t::s_compare_xfer>, bt_compare_cb<unode_t::s_compare_key>, __gcc_bug11407__((sc_extract_group_cb<unode_t, unode_t::s_field_xfer>))))
+       return false;
+ 
+    if(urls.open(config.get_db_path(), "urls", bt_compare_cb<unode_t::s_compare_key>))
+@@ -226,16 +250,16 @@ bool database_t::open(void)
+ 
+    hosts.set_values_db("hosts.values");
+ 
+-   if(hosts.associate(config.get_db_path(), "hosts.hits", bt_compare_cb<hnode_t::s_compare_hits>, bt_compare_cb<hnode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<hnode_t::s_field_hits>) : NULL))
++   if(hosts.associate(config.get_db_path(), "hosts.hits", bt_compare_cb<hnode_t::s_compare_hits>, bt_compare_cb<hnode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<hnode_t::s_field_hits>)))
+       return false;
+ 
+-   if(hosts.associate(config.get_db_path(), "hosts.xfer", bt_compare_cb<hnode_t::s_compare_xfer>, bt_compare_cb<hnode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<hnode_t::s_field_xfer>) : NULL))
++   if(hosts.associate(config.get_db_path(), "hosts.xfer", bt_compare_cb<hnode_t::s_compare_xfer>, bt_compare_cb<hnode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<hnode_t::s_field_xfer>)))
+       return false;
+ 
+-   if(hosts.associate(config.get_db_path(), "hosts.groups.hits", bt_compare_cb<hnode_t::s_compare_hits>, bt_compare_cb<hnode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__((sc_extract_group_cb<hnode_t, hnode_t::s_field_hits>)) : NULL))
++   if(hosts.associate(config.get_db_path(), "hosts.groups.hits", bt_compare_cb<hnode_t::s_compare_hits>, bt_compare_cb<hnode_t::s_compare_key>,  __gcc_bug11407__((sc_extract_group_cb<hnode_t, hnode_t::s_field_hits>))))
+       return false;
+ 
+-   if(hosts.associate(config.get_db_path(), "hosts.groups.xfer", bt_compare_cb<hnode_t::s_compare_xfer>, bt_compare_cb<hnode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__((sc_extract_group_cb<hnode_t, hnode_t::s_field_xfer>)) : NULL))
++   if(hosts.associate(config.get_db_path(), "hosts.groups.xfer", bt_compare_cb<hnode_t::s_compare_xfer>, bt_compare_cb<hnode_t::s_compare_key>, __gcc_bug11407__((sc_extract_group_cb<hnode_t, hnode_t::s_field_xfer>))))
+       return false;
+ 
+    if(hosts.open(config.get_db_path(), "hosts", bt_compare_cb<hnode_t::s_compare_key>))
+@@ -260,7 +284,7 @@ bool database_t::open(void)
+ 
+    downloads.set_values_db("downloads.values");
+ 
+-   if(downloads.associate(config.get_db_path(), "downloads.xfer", bt_compare_cb<dlnode_t::s_compare_xfer>, bt_compare_cb<dlnode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<dlnode_t::s_field_xfer>) : NULL))
++   if(downloads.associate(config.get_db_path(), "downloads.xfer", bt_compare_cb<dlnode_t::s_compare_xfer>, bt_compare_cb<dlnode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<dlnode_t::s_field_xfer>)))
+       return false;
+ 
+    if(downloads.open(config.get_db_path(), "downloads", bt_compare_cb<dlnode_t::s_compare_key>))
+@@ -285,13 +309,13 @@ bool database_t::open(void)
+ 
+    agents.set_values_db("agents.values");
+ 
+-   if(agents.associate(config.get_db_path(), "agents.hits", bt_compare_cb<anode_t::s_compare_hits>, bt_compare_cb<anode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<anode_t::s_field_hits>) : NULL))
++   if(agents.associate(config.get_db_path(), "agents.hits", bt_compare_cb<anode_t::s_compare_hits>, bt_compare_cb<anode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<anode_t::s_field_hits>)))
+       return false;
+ 
+-   if(agents.associate(config.get_db_path(), "agents.visits", bt_compare_cb<anode_t::s_compare_visits>, bt_compare_cb<anode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<anode_t::s_field_visits>) : NULL))
++   if(agents.associate(config.get_db_path(), "agents.visits", bt_compare_cb<anode_t::s_compare_visits>, bt_compare_cb<anode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<anode_t::s_field_visits>)))
+       return false;
+ 
+-   if(agents.associate(config.get_db_path(), "agents.groups.visits", bt_compare_cb<anode_t::s_compare_hits>, bt_compare_cb<anode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__((sc_extract_group_cb<anode_t, anode_t::s_field_visits>)) : NULL))
++   if(agents.associate(config.get_db_path(), "agents.groups.visits", bt_compare_cb<anode_t::s_compare_hits>, bt_compare_cb<anode_t::s_compare_key>, __gcc_bug11407__((sc_extract_group_cb<anode_t, anode_t::s_field_visits>))))
+       return false;
+ 
+    if(agents.open(config.get_db_path(), "agents", bt_compare_cb<anode_t::s_compare_key>))
+@@ -310,10 +334,10 @@ bool database_t::open(void)
+ 
+    referrers.set_values_db("referrers.values");
+ 
+-   if(referrers.associate(config.get_db_path(), "referrers.hits", bt_compare_cb<rnode_t::s_compare_hits>, bt_compare_cb<rnode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<rnode_t::s_field_hits>) : NULL))
++   if(referrers.associate(config.get_db_path(), "referrers.hits", bt_compare_cb<rnode_t::s_compare_hits>, bt_compare_cb<rnode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<rnode_t::s_field_hits>)))
+       return false;
+ 
+-   if(referrers.associate(config.get_db_path(), "referrers.groups.hits", bt_compare_cb<rnode_t::s_compare_hits>, bt_compare_cb<rnode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__((sc_extract_group_cb<rnode_t, rnode_t::s_field_hits>)) : NULL))
++   if(referrers.associate(config.get_db_path(), "referrers.groups.hits", bt_compare_cb<rnode_t::s_compare_hits>, bt_compare_cb<rnode_t::s_compare_key>,  __gcc_bug11407__((sc_extract_group_cb<rnode_t, rnode_t::s_field_hits>))))
+       return false;
+ 
+    if(referrers.open(config.get_db_path(), "referrers", bt_compare_cb<rnode_t::s_compare_key>))
+@@ -332,7 +356,7 @@ bool database_t::open(void)
+ 
+    search.set_values_db("search.values");
+ 
+-   if(search.associate(config.get_db_path(), "search.hits", bt_compare_cb<snode_t::s_compare_hits>, bt_compare_cb<snode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<snode_t::s_field_hits>) : NULL))
++   if(search.associate(config.get_db_path(), "search.hits", bt_compare_cb<snode_t::s_compare_hits>, bt_compare_cb<snode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<snode_t::s_field_hits>)))
+       return false;
+ 
+    if(search.open(config.get_db_path(), "search", bt_compare_cb<snode_t::s_compare_key>))
+@@ -351,10 +375,10 @@ bool database_t::open(void)
+ 
+    users.set_values_db("users.values");
+ 
+-   if(users.associate(config.get_db_path(), "users.hits", bt_compare_cb<inode_t::s_compare_hits>, bt_compare_cb<inode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<inode_t::s_field_hits>) : NULL))
++   if(users.associate(config.get_db_path(), "users.hits", bt_compare_cb<inode_t::s_compare_hits>, bt_compare_cb<inode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<inode_t::s_field_hits>)))
+       return false;
+ 
+-   if(users.associate(config.get_db_path(), "users.groups.hits", bt_compare_cb<inode_t::s_compare_hits>, bt_compare_cb<inode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__((sc_extract_group_cb<inode_t, inode_t::s_field_hits>)) : NULL))
++   if(users.associate(config.get_db_path(), "users.groups.hits", bt_compare_cb<inode_t::s_compare_hits>, bt_compare_cb<inode_t::s_compare_key>, __gcc_bug11407__((sc_extract_group_cb<inode_t, inode_t::s_field_hits>))))
+       return false;
+ 
+    if(users.open(config.get_db_path(), "users", bt_compare_cb<inode_t::s_compare_key>))
+@@ -373,7 +397,7 @@ bool database_t::open(void)
+ 
+    errors.set_values_db("errors.values");
+ 
+-   if(errors.associate(config.get_db_path(), "errors.hits", bt_compare_cb<rcnode_t::s_compare_hits>, bt_compare_cb<rcnode_t::s_compare_key>, get_readonly() ? __gcc_bug11407__(sc_extract_cb<rcnode_t::s_field_hits>) : NULL))
++   if(errors.associate(config.get_db_path(), "errors.hits", bt_compare_cb<rcnode_t::s_compare_hits>, bt_compare_cb<rcnode_t::s_compare_key>, __gcc_bug11407__(sc_extract_cb<rcnode_t::s_field_hits>)))
+       return false;
+ 
+    if(errors.open(config.get_db_path(), "errors", bt_compare_cb<rcnode_t::s_compare_key>))
+@@ -416,7 +440,7 @@ bool database_t::open(void)
+ bool database_t::rollover(const tstamp_t& tstamp)
+ {
+    u_int seqnum = 1;
+-   string_t path, curpath, newpath;
++   string_t path, curpath;
+ 
+    // rollover is only called for the default database
+    if(!config.is_default_db())
+@@ -429,17 +453,13 @@ bool database_t::rollover(const tstamp_t& tstamp)
+    // make the initial part of the path
+    path = make_path(config.db_path, config.db_fname);
+ 
+-   // create a file name with a year/month sequence (e.g. webalizer_200706.db)
++   // create current database name
+    curpath.format("%s.%s", path.c_str(), config.db_fname_ext.c_str());
+-   newpath.format("%s_%04d%02d.%s", path.c_str(), tstamp.year, tstamp.month, config.db_fname_ext.c_str());
+-
+-   // if the file exists, increment the sequence number until a unique name is found
+-   while(!access(newpath, F_OK))
+-      newpath.format("%s_%04d%02d_%d.%s", path.c_str(), tstamp.year, tstamp.month, seqnum++, config.db_fname_ext.c_str());
+ 
+-   // rename the file
+-   if(rename(curpath, newpath))
+-      return false;
++   // delete database from previous month, do not store unnecessary databases
++   if (unlink(curpath.c_str())) {
++     return false;
++   }
+ 
+    // and reopen the database
+    return open();
+@@ -743,29 +763,29 @@ bool database_t::get_sysnode_by_id(sysnode_t& sysnode, sysnode_t::s_unpack_cb_t
+ #include "berkeleydb_tmpl.cpp"
+ 
+ // keynode_t
+-template int bt_compare_cb<keynode_t<uint64_t>::s_compare_key>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<keynode_t<uint64_t>::s_compare_key>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<keynode_t<u_int>::s_compare_key>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<keynode_t<u_int>::s_compare_key>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++template int bt_compare_cb<keynode_t<uint64_t>::s_compare_key>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<keynode_t<uint64_t>::s_compare_key>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<keynode_t<u_int>::s_compare_key>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<keynode_t<u_int>::s_compare_key>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+ // URLs
+-template int bt_compare_cb<unode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<unode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<unode_t::s_compare_xfer>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<unode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<unode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<unode_t::s_compare_xfer>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<unode_t::s_compare_entry>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<unode_t::s_compare_exit>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-
+-template int sc_extract_cb<unode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<unode_t::s_field_xfer>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<unode_t::s_field_entry>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<unode_t::s_field_exit>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<unode_t::s_field_value_hash>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_group_cb<unode_t, unode_t::s_field_value_hash>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_group_cb<unode_t, unode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_group_cb<unode_t, unode_t::s_field_xfer>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++template int bt_compare_cb<unode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<unode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<unode_t::s_compare_xfer>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<unode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<unode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<unode_t::s_compare_xfer>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<unode_t::s_compare_entry>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<unode_t::s_compare_exit>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++
++template int sc_extract_cb<unode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<unode_t::s_field_xfer>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<unode_t::s_field_entry>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<unode_t::s_field_exit>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<unode_t::s_field_value_hash>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_group_cb<unode_t, unode_t::s_field_value_hash>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_group_cb<unode_t, unode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_group_cb<unode_t, unode_t::s_field_xfer>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ template class berkeleydb_t::iterator_base<unode_t>;
+ template class berkeleydb_t::iterator<unode_t>;
+@@ -779,18 +799,18 @@ template berkeleydb_t::iterator<unode_t> berkeleydb_t::table_t::begin<unode_t>(c
+ template berkeleydb_t::reverse_iterator<unode_t> berkeleydb_t::table_t::rbegin<unode_t>(const char *dbname) const;
+ 
+ // hosts
+-template int bt_compare_cb<hnode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<hnode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<hnode_t::s_compare_xfer>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<hnode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<hnode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<hnode_t::s_compare_xfer>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-
+-template int sc_extract_cb<hnode_t::s_field_value_hash>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<hnode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<hnode_t::s_field_xfer>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_group_cb<hnode_t, hnode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_group_cb<hnode_t, hnode_t::s_field_xfer>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++template int bt_compare_cb<hnode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<hnode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<hnode_t::s_compare_xfer>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<hnode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<hnode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<hnode_t::s_compare_xfer>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++
++template int sc_extract_cb<hnode_t::s_field_value_hash>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<hnode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<hnode_t::s_field_xfer>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_group_cb<hnode_t, hnode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_group_cb<hnode_t, hnode_t::s_field_xfer>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ template class berkeleydb_t::iterator_base<hnode_t>;
+ template class berkeleydb_t::iterator<hnode_t>;
+@@ -813,14 +833,14 @@ template class berkeleydb_t::iterator_base<vnode_t>;
+ template class berkeleydb_t::iterator<vnode_t>;
+ 
+ // downloads
+-template int bt_compare_cb<dlnode_t::s_compare_xfer>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<dlnode_t::s_compare_xfer>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++template int bt_compare_cb<dlnode_t::s_compare_xfer>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<dlnode_t::s_compare_xfer>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+-template int bt_compare_cb<dlnode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<dlnode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++template int bt_compare_cb<dlnode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<dlnode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+-template int sc_extract_cb<dlnode_t::s_field_value_hash>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<dlnode_t::s_field_xfer>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++template int sc_extract_cb<dlnode_t::s_field_value_hash>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<dlnode_t::s_field_xfer>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ template bool berkeleydb_t::table_t::put_node<dlnode_t>(const dlnode_t& hnode);
+ template bool berkeleydb_t::table_t::get_node_by_id<dlnode_t>(dlnode_t& node, dlnode_t::s_unpack_cb_t upcb = NULL, void *arg = NULL) const;
+@@ -843,18 +863,18 @@ template class berkeleydb_t::iterator_base<danode_t>;
+ template class berkeleydb_t::iterator<danode_t>;
+ 
+ // user agents
+-template int bt_compare_cb<anode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<anode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<anode_t::s_compare_visits>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *iocp);
+-template int bt_compare_cb<anode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<anode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<anode_t::s_compare_visits>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-
+-template int sc_extract_cb<anode_t::s_field_value_hash>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<anode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<anode_t::s_field_visits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_group_cb<anode_t, anode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_group_cb<anode_t, anode_t::s_field_visits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++template int bt_compare_cb<anode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<anode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<anode_t::s_compare_visits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *iocp);
++template int bt_compare_cb<anode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<anode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<anode_t::s_compare_visits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++
++template int sc_extract_cb<anode_t::s_field_value_hash>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<anode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<anode_t::s_field_visits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_group_cb<anode_t, anode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_group_cb<anode_t, anode_t::s_field_visits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ template class berkeleydb_t::iterator_base<anode_t>;
+ template class berkeleydb_t::iterator<anode_t>;
+@@ -868,14 +888,14 @@ template berkeleydb_t::iterator<anode_t> berkeleydb_t::table_t::begin<anode_t>(c
+ template berkeleydb_t::reverse_iterator<anode_t> berkeleydb_t::table_t::rbegin<anode_t>(const char *dbname) const;
+ 
+ // referrers
+-template int bt_compare_cb<rnode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<rnode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<rnode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<rnode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++template int bt_compare_cb<rnode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<rnode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<rnode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<rnode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+-template int sc_extract_cb<rnode_t::s_field_value_hash>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<rnode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_group_cb<rnode_t, rnode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++template int sc_extract_cb<rnode_t::s_field_value_hash>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<rnode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_group_cb<rnode_t, rnode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ template class berkeleydb_t::iterator_base<rnode_t>;
+ template class berkeleydb_t::iterator<rnode_t>;
+@@ -889,13 +909,13 @@ template berkeleydb_t::iterator<rnode_t> berkeleydb_t::table_t::begin<rnode_t>(c
+ template berkeleydb_t::reverse_iterator<rnode_t> berkeleydb_t::table_t::rbegin<rnode_t>(const char *dbname) const;
+ 
+ // search strings
+-template int bt_compare_cb<snode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<snode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<snode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<snode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++template int bt_compare_cb<snode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<snode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<snode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<snode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+-template int sc_extract_cb<snode_t::s_field_value_hash>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<snode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++template int sc_extract_cb<snode_t::s_field_value_hash>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<snode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ template class berkeleydb_t::iterator_base<snode_t>;
+ template class berkeleydb_t::iterator<snode_t>;
+@@ -909,14 +929,14 @@ template berkeleydb_t::iterator<snode_t> berkeleydb_t::table_t::begin<snode_t>(c
+ template berkeleydb_t::reverse_iterator<snode_t> berkeleydb_t::table_t::rbegin<snode_t>(const char *dbname) const;
+ 
+ // users
+-template int bt_compare_cb<inode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<inode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<inode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
+-template int bt_compare_cb<inode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++template int bt_compare_cb<inode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<inode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<inode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
++template int bt_compare_cb<inode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+-template int sc_extract_cb<inode_t::s_field_value_hash>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<inode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_group_cb<inode_t, inode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++template int sc_extract_cb<inode_t::s_field_value_hash>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<inode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_group_cb<inode_t, inode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ template class berkeleydb_t::iterator_base<inode_t>;
+ template class berkeleydb_t::iterator<inode_t>;
+@@ -930,14 +950,14 @@ template berkeleydb_t::iterator<inode_t> berkeleydb_t::table_t::begin<inode_t>(c
+ template berkeleydb_t::reverse_iterator<inode_t> berkeleydb_t::table_t::rbegin<inode_t>(const char *dbname) const;
+ 
+ // errors
+-template int bt_compare_cb<rcnode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<rcnode_t::s_compare_hits>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++template int bt_compare_cb<rcnode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<rcnode_t::s_compare_hits>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+-template int bt_compare_cb<rcnode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2, size_t *locp);
+-template int bt_compare_cb<rcnode_t::s_compare_value_hash>(Db *db, const Dbt *dbt1, const Dbt *dbt2);
++template int bt_compare_cb<rcnode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2, size_t *locp);
++template int bt_compare_cb<rcnode_t::s_compare_value_hash>(lmdb::dbi *db, const lmdb::val *dbt1, const lmdb::val *dbt2);
+ 
+-template int sc_extract_cb<rcnode_t::s_field_value_hash>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
+-template int sc_extract_cb<rcnode_t::s_field_hits>(Db *secondary, const Dbt *key, const Dbt *data, Dbt *result);
++template int sc_extract_cb<rcnode_t::s_field_value_hash>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
++template int sc_extract_cb<rcnode_t::s_field_hits>(lmdb::dbi *secondary, const lmdb::val *key, const lmdb::val *data, lmdb::val *result);
+ 
+ template bool berkeleydb_t::table_t::put_node<rcnode_t>(const rcnode_t& node);
+ template bool berkeleydb_t::table_t::get_node_by_id<rcnode_t>(rcnode_t& node, rcnode_t::s_unpack_cb_t upcb = NULL, void *arg = NULL) const;
+diff --git a/src/database.h b/src/database.h
+index d8f0939..8d4db4f 100644
+--- a/src/database.h
++++ b/src/database.h
+@@ -30,9 +30,10 @@ class database_t : public berkeleydb_t {
+          private:
+             const ::config_t& config;
+             string_t          db_path;
++            string_t          db_path_base;
+ 
+          public:
+-            db_config_t(const ::config_t& config) : config(config), db_path(config.get_db_path()) {}
++            db_config_t(const ::config_t& config) : config(config), db_path(config.get_db_path()), db_path_base(config.get_db_path_base()) {}
+ 
+             const db_config_t& clone(void) const {return *new db_config_t(config);}
+ 
+@@ -40,6 +41,8 @@ class database_t : public berkeleydb_t {
+ 
+             const string_t& get_db_path(void) const {return db_path;}
+ 
++            const string_t& get_db_path_base(void) const {return db_path_base;}
++
+             const string_t& get_tmp_path(void) const {return config.db_path;}
+ 
+             const string_t& get_db_fname(void) const {return config.db_fname;}
+diff --git a/src/dns_resolv.cpp b/src/dns_resolv.cpp
+index 1b910b2..12d7431 100644
+--- a/src/dns_resolv.cpp
++++ b/src/dns_resolv.cpp
+@@ -377,7 +377,7 @@ dns_resolver_t::~dns_resolver_t(void)
+       wrk_ctxs.clear();
+ 
+       if(dns_db_env) {
+-         dns_db_env->close(0);
++         dns_db_env->close();
+          delete dns_db_env;
+       }
+ 
+@@ -612,7 +612,7 @@ bool dns_resolver_t::dns_init(void)
+ 
+    // open the DNS cache database
+    if(!config.dns_cache.isempty()) {
+-      dns_db_env = new DbEnv(0);
++      dns_db_env = new lmdb::env(lmdb::env::create(0));
+ 
+       //
+       // While it is possible to use a standalone Berkeley DB database without an 
+@@ -622,16 +622,19 @@ bool dns_resolver_t::dns_init(void)
+       // of this bug was that a small number of IP addresses would go through DNS 
+       // resolution again and again when more than one DNS handle was used concurrently. 
+       //
+-      u_int32_t dbenv_flags = DB_CREATE | DB_INIT_LOCK | DB_THREAD | DB_INIT_MPOOL | DB_PRIVATE;
++      u_int32_t dbenv_flags = MDB_NOSUBDIR;
++      dns_db_env->set_mapsize(512UL * 1024UL * 1024UL); /* 500MB */
++      dns_db_env->set_max_dbs(1);
+ 
+-      if(dns_db_env->open(config.dns_db_path, dbenv_flags, 0664)) {
++      if(dns_db_env->open(config.dns_cache.c_str(), dbenv_flags, 0664)) {
+          if (config.verbose) 
+             fprintf(stderr,"%s %s\n",lang_t::msg_dns_nodb, config.dns_cache.c_str());
+       }
+-      
++      txndb = new lmdb::txn(lmdb::txn::begin(dns_db_env->handle(), NULL, 0));
++
+       //
+-      // Open a database handle for each thread to work around a bug in Berkeley DB 
+-      // threaded Db handles. 
++      // Open a database handle for each thread to work around a bug in Berkeley DB
++      // threaded Db handles.
+       //
+       // Berkeley DB API reference describes that one Db handle can be used by multiple 
+       // threads if it is opened with the DB_THREAD flag, which worked for years in this 
+@@ -724,9 +727,13 @@ void dns_resolver_t::dns_clean_up(void)
+       }
+    }
+ 
++   if(txndb) {
++      delete txndb;
++      txndb = NULL;
++   }
+    // delete the BDB environment, if we have one
+    if(dns_db_env) {
+-      dns_db_env->close(0);
++      dns_db_env->close();
+       delete dns_db_env;
+       dns_db_env = NULL;
+    }
+@@ -820,7 +827,7 @@ void dns_resolver_t::dns_abort(void)
+ // Picks the next available IP address to resolve and calls resolve_domain_name.
+ // Returns true if any work was done (even unsuccessful), false otherwise.
+ //
+-bool dns_resolver_t::process_node(Db *dns_db, void *buffer, size_t bufsize)
++bool dns_resolver_t::process_node(lmdb::dbi *dns_db, void *buffer, size_t bufsize)
+ {
+    bool cached = false, lookup = false;
+    dnode_t* nptr;
+@@ -1052,38 +1059,29 @@ bool dns_resolver_t::dns_derive_ccode(const string_t& name, string_t& ccode)
+ // function will not check whether the entry is stale or not (may be 
+ // used for subsequent searches to avoid unnecessary DNS lookups).
+ //
+-bool dns_resolver_t::dns_db_get(dnode_t* dnode, Db *dns_db, bool nocheck, void *buffer, size_t bufsize)
++bool dns_resolver_t::dns_db_get(dnode_t* dnode, lmdb::dbi *dns_db, bool nocheck, void *buffer, size_t bufsize)
+ {
+    bool retval = false;
+    int dberror;
+-   Dbt key, recdata;
++   lmdb::val key, recdata;
+    dns_db_record_t dnsrec;
+ 
+    /* ensure we have a dns db */
+-   if (!dns_db || !dnode) 
++   if (!dns_db || !dnode)
+       return false;
+ 
+-   memset(&key, 0, sizeof(key));
+-   memset(&recdata, 0, sizeof(recdata));
+-
+-   key.set_data((void*) dnode->hnode->string.c_str());
+-   key.set_size((u_int32_t) dnode->hnode->string.length());
+-
+-   // point the record to the internal buffer
+-   recdata.set_flags(DB_DBT_USERMEM);
+-   recdata.set_ulen((u_int32_t) bufsize);
+-   recdata.set_data(buffer);
++   key.assign((void*) dnode->hnode->string.c_str(), (u_int32_t) dnode->hnode->string.length());
+ 
+    if (config.debug_mode) fprintf(stderr,"[%04x] Checking DNS cache for %s...\n", thread_id(), dnode->hnode->string.c_str());
+ 
+-   switch((dberror = dns_db->get(NULL, &key, &recdata, 0)))
++   switch((dberror = dns_db->get(txndb->handle(), key, recdata)))
+    {
+-      case  DB_NOTFOUND: 
++      case  0:
+          if (config.debug_mode) 
+             fprintf(stderr,"[%04x] ... not found\n", thread_id());
+          break;
+-      case  0:
+-         if(dnsrec.s_unpack_data(recdata.get_data(), recdata.get_size()) == recdata.get_size()) {
++      case  1:
++         if(dnsrec.s_unpack_data(recdata.data(), recdata.size()) == recdata.size()) {
+             if(nocheck || runtime.elapsed(dnsrec.tstamp) <= dns_cache_ttl) {
+                dnode->hostname = dnsrec.hostname;
+                dnode->ccode.assign(dnsrec.ccode, hnode_t::ccode_size);
+@@ -1101,7 +1099,7 @@ bool dns_resolver_t::dns_db_get(dnode_t* dnode, Db *dns_db, bool nocheck, void *
+ 
+       default: 
+          if (config.debug_mode) 
+-            fprintf(stderr," error (%04x - %s)\n", dberror, db_strerror(dberror));
++            fprintf(stderr," error (%04x - %s)\n", dberror, mdb_strerror(dberror));
+          break;
+    }
+ 
+@@ -1112,9 +1110,9 @@ bool dns_resolver_t::dns_db_get(dnode_t* dnode, Db *dns_db, bool nocheck, void *
+ /* DB_PUT - put key/val in the cache db      */
+ /*********************************************/
+ 
+-void dns_resolver_t::dns_db_put(const dnode_t* dnode, Db *dns_db, void *buffer, size_t bufsize)
++void dns_resolver_t::dns_db_put(const dnode_t* dnode, lmdb::dbi *dns_db, void *buffer, size_t bufsize)
+ {
+-   Dbt k, v;
++   lmdb::val k, v;
+    size_t recSize;
+    int dberror;
+    dns_db_record_t dnsrec;
+@@ -1141,29 +1139,26 @@ void dns_resolver_t::dns_db_put(const dnode_t* dnode, Db *dns_db, void *buffer,
+    if(recSize == 0)
+       return;
+ 
+-   k.set_data((void*) dnode->key().c_str());
+-   k.set_size((u_int32_t) dnode->key().length());
+-
+-   v.set_data(buffer);
+-   v.set_size((u_int32_t) recSize);
++   k.assign((void*) dnode->key().c_str(), (u_int32_t) dnode->key().length());
++   v.assign(buffer, (u_int32_t) recSize);
+ 
+-   if((dberror = dns_db->put(NULL, &k, &v, 0)) < 0) {
++   if((dberror = dns_db->put(txndb->handle(), &k, &v, 0)) < 0) {
+       if(config.verbose)
+-         fprintf(stderr,"dns_db_put failed (%04x - %s)!\n", dberror, db_strerror(dberror));
++         fprintf(stderr,"dns_db_put failed (%04x - %s)!\n", dberror, mdb_strerror(dberror));
+    }
+ }
+ 
+-Db *dns_resolver_t::dns_db_open(const string_t& dns_cache)
++lmdb::dbi *dns_resolver_t::dns_db_open(const string_t& dns_cache)
+ {
+    struct stat  dbStat;
+    int major, minor, patch;
+-   Db *dns_db = NULL;
++   lmdb::dbi *dns_db = NULL;
+ 
+    /* double check filename was specified */
+    if(dns_cache.isempty())
+       return NULL; 
+ 
+-   db_version(&major, &minor, &patch);
++   mdb_version(&major, &minor, &patch);
+ 
+    if(major < 4 && minor < 3) {
+       if(config.verbose)
+@@ -1183,10 +1178,10 @@ Db *dns_resolver_t::dns_db_open(const string_t& dns_cache)
+       }
+    }
+   
+-   dns_db = new Db(dns_db_env, 0);
++   dns_db = new lmdb::dbi(lmdb::dbi::open(txndb->handle(), dns_cache, MDB_CREATE));
+ 
+    /* open cache file */
+-   if(dns_db->open(NULL, dns_cache, NULL, DB_HASH, DB_CREATE | DB_THREAD, 0664))
++   if(NULL == dns_db)
+    {
+       /* Error: Unable to open DNS cache file <filename> */
+       if (config.verbose) fprintf(stderr,"%s %s\n",lang_t::msg_dns_nodb, dns_cache.c_str());
+@@ -1200,12 +1195,12 @@ Db *dns_resolver_t::dns_db_open(const string_t& dns_cache)
+    return dns_db;
+ }
+ 
+-void dns_resolver_t::dns_db_close(Db *dns_db)
++void dns_resolver_t::dns_db_close(lmdb::dbi *dns_db)
+ {
+    if(dns_db) {
+-      dns_db->close(0);
+-
+-      delete dns_db;
++     dns_db->~dbi();
++     delete dns_db;
++     dns_db = NULL;
+    }
+ }
+ 
+diff --git a/src/dns_resolv.h b/src/dns_resolv.h
+index 4b94e0c..15f83d0 100644
+--- a/src/dns_resolv.h
++++ b/src/dns_resolv.h
+@@ -25,7 +25,7 @@
+ 
+ #include "hnode.h"
+ 
+-#include <db_cxx.h>
++#include "lmdb++.h"
+ 
+ #ifdef _WIN32
+ #include <winsock2.h>
+@@ -48,7 +48,7 @@ class dns_resolver_t {
+       // worker thread context
+       struct wrk_ctx_t {
+          dns_resolver_t&   dns_resolver;
+-         Db                *dns_db = NULL;
++         lmdb::dbi         *dns_db = NULL;
+          u_char            *buffer = NULL;
+          size_t            bufsize = 0;
+ 
+@@ -67,7 +67,9 @@ class dns_resolver_t {
+       MMDB_s mmdb;
+       MMDB_s *geoip_db;                      // GeoIP database
+ 
+-      DbEnv *dns_db_env;
++      lmdb::env *dns_db_env;
++      lmdb::txn *txndb;
++
+       std::vector<wrk_ctx_t> wrk_ctxs;       // DNS cache database
+ 
+       tstamp_t runtime;
+@@ -101,15 +103,15 @@ class dns_resolver_t {
+ 
+       bool geoip_get_ccode(const string_t& hostaddr, const sockaddr& ipaddr, string_t& ccode, string_t& city);
+ 
+-      bool dns_db_get(dnode_t *dnode, Db *dns_db, bool nocheck, void *buffer, size_t bufsize);
++      bool dns_db_get(dnode_t *dnode, lmdb::dbi *dns_db, bool nocheck, void *buffer, size_t bufsize);
+ 
+-      void dns_db_put(const dnode_t *dnode, Db *dns_db, void *buffer, size_t bufsize);
++      void dns_db_put(const dnode_t *dnode, lmdb::dbi *dns_db, void *buffer, size_t bufsize);
+ 
+-      Db *dns_db_open(const string_t& dns_cache);
++      lmdb::dbi *dns_db_open(const string_t& dns_cache);
+ 
+-      void dns_db_close(Db *dns_db);
++      void dns_db_close(lmdb::dbi *dns_db);
+ 
+-      bool process_node(Db *dns_db, void *buffer, size_t bufsize);
++      bool process_node(lmdb::dbi *dns_db, void *buffer, size_t bufsize);
+ 
+       void dns_worker_thread_proc(wrk_ctx_t& wrk_ctx);
+ 
+diff --git a/src/lmdb++.h b/src/lmdb++.h
+new file mode 100644
+index 0000000..39222a5
+--- /dev/null
++++ b/src/lmdb++.h
+@@ -0,0 +1,1947 @@
++/* This is free and unencumbered software released into the public domain. */
++
++#ifndef LMDBXX_H
++#define LMDBXX_H
++
++/**
++ * <lmdb++.h> - C++11 wrapper for LMDB.
++ *
++ * @author Arto Bendiken <arto@bendiken.net>
++ * @see https://sourceforge.net/projects/lmdbxx/
++ */
++
++#ifndef __cplusplus
++#error "<lmdb++.h> requires a C++ compiler"
++#endif
++
++#if __cplusplus < 201103L
++#if !defined(_MSC_VER) || _MSC_VER < 1900
++#error "<lmdb++.h> requires a C++11 compiler (CXXFLAGS='-std=c++11')"
++#endif // _MSC_VER check
++#endif
++
++////////////////////////////////////////////////////////////////////////////////
++
++#include <lmdb.h>      /* for MDB_*, mdb_*() */
++
++#ifdef LMDBXX_DEBUG
++#include <cassert>     /* for assert() */
++#endif
++#include <cstddef>     /* for std::size_t */
++#include <cstdio>      /* for std::snprintf() */
++#include <cstring>     /* for std::strlen() */
++#include <stdexcept>   /* for std::runtime_error */
++#include <string>      /* for std::string */
++#include <type_traits> /* for std::is_pod<> */
++
++namespace lmdb {
++  using mode = mdb_mode_t;
++}
++
++////////////////////////////////////////////////////////////////////////////////
++/* Error Handling */
++
++namespace lmdb {
++  class error;
++  class logic_error;
++  class fatal_error;
++  class runtime_error;
++  class key_exist_error;
++  class not_found_error;
++  class corrupted_error;
++  class panic_error;
++  class version_mismatch_error;
++  class map_full_error;
++  class bad_dbi_error;
++}
++
++/**
++ * Base class for LMDB exception conditions.
++ *
++ * @see http://symas.com/mdb/doc/group__errors.html
++ */
++class lmdb::error : public std::runtime_error {
++protected:
++  const int _code;
++
++public:
++  /**
++   * Throws an error based on the given LMDB return code.
++   */
++  [[noreturn]] static inline void raise(const char* origin, int rc);
++
++  /**
++   * Constructor.
++   */
++  error(const char* const origin,
++        const int rc) noexcept
++    : runtime_error{origin},
++      _code{rc} {}
++
++  /**
++   * Returns the underlying LMDB error code.
++   */
++  int code() const noexcept {
++    return _code;
++  }
++
++  /**
++   * Returns the origin of the LMDB error.
++   */
++  const char* origin() const noexcept {
++    return runtime_error::what();
++  }
++
++  /**
++   * Returns the underlying LMDB error code.
++   */
++  virtual const char* what() const noexcept {
++    static thread_local char buffer[1024];
++    std::snprintf(buffer, sizeof(buffer),
++      "%s: %s", origin(), ::mdb_strerror(code()));
++    return buffer;
++  }
++};
++
++/**
++ * Base class for logic error conditions.
++ */
++class lmdb::logic_error : public lmdb::error {
++public:
++  using error::error;
++};
++
++/**
++ * Base class for fatal error conditions.
++ */
++class lmdb::fatal_error : public lmdb::error {
++public:
++  using error::error;
++};
++
++/**
++ * Base class for runtime error conditions.
++ */
++class lmdb::runtime_error : public lmdb::error {
++public:
++  using error::error;
++};
++
++/**
++ * Exception class for `MDB_KEYEXIST` errors.
++ *
++ * @see http://symas.com/mdb/doc/group__errors.html#ga05dc5bbcc7da81a7345bd8676e8e0e3b
++ */
++class lmdb::key_exist_error final : public lmdb::runtime_error {
++public:
++  using runtime_error::runtime_error;
++};
++
++/**
++ * Exception class for `MDB_NOTFOUND` errors.
++ *
++ * @see http://symas.com/mdb/doc/group__errors.html#gabeb52e4c4be21b329e31c4add1b71926
++ */
++class lmdb::not_found_error final : public lmdb::runtime_error {
++public:
++  using runtime_error::runtime_error;
++};
++
++/**
++ * Exception class for `MDB_CORRUPTED` errors.
++ *
++ * @see http://symas.com/mdb/doc/group__errors.html#gaf8148bf1b85f58e264e57194bafb03ef
++ */
++class lmdb::corrupted_error final : public lmdb::fatal_error {
++public:
++  using fatal_error::fatal_error;
++};
++
++/**
++ * Exception class for `MDB_PANIC` errors.
++ *
++ * @see http://symas.com/mdb/doc/group__errors.html#gae37b9aedcb3767faba3de8c1cf6d3473
++ */
++class lmdb::panic_error final : public lmdb::fatal_error {
++public:
++  using fatal_error::fatal_error;
++};
++
++/**
++ * Exception class for `MDB_VERSION_MISMATCH` errors.
++ *
++ * @see http://symas.com/mdb/doc/group__errors.html#ga909b2db047fa90fb0d37a78f86a6f99b
++ */
++class lmdb::version_mismatch_error final : public lmdb::fatal_error {
++public:
++  using fatal_error::fatal_error;
++};
++
++/**
++ * Exception class for `MDB_MAP_FULL` errors.
++ *
++ * @see http://symas.com/mdb/doc/group__errors.html#ga0a83370402a060c9175100d4bbfb9f25
++ */
++class lmdb::map_full_error final : public lmdb::runtime_error {
++public:
++  using runtime_error::runtime_error;
++};
++
++/**
++ * Exception class for `MDB_BAD_DBI` errors.
++ *
++ * @since 0.9.14 (2014/09/20)
++ * @see http://symas.com/mdb/doc/group__errors.html#gab4c82e050391b60a18a5df08d22a7083
++ */
++class lmdb::bad_dbi_error final : public lmdb::runtime_error {
++public:
++  using runtime_error::runtime_error;
++};
++
++inline void
++lmdb::error::raise(const char* const origin,
++                   const int rc) {
++  switch (rc) {
++    case MDB_KEYEXIST:         throw key_exist_error{origin, rc};
++    case MDB_NOTFOUND:         throw not_found_error{origin, rc};
++    case MDB_CORRUPTED:        throw corrupted_error{origin, rc};
++    case MDB_PANIC:            throw panic_error{origin, rc};
++    case MDB_VERSION_MISMATCH: throw version_mismatch_error{origin, rc};
++    case MDB_MAP_FULL:         throw map_full_error{origin, rc};
++#ifdef MDB_BAD_DBI
++    case MDB_BAD_DBI:          throw bad_dbi_error{origin, rc};
++#endif
++    default:                   throw lmdb::runtime_error{origin, rc};
++  }
++}
++
++////////////////////////////////////////////////////////////////////////////////
++/* Procedural Interface: Metadata */
++
++namespace lmdb {
++  // TODO: mdb_version()
++  // TODO: mdb_strerror()
++}
++
++////////////////////////////////////////////////////////////////////////////////
++/* Procedural Interface: Environment */
++
++namespace lmdb {
++  static inline void env_create(MDB_env** env);
++  static inline void env_open(MDB_env* env,
++    const char* path, unsigned int flags, mode mode);
++#if MDB_VERSION_FULL >= MDB_VERINT(0, 9, 14)
++  static inline void env_copy(MDB_env* env, const char* path, unsigned int flags);
++  static inline void env_copy_fd(MDB_env* env, mdb_filehandle_t fd, unsigned int flags);
++#else
++  static inline void env_copy(MDB_env* env, const char* path);
++  static inline void env_copy_fd(MDB_env* env, mdb_filehandle_t fd);
++#endif
++  static inline void env_stat(MDB_env* env, MDB_stat* stat);
++  static inline void env_info(MDB_env* env, MDB_envinfo* stat);
++  static inline void env_sync(MDB_env* env, bool force);
++  static inline void env_close(MDB_env* env) noexcept;
++  static inline void env_set_flags(MDB_env* env, unsigned int flags, bool onoff);
++  static inline void env_get_flags(MDB_env* env, unsigned int* flags);
++  static inline void env_get_path(MDB_env* env, const char** path);
++  static inline void env_get_fd(MDB_env* env, mdb_filehandle_t* fd);
++  static inline void env_set_mapsize(MDB_env* env, std::size_t size);
++  static inline void env_set_max_readers(MDB_env* env, unsigned int count);
++  static inline void env_get_max_readers(MDB_env* env, unsigned int* count);
++  static inline void env_set_max_dbs(MDB_env* env, MDB_dbi count);
++  static inline unsigned int env_get_max_keysize(MDB_env* env);
++#if MDB_VERSION_FULL >= MDB_VERINT(0, 9, 11)
++  static inline void env_set_userctx(MDB_env* env, void* ctx);
++  static inline void* env_get_userctx(MDB_env* env);
++#endif
++  // TODO: mdb_env_set_assert()
++  // TODO: mdb_reader_list()
++  // TODO: mdb_reader_check()
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gaad6be3d8dcd4ea01f8df436f41d158d4
++ */
++static inline void
++lmdb::env_create(MDB_env** env) {
++  const int rc = ::mdb_env_create(env);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_create", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga32a193c6bf4d7d5c5d579e71f22e9340
++ */
++static inline void
++lmdb::env_open(MDB_env* const env,
++               const char* const path,
++               const unsigned int flags,
++               const mode mode) {
++  const int rc = ::mdb_env_open(env, path, flags, mode);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_open", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga3bf50d7793b36aaddf6b481a44e24244
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga5d51d6130325f7353db0955dbedbc378
++ */
++static inline void
++lmdb::env_copy(MDB_env* const env,
++#if MDB_VERSION_FULL >= MDB_VERINT(0, 9, 14)
++               const char* const path,
++               const unsigned int flags = 0) {
++  const int rc = ::mdb_env_copy2(env, path, flags);
++#else
++               const char* const path) {
++  const int rc = ::mdb_env_copy(env, path);
++#endif
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_copy2", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga5040d0de1f14000fa01fc0b522ff1f86
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga470b0bcc64ac417de5de5930f20b1a28
++ */
++static inline void
++lmdb::env_copy_fd(MDB_env* const env,
++#if MDB_VERSION_FULL >= MDB_VERINT(0, 9, 14)
++                 const mdb_filehandle_t fd,
++                 const unsigned int flags = 0) {
++  const int rc = ::mdb_env_copyfd2(env, fd, flags);
++#else
++                 const mdb_filehandle_t fd) {
++  const int rc = ::mdb_env_copyfd(env, fd);
++#endif
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_copyfd2", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gaf881dca452050efbd434cd16e4bae255
++ */
++static inline void
++lmdb::env_stat(MDB_env* const env,
++               MDB_stat* const stat) {
++  const int rc = ::mdb_env_stat(env, stat);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_stat", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga18769362c7e7d6cf91889a028a5c5947
++ */
++static inline void
++lmdb::env_info(MDB_env* const env,
++               MDB_envinfo* const stat) {
++  const int rc = ::mdb_env_info(env, stat);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_info", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga85e61f05aa68b520cc6c3b981dba5037
++ */
++static inline void
++lmdb::env_sync(MDB_env* const env,
++               const bool force = true) {
++  const int rc = ::mdb_env_sync(env, force);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_sync", rc);
++  }
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga4366c43ada8874588b6a62fbda2d1e95
++ */
++static inline void
++lmdb::env_close(MDB_env* const env) noexcept {
++  ::mdb_env_close(env);
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga83f66cf02bfd42119451e9468dc58445
++ */
++static inline void
++lmdb::env_set_flags(MDB_env* const env,
++                    const unsigned int flags,
++                    const bool onoff = true) {
++  const int rc = ::mdb_env_set_flags(env, flags, onoff ? 1 : 0);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_set_flags", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga2733aefc6f50beb49dd0c6eb19b067d9
++ */
++static inline void
++lmdb::env_get_flags(MDB_env* const env,
++                    unsigned int* const flags) {
++  const int rc = ::mdb_env_get_flags(env, flags);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_get_flags", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gac699fdd8c4f8013577cb933fb6a757fe
++ */
++static inline void
++lmdb::env_get_path(MDB_env* const env,
++                   const char** path) {
++  const int rc = ::mdb_env_get_path(env, path);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_get_path", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gaf1570e7c0e5a5d860fef1032cec7d5f2
++ */
++static inline void
++lmdb::env_get_fd(MDB_env* const env,
++                 mdb_filehandle_t* const fd) {
++  const int rc = ::mdb_env_get_fd(env, fd);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_get_fd", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5
++ */
++static inline void
++lmdb::env_set_mapsize(MDB_env* const env,
++                      const std::size_t size) {
++  const int rc = ::mdb_env_set_mapsize(env, size);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_set_mapsize", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gae687966c24b790630be2a41573fe40e2
++ */
++static inline void
++lmdb::env_set_max_readers(MDB_env* const env,
++                          const unsigned int count) {
++  const int rc = ::mdb_env_set_maxreaders(env, count);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_set_maxreaders", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga70e143cf11760d869f754c9c9956e6cc
++ */
++static inline void
++lmdb::env_get_max_readers(MDB_env* const env,
++                          unsigned int* const count) {
++  const int rc = ::mdb_env_get_maxreaders(env, count);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_get_maxreaders", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gaa2fc2f1f37cb1115e733b62cab2fcdbc
++ */
++static inline void
++lmdb::env_set_max_dbs(MDB_env* const env,
++                      const MDB_dbi count) {
++  const int rc = ::mdb_env_set_maxdbs(env, count);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_set_maxdbs", rc);
++  }
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#gaaf0be004f33828bf2fb09d77eb3cef94
++ */
++static inline unsigned int
++lmdb::env_get_max_keysize(MDB_env* const env) {
++  const int rc = ::mdb_env_get_maxkeysize(env);
++#ifdef LMDBXX_DEBUG
++  assert(rc >= 0);
++#endif
++  return static_cast<unsigned int>(rc);
++}
++
++#if MDB_VERSION_FULL >= MDB_VERINT(0, 9, 11)
++/**
++ * @throws lmdb::error on failure
++ * @since 0.9.11 (2014/01/15)
++ * @see http://symas.com/mdb/doc/group__mdb.html#gaf2fe09eb9c96eeb915a76bf713eecc46
++ */
++static inline void
++lmdb::env_set_userctx(MDB_env* const env,
++                      void* const ctx) {
++  const int rc = ::mdb_env_set_userctx(env, ctx);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_env_set_userctx", rc);
++  }
++}
++#endif
++
++#if MDB_VERSION_FULL >= MDB_VERINT(0, 9, 11)
++/**
++ * @since 0.9.11 (2014/01/15)
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga45df6a4fb150cda2316b5ae224ba52f1
++ */
++static inline void*
++lmdb::env_get_userctx(MDB_env* const env) {
++  return ::mdb_env_get_userctx(env);
++}
++#endif
++
++////////////////////////////////////////////////////////////////////////////////
++/* Procedural Interface: Transactions */
++
++namespace lmdb {
++  static inline void txn_begin(
++    MDB_env* env, MDB_txn* parent, unsigned int flags, MDB_txn** txn);
++  static inline MDB_env* txn_env(MDB_txn* txn) noexcept;
++#ifdef LMDBXX_TXN_ID
++  static inline std::size_t txn_id(MDB_txn* txn) noexcept;
++#endif
++  static inline void txn_commit(MDB_txn* txn);
++  static inline void txn_abort(MDB_txn* txn) noexcept;
++  static inline void txn_reset(MDB_txn* txn) noexcept;
++  static inline void txn_renew(MDB_txn* txn);
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gad7ea55da06b77513609efebd44b26920
++ */
++static inline void
++lmdb::txn_begin(MDB_env* const env,
++                MDB_txn* const parent,
++                const unsigned int flags,
++                MDB_txn** txn) {
++  const int rc = ::mdb_txn_begin(env, parent, flags, txn);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_txn_begin", rc);
++  }
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#gaeb17735b8aaa2938a78a45cab85c06a0
++ */
++static inline MDB_env*
++lmdb::txn_env(MDB_txn* const txn) noexcept {
++  return ::mdb_txn_env(txn);
++}
++
++#ifdef LMDBXX_TXN_ID
++/**
++ * @note Only available in HEAD, not yet in any 0.9.x release (as of 0.9.16).
++ */
++static inline std::size_t
++lmdb::txn_id(MDB_txn* const txn) noexcept {
++  return ::mdb_txn_id(txn);
++}
++#endif
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga846fbd6f46105617ac9f4d76476f6597
++ */
++static inline void
++lmdb::txn_commit(MDB_txn* const txn) {
++  const int rc = ::mdb_txn_commit(txn);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_txn_commit", rc);
++  }
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga73a5938ae4c3239ee11efa07eb22b882
++ */
++static inline void
++lmdb::txn_abort(MDB_txn* const txn) noexcept {
++  ::mdb_txn_abort(txn);
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga02b06706f8a66249769503c4e88c56cd
++ */
++static inline void
++lmdb::txn_reset(MDB_txn* const txn) noexcept {
++  ::mdb_txn_reset(txn);
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga6c6f917959517ede1c504cf7c720ce6d
++ */
++static inline void
++lmdb::txn_renew(MDB_txn* const txn) {
++  const int rc = ::mdb_txn_renew(txn);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_txn_renew", rc);
++  }
++}
++
++////////////////////////////////////////////////////////////////////////////////
++/* Procedural Interface: Databases */
++
++namespace lmdb {
++  static inline void dbi_open(
++    MDB_txn* txn, const char* name, unsigned int flags, MDB_dbi* dbi);
++  static inline void dbi_stat(MDB_txn* txn, MDB_dbi dbi, MDB_stat* stat);
++  static inline void dbi_flags(MDB_txn* txn, MDB_dbi dbi, unsigned int* flags);
++  static inline void dbi_close(MDB_env* env, MDB_dbi dbi) noexcept;
++  static inline void dbi_drop(MDB_txn* txn, MDB_dbi dbi, bool del);
++  static inline void dbi_set_compare(MDB_txn* txn, MDB_dbi dbi, MDB_cmp_func* cmp);
++  static inline void dbi_set_dupsort(MDB_txn* txn, MDB_dbi dbi, MDB_cmp_func* cmp);
++  static inline void dbi_set_relfunc(MDB_txn* txn, MDB_dbi dbi, MDB_rel_func* rel);
++  static inline void dbi_set_relctx(MDB_txn* txn, MDB_dbi dbi, void* ctx);
++  static inline bool dbi_get(MDB_txn* txn, MDB_dbi dbi, const MDB_val* key, MDB_val* data);
++  static inline bool dbi_put(MDB_txn* txn, MDB_dbi dbi, const MDB_val* key, MDB_val* data, unsigned int flags);
++  static inline bool dbi_del(MDB_txn* txn, MDB_dbi dbi, const MDB_val* key, const MDB_val* data);
++  // TODO: mdb_cmp()
++  // TODO: mdb_dcmp()
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gac08cad5b096925642ca359a6d6f0562a
++ */
++static inline void
++lmdb::dbi_open(MDB_txn* const txn,
++               const char* const name,
++               const unsigned int flags,
++               MDB_dbi* const dbi) {
++  const int rc = ::mdb_dbi_open(txn, name, flags, dbi);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_dbi_open", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gae6c1069febe94299769dbdd032fadef6
++ */
++static inline void
++lmdb::dbi_stat(MDB_txn* const txn,
++               const MDB_dbi dbi,
++               MDB_stat* const result) {
++  const int rc = ::mdb_stat(txn, dbi, result);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_stat", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga95ba4cb721035478a8705e57b91ae4d4
++ */
++static inline void
++lmdb::dbi_flags(MDB_txn* const txn,
++                const MDB_dbi dbi,
++                unsigned int* const flags) {
++  const int rc = ::mdb_dbi_flags(txn, dbi, flags);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_dbi_flags", rc);
++  }
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga52dd98d0c542378370cd6b712ff961b5
++ */
++static inline void
++lmdb::dbi_close(MDB_env* const env,
++                const MDB_dbi dbi) noexcept {
++  ::mdb_dbi_close(env, dbi);
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#gab966fab3840fc54a6571dfb32b00f2db
++ */
++static inline void
++lmdb::dbi_drop(MDB_txn* const txn,
++               const MDB_dbi dbi,
++               const bool del = false) {
++  const int rc = ::mdb_drop(txn, dbi, del ? 1 : 0);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_drop", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga68e47ffcf72eceec553c72b1784ee0fe
++ */
++static inline void
++lmdb::dbi_set_compare(MDB_txn* const txn,
++                      const MDB_dbi dbi,
++                      MDB_cmp_func* const cmp = nullptr) {
++  const int rc = ::mdb_set_compare(txn, dbi, cmp);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_set_compare", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gacef4ec3dab0bbd9bc978b73c19c879ae
++ */
++static inline void
++lmdb::dbi_set_dupsort(MDB_txn* const txn,
++                      const MDB_dbi dbi,
++                      MDB_cmp_func* const cmp = nullptr) {
++  const int rc = ::mdb_set_dupsort(txn, dbi, cmp);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_set_dupsort", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga697d82c7afe79f142207ad5adcdebfeb
++ */
++static inline void
++lmdb::dbi_set_relfunc(MDB_txn* const txn,
++                      const MDB_dbi dbi,
++                      MDB_rel_func* const rel) {
++  const int rc = ::mdb_set_relfunc(txn, dbi, rel);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_set_relfunc", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga7c34246308cee01724a1839a8f5cc594
++ */
++static inline void
++lmdb::dbi_set_relctx(MDB_txn* const txn,
++                     const MDB_dbi dbi,
++                     void* const ctx) {
++  const int rc = ::mdb_set_relctx(txn, dbi, ctx);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_set_relctx", rc);
++  }
++}
++
++/**
++ * @retval true  if the key/value pair was retrieved
++ * @retval false if the key wasn't found
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga8bf10cd91d3f3a83a34d04ce6b07992d
++ */
++static inline bool
++lmdb::dbi_get(MDB_txn* const txn,
++              const MDB_dbi dbi,
++              const MDB_val* const key,
++              MDB_val* const data) {
++  const int rc = ::mdb_get(txn, dbi, const_cast<MDB_val*>(key), data);
++  if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND) {
++    error::raise("mdb_get", rc);
++  }
++  return (rc == MDB_SUCCESS);
++}
++
++/**
++ * @retval true  if the key/value pair was inserted
++ * @retval false if the key already existed
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga4fa8573d9236d54687c61827ebf8cac0
++ */
++static inline bool
++lmdb::dbi_put(MDB_txn* const txn,
++              const MDB_dbi dbi,
++              const MDB_val* const key,
++              MDB_val* const data,
++              const unsigned int flags = 0) {
++  const int rc = ::mdb_put(txn, dbi, const_cast<MDB_val*>(key), data, flags);
++  if (rc != MDB_SUCCESS && rc != MDB_KEYEXIST) {
++    error::raise("mdb_put", rc);
++  }
++  return (rc == MDB_SUCCESS);
++}
++
++/**
++ * @retval true  if the key/value pair was removed
++ * @retval false if the key wasn't found
++ * @see http://symas.com/mdb/doc/group__mdb.html#gab8182f9360ea69ac0afd4a4eaab1ddb0
++ */
++static inline bool
++lmdb::dbi_del(MDB_txn* const txn,
++              const MDB_dbi dbi,
++              const MDB_val* const key,
++              const MDB_val* const data = nullptr) {
++  const int rc = ::mdb_del(txn, dbi, const_cast<MDB_val*>(key), const_cast<MDB_val*>(data));
++  if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND) {
++    error::raise("mdb_del", rc);
++  }
++  return (rc == MDB_SUCCESS);
++}
++
++////////////////////////////////////////////////////////////////////////////////
++/* Procedural Interface: Cursors */
++
++namespace lmdb {
++  static inline void cursor_open(MDB_txn* txn, MDB_dbi dbi, MDB_cursor** cursor);
++  static inline void cursor_close(MDB_cursor* cursor) noexcept;
++  static inline void cursor_renew(MDB_txn* txn, MDB_cursor* cursor);
++  static inline MDB_txn* cursor_txn(MDB_cursor* cursor) noexcept;
++  static inline MDB_dbi cursor_dbi(MDB_cursor* cursor) noexcept;
++  static inline bool cursor_get(MDB_cursor* cursor, MDB_val* key, MDB_val* data, MDB_cursor_op op);
++  static inline void cursor_put(MDB_cursor* cursor, MDB_val* key, MDB_val* data, unsigned int flags);
++  static inline void cursor_del(MDB_cursor* cursor, unsigned int flags);
++  static inline void cursor_count(MDB_cursor* cursor, std::size_t& count);
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga9ff5d7bd42557fd5ee235dc1d62613aa
++ */
++static inline void
++lmdb::cursor_open(MDB_txn* const txn,
++                  const MDB_dbi dbi,
++                  MDB_cursor** const cursor) {
++  const int rc = ::mdb_cursor_open(txn, dbi, cursor);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_cursor_open", rc);
++  }
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#gad685f5d73c052715c7bd859cc4c05188
++ */
++static inline void
++lmdb::cursor_close(MDB_cursor* const cursor) noexcept {
++  ::mdb_cursor_close(cursor);
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#gac8b57befb68793070c85ea813df481af
++ */
++static inline void
++lmdb::cursor_renew(MDB_txn* const txn,
++                   MDB_cursor* const cursor) {
++  const int rc = ::mdb_cursor_renew(txn, cursor);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_cursor_renew", rc);
++  }
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga7bf0d458f7f36b5232fcb368ebda79e0
++ */
++static inline MDB_txn*
++lmdb::cursor_txn(MDB_cursor* const cursor) noexcept {
++  return ::mdb_cursor_txn(cursor);
++}
++
++/**
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga2f7092cf70ee816fb3d2c3267a732372
++ */
++static inline MDB_dbi
++lmdb::cursor_dbi(MDB_cursor* const cursor) noexcept {
++  return ::mdb_cursor_dbi(cursor);
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga48df35fb102536b32dfbb801a47b4cb0
++ */
++static inline bool
++lmdb::cursor_get(MDB_cursor* const cursor,
++                 MDB_val* const key,
++                 MDB_val* const data,
++                 const MDB_cursor_op op) {
++  const int rc = ::mdb_cursor_get(cursor, key, data, op);
++  if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND) {
++    error::raise("mdb_cursor_get", rc);
++  }
++  return (rc == MDB_SUCCESS);
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga1f83ccb40011837ff37cc32be01ad91e
++ */
++static inline void
++lmdb::cursor_put(MDB_cursor* const cursor,
++                 MDB_val* const key,
++                 MDB_val* const data,
++                 const unsigned int flags = 0) {
++  const int rc = ::mdb_cursor_put(cursor, key, data, flags);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_cursor_put", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga26a52d3efcfd72e5bf6bd6960bf75f95
++ */
++static inline void
++lmdb::cursor_del(MDB_cursor* const cursor,
++                 const unsigned int flags = 0) {
++  const int rc = ::mdb_cursor_del(cursor, flags);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_cursor_del", rc);
++  }
++}
++
++/**
++ * @throws lmdb::error on failure
++ * @see http://symas.com/mdb/doc/group__mdb.html#ga4041fd1e1862c6b7d5f10590b86ffbe2
++ */
++static inline void
++lmdb::cursor_count(MDB_cursor* const cursor,
++                   std::size_t& count) {
++  const int rc = ::mdb_cursor_count(cursor, &count);
++  if (rc != MDB_SUCCESS) {
++    error::raise("mdb_cursor_count", rc);
++  }
++}
++
++////////////////////////////////////////////////////////////////////////////////
++/* Resource Interface: Values */
++
++namespace lmdb {
++  class val;
++}
++
++/**
++ * Wrapper class for `MDB_val` structures.
++ *
++ * @note Instances of this class are movable and copyable both.
++ * @see http://symas.com/mdb/doc/group__mdb.html#structMDB__val
++ */
++class lmdb::val {
++protected:
++  MDB_val _val;
++
++public:
++  /**
++   * Default constructor.
++   */
++  val() noexcept = default;
++
++  /**
++   * Constructor.
++   */
++  val(const std::string& data) noexcept
++    : val{data.data(), data.size()} {}
++
++  /**
++   * Constructor.
++   */
++  val(const char* const data) noexcept
++    : val{data, std::strlen(data)} {}
++
++  /**
++   * Constructor.
++   */
++  val(const void* const data,
++      const std::size_t size) noexcept
++    : _val{size, const_cast<void*>(data)} {}
++
++  /**
++   * Move constructor.
++   */
++  val(val&& other) noexcept = default;
++
++  /**
++   * Move assignment operator.
++   */
++  val& operator=(val&& other) noexcept = default;
++
++  /**
++   * Destructor.
++   */
++  ~val() noexcept = default;
++
++  /**
++   * Returns an `MDB_val*` pointer.
++   */
++  operator MDB_val*() noexcept {
++    return &_val;
++  }
++
++  /**
++   * Returns an `MDB_val*` pointer.
++   */
++  operator const MDB_val*() const noexcept {
++    return &_val;
++  }
++
++  /**
++   * Determines whether this value is empty.
++   */
++  bool empty() const noexcept {
++    return size() == 0;
++  }
++
++  /**
++   * Returns the size of the data.
++   */
++  std::size_t size() const noexcept {
++    return _val.mv_size;
++  }
++
++  /**
++   * Returns a pointer to the data.
++   */
++  template<typename T>
++  T* data() noexcept {
++    return reinterpret_cast<T*>(_val.mv_data);
++  }
++
++  /**
++   * Returns a pointer to the data.
++   */
++  template<typename T>
++  const T* data() const noexcept {
++    return reinterpret_cast<T*>(_val.mv_data);
++  }
++
++  /**
++   * Returns a pointer to the data.
++   */
++  char* data() noexcept {
++    return reinterpret_cast<char*>(_val.mv_data);
++  }
++
++  /**
++   * Returns a pointer to the data.
++   */
++  const char* data() const noexcept {
++    return reinterpret_cast<char*>(_val.mv_data);
++  }
++
++  /**
++   * Assigns the value.
++   */
++  template<typename T>
++  val& assign(const T* const data,
++              const std::size_t size) noexcept {
++    _val.mv_size = size;
++    _val.mv_data = const_cast<void*>(reinterpret_cast<const void*>(data));
++    return *this;
++  }
++
++  /**
++   * Assigns the value.
++   */
++  val& assign(const char* const data) noexcept {
++    return assign(data, std::strlen(data));
++  }
++
++  /**
++   * Assigns the value.
++   */
++  val& assign(const std::string& data) noexcept {
++    return assign(data.data(), data.size());
++  }
++};
++
++#if !(defined(__COVERITY__) || defined(_MSC_VER))
++static_assert(std::is_pod<lmdb::val>::value, "lmdb::val must be a POD type");
++static_assert(sizeof(lmdb::val) == sizeof(MDB_val), "sizeof(lmdb::val) != sizeof(MDB_val)");
++#endif
++
++////////////////////////////////////////////////////////////////////////////////
++/* Resource Interface: Environment */
++
++namespace lmdb {
++  class env;
++}
++
++/**
++ * Resource class for `MDB_env*` handles.
++ *
++ * @note Instances of this class are movable, but not copyable.
++ * @see http://symas.com/mdb/doc/group__internal.html#structMDB__env
++ */
++class lmdb::env {
++protected:
++  MDB_env* _handle{nullptr};
++
++public:
++  static constexpr unsigned int default_flags = 0;
++  static constexpr mode default_mode = 0644; /* -rw-r--r-- */
++
++  /**
++   * Creates a new LMDB environment.
++   *
++   * @param flags
++   * @throws lmdb::error on failure
++   */
++  static env create(const unsigned int flags = default_flags) {
++    MDB_env* handle{nullptr};
++    lmdb::env_create(&handle);
++#ifdef LMDBXX_DEBUG
++    assert(handle != nullptr);
++#endif
++    if (flags) {
++      try {
++        lmdb::env_set_flags(handle, flags);
++      }
++      catch (const lmdb::error&) {
++        lmdb::env_close(handle);
++        throw;
++      }
++    }
++    return env{handle};
++  }
++
++  /**
++   * Constructor.
++   *
++   * @param handle a valid `MDB_env*` handle
++   */
++  env(MDB_env* const handle) noexcept
++    : _handle{handle} {}
++
++  /**
++   * Move constructor.
++   */
++  env(env&& other) noexcept {
++    std::swap(_handle, other._handle);
++  }
++
++  /**
++   * Move assignment operator.
++   */
++  env& operator=(env&& other) noexcept {
++    if (this != &other) {
++      std::swap(_handle, other._handle);
++    }
++    return *this;
++  }
++
++  /**
++   * Destructor.
++   */
++  ~env() noexcept {
++    try { close(); } catch (...) {}
++  }
++
++  /**
++   * Returns the underlying `MDB_env*` handle.
++   */
++  operator MDB_env*() const noexcept {
++    return _handle;
++  }
++
++  /**
++   * Returns the underlying `MDB_env*` handle.
++   */
++  MDB_env* handle() const noexcept {
++    return _handle;
++  }
++
++  /**
++   * Flushes data buffers to disk.
++   *
++   * @param force
++   * @throws lmdb::error on failure
++   */
++  void sync(const bool force = true) {
++    lmdb::env_sync(handle(), force);
++  }
++
++  /**
++   * Closes this environment, releasing the memory map.
++   *
++   * @note this method is idempotent
++   * @post `handle() == nullptr`
++   */
++  void close() noexcept {
++    if (handle()) {
++      lmdb::env_close(handle());
++      _handle = nullptr;
++    }
++  }
++
++  /**
++   * Opens this environment.
++   *
++   * @param path
++   * @param flags
++   * @param mode
++   * @throws lmdb::error on failure
++   */
++  env& open(const char* const path,
++            const unsigned int flags = default_flags,
++            const mode mode = default_mode) {
++    lmdb::env_open(handle(), path, flags, mode);
++    return *this;
++  }
++
++  /**
++   * @param flags
++   * @param onoff
++   * @throws lmdb::error on failure
++   */
++  env& set_flags(const unsigned int flags,
++                 const bool onoff = true) {
++    lmdb::env_set_flags(handle(), flags, onoff);
++    return *this;
++  }
++
++  /**
++   * @param size
++   * @throws lmdb::error on failure
++   */
++  env& set_mapsize(const std::size_t size) {
++    lmdb::env_set_mapsize(handle(), size);
++    return *this;
++  }
++
++  /**
++   * @param count
++   * @throws lmdb::error on failure
++   */
++  env& set_max_readers(const unsigned int count) {
++    lmdb::env_set_max_readers(handle(), count);
++    return *this;
++  }
++
++  /**
++   * @param count
++   * @throws lmdb::error on failure
++   */
++  env& set_max_dbs(const MDB_dbi count) {
++    lmdb::env_set_max_dbs(handle(), count);
++    return *this;
++  }
++};
++
++////////////////////////////////////////////////////////////////////////////////
++/* Resource Interface: Transactions */
++
++namespace lmdb {
++  class txn;
++}
++
++/**
++ * Resource class for `MDB_txn*` handles.
++ *
++ * @note Instances of this class are movable, but not copyable.
++ * @see http://symas.com/mdb/doc/group__internal.html#structMDB__txn
++ */
++class lmdb::txn {
++protected:
++  MDB_txn* _handle{nullptr};
++
++public:
++  static constexpr unsigned int default_flags = 0;
++
++  /**
++   * Creates a new LMDB transaction.
++   *
++   * @param env the environment handle
++   * @param parent
++   * @param flags
++   * @throws lmdb::error on failure
++   */
++  static txn begin(MDB_env* const env,
++                   MDB_txn* const parent = nullptr,
++                   const unsigned int flags = default_flags) {
++    MDB_txn* handle{nullptr};
++    lmdb::txn_begin(env, parent, flags, &handle);
++#ifdef LMDBXX_DEBUG
++    assert(handle != nullptr);
++#endif
++    return txn{handle};
++  }
++
++  /**
++   * Constructor.
++   *
++   * @param handle a valid `MDB_txn*` handle
++   */
++  txn(MDB_txn* const handle) noexcept
++    : _handle{handle} {}
++
++  /**
++   * Move constructor.
++   */
++  txn(txn&& other) noexcept {
++    std::swap(_handle, other._handle);
++  }
++
++  /**
++   * Move assignment operator.
++   */
++  txn& operator=(txn&& other) noexcept {
++    if (this != &other) {
++      std::swap(_handle, other._handle);
++    }
++    return *this;
++  }
++
++  /**
++   * Destructor.
++   */
++  ~txn() noexcept {
++    if (_handle) {
++      try { abort(); } catch (...) {}
++      _handle = nullptr;
++    }
++  }
++
++  /**
++   * Returns the underlying `MDB_txn*` handle.
++   */
++  operator MDB_txn*() const noexcept {
++    return _handle;
++  }
++
++  /**
++   * Returns the underlying `MDB_txn*` handle.
++   */
++  MDB_txn* handle() const noexcept {
++    return _handle;
++  }
++
++  /**
++   * Returns the transaction's `MDB_env*` handle.
++   */
++  MDB_env* env() const noexcept {
++    return lmdb::txn_env(handle());
++  }
++
++  /**
++   * Commits this transaction.
++   *
++   * @throws lmdb::error on failure
++   * @post `handle() == nullptr`
++   */
++  void commit() {
++    lmdb::txn_commit(_handle);
++    _handle = nullptr;
++  }
++
++  /**
++   * Aborts this transaction.
++   *
++   * @post `handle() == nullptr`
++   */
++  void abort() noexcept {
++    lmdb::txn_abort(_handle);
++    _handle = nullptr;
++  }
++
++  /**
++   * Resets this read-only transaction.
++   */
++  void reset() noexcept {
++    lmdb::txn_reset(_handle);
++  }
++
++  /**
++   * Renews this read-only transaction.
++   *
++   * @throws lmdb::error on failure
++   */
++  void renew() {
++    lmdb::txn_renew(_handle);
++  }
++};
++
++////////////////////////////////////////////////////////////////////////////////
++/* Resource Interface: Databases */
++
++namespace lmdb {
++  class dbi;
++}
++
++/**
++ * Resource class for `MDB_dbi` handles.
++ *
++ * @note Instances of this class are movable, but not copyable.
++ * @see http://symas.com/mdb/doc/group__mdb.html#gadbe68a06c448dfb62da16443d251a78b
++ */
++class lmdb::dbi {
++protected:
++  MDB_dbi _handle{0};
++
++public:
++  static constexpr unsigned int default_flags     = 0;
++  static constexpr unsigned int default_put_flags = 0;
++
++  /**
++   * Opens a database handle.
++   *
++   * @param txn the transaction handle
++   * @param name
++   * @param flags
++   * @throws lmdb::error on failure
++   */
++  static dbi
++  open(MDB_txn* const txn,
++       const char* const name = nullptr,
++       const unsigned int flags = default_flags) {
++    MDB_dbi handle{};
++    lmdb::dbi_open(txn, name, flags, &handle);
++    return dbi{handle};
++  }
++
++  /**
++   * Constructor.
++   *
++   * @param handle a valid `MDB_dbi` handle
++   */
++  dbi(const MDB_dbi handle) noexcept
++    : _handle{handle} {}
++
++  /**
++   * Move constructor.
++   */
++  dbi(dbi&& other) noexcept {
++    std::swap(_handle, other._handle);
++  }
++
++  /**
++   * Move assignment operator.
++   */
++  dbi& operator=(dbi&& other) noexcept {
++    if (this != &other) {
++      std::swap(_handle, other._handle);
++    }
++    return *this;
++  }
++
++  /**
++   * Destructor.
++   */
++  ~dbi() noexcept {
++    if (_handle) {
++      /* No need to call close() here. */
++    }
++  }
++  
++  // /**
++  //  * Close database (table)
++  //  */
++  // void close(MDB_env* env) noexcept {
++  //   lmdb::dbi_close(env, handle());
++  // }
++
++  /**
++   * Returns the underlying `MDB_dbi` handle.
++   */
++  operator MDB_dbi() const noexcept {
++    return _handle;
++  }
++
++  /**
++   * Returns the underlying `MDB_dbi` handle.
++   */
++  MDB_dbi handle() const noexcept {
++    return _handle;
++  }
++
++  /**
++   * Returns statistics for this database.
++   *
++   * @param txn a transaction handle
++   * @throws lmdb::error on failure
++   */
++  MDB_stat stat(MDB_txn* const txn) const {
++    MDB_stat result;
++    lmdb::dbi_stat(txn, handle(), &result);
++    return result;
++  }
++
++  /**
++   * Retrieves the flags for this database handle.
++   *
++   * @param txn a transaction handle
++   * @throws lmdb::error on failure
++   */
++  unsigned int flags(MDB_txn* const txn) const {
++    unsigned int result{};
++    lmdb::dbi_flags(txn, handle(), &result);
++    return result;
++  }
++
++  /**
++   * Returns the number of records in this database.
++   *
++   * @param txn a transaction handle
++   * @throws lmdb::error on failure
++   */
++  std::size_t size(MDB_txn* const txn) const {
++    return stat(txn).ms_entries;
++  }
++
++  /**
++   * @param txn a transaction handle
++   * @param del
++   * @throws lmdb::error on failure
++   */
++  void drop(MDB_txn* const txn,
++            const bool del = false) {
++    lmdb::dbi_drop(txn, handle(), del);
++  }
++
++  /**
++   * Sets a custom key comparison function for this database.
++   *
++   * @param txn a transaction handle
++   * @param cmp the comparison function
++   * @throws lmdb::error on failure
++   */
++  dbi& set_compare(MDB_txn* const txn,
++                   MDB_cmp_func* const cmp = nullptr) {
++    lmdb::dbi_set_compare(txn, handle(), cmp);
++    return *this;
++  }
++  
++  /**
++   * Set a custom data comparison function for a MDB_DUPSORT database.
++   *
++   * @param txn a transaction handle
++   * @param cmp the comparison function
++   * @throws lmdb::error on failure
++   */
++  dbi& set_dupsort(MDB_txn* const txn,
++                   MDB_cmp_func* const cmp = nullptr) {
++    lmdb::dbi_set_dupsort(txn, handle(), cmp);
++    return *this;
++  }
++  
++
++  /**
++   * Retrieves a key/value pair from this database.
++   *
++   * @param txn a transaction handle
++   * @param key
++   * @param data
++   * @throws lmdb::error on failure
++   */
++  bool get(MDB_txn* const txn,
++           const val& key,
++           val& data) {
++    return lmdb::dbi_get(txn, handle(), key, data);
++  }
++
++  /**
++   * Retrieves a key from this database.
++   *
++   * @param txn a transaction handle
++   * @param key
++   * @throws lmdb::error on failure
++   */
++  template<typename K>
++  bool get(MDB_txn* const txn,
++           const K& key) const {
++    const lmdb::val k{&key, sizeof(K)};
++    lmdb::val v{};
++    return lmdb::dbi_get(txn, handle(), k, v);
++  }
++
++  /**
++   * Retrieves a key/value pair from this database.
++   *
++   * @param txn a transaction handle
++   * @param key
++   * @param val
++   * @throws lmdb::error on failure
++   */
++  template<typename K, typename V>
++  bool get(MDB_txn* const txn,
++           const K& key,
++           V& val) const {
++    const lmdb::val k{&key, sizeof(K)};
++    lmdb::val v{};
++    const bool result = lmdb::dbi_get(txn, handle(), k, v);
++    if (result) {
++      val = *v.data<const V>();
++    }
++    return result;
++  }
++
++  /**
++   * Retrieves a key/value pair from this database.
++   *
++   * @param txn a transaction handle
++   * @param key a NUL-terminated string key
++   * @param val
++   * @throws lmdb::error on failure
++   */
++  template<typename V>
++  bool get(MDB_txn* const txn,
++           const char* const key,
++           V& val) const {
++    const lmdb::val k{key, std::strlen(key)};
++    lmdb::val v{};
++    const bool result = lmdb::dbi_get(txn, handle(), k, v);
++    if (result) {
++      val = *v.data<const V>();
++    }
++    return result;
++  }
++
++  /**
++   * Stores a key/value pair into this database.
++   *
++   * @param txn a transaction handle
++   * @param key
++   * @param data
++   * @param flags
++   * @throws lmdb::error on failure
++   */
++  bool put(MDB_txn* const txn,
++           const val& key,
++           val& data,
++           const unsigned int flags = default_put_flags) {
++    return lmdb::dbi_put(txn, handle(), key, data, flags);
++  }
++
++  /**
++   * Stores a key into this database.
++   *
++   * @param txn a transaction handle
++   * @param key
++   * @param flags
++   * @throws lmdb::error on failure
++   */
++  template<typename K>
++  bool put(MDB_txn* const txn,
++           const K& key,
++           const unsigned int flags = default_put_flags) {
++    const lmdb::val k{&key, sizeof(K)};
++    lmdb::val v{};
++    return lmdb::dbi_put(txn, handle(), k, v, flags);
++  }
++
++  /**
++   * Stores a key/value pair into this database.
++   *
++   * @param txn a transaction handle
++   * @param key
++   * @param val
++   * @param flags
++   * @throws lmdb::error on failure
++   */
++  template<typename K, typename V>
++  bool put(MDB_txn* const txn,
++           const K& key,
++           const V& val,
++           const unsigned int flags = default_put_flags) {
++    const lmdb::val k{&key, sizeof(K)};
++    lmdb::val v{&val, sizeof(V)};
++    return lmdb::dbi_put(txn, handle(), k, v, flags);
++  }
++
++  /**
++   * Stores a key/value pair into this database.
++   *
++   * @param txn a transaction handle
++   * @param key a NUL-terminated string key
++   * @param val
++   * @param flags
++   * @throws lmdb::error on failure
++   */
++  template<typename V>
++  bool put(MDB_txn* const txn,
++           const char* const key,
++           const V& val,
++           const unsigned int flags = default_put_flags) {
++    const lmdb::val k{key, std::strlen(key)};
++    lmdb::val v{&val, sizeof(V)};
++    return lmdb::dbi_put(txn, handle(), k, v, flags);
++  }
++
++  /**
++   * Stores a key/value pair into this database.
++   *
++   * @param txn a transaction handle
++   * @param key a NUL-terminated string key
++   * @param val a NUL-terminated string key
++   * @param flags
++   * @throws lmdb::error on failure
++   */
++  bool put(MDB_txn* const txn,
++           const char* const key,
++           const char* const val,
++           const unsigned int flags = default_put_flags) {
++    const lmdb::val k{key, std::strlen(key)};
++    lmdb::val v{val, std::strlen(val)};
++    return lmdb::dbi_put(txn, handle(), k, v, flags);
++  }
++
++  /**
++   * Removes a key/value pair from this database.
++   *
++   * @param txn a transaction handle
++   * @param key
++   * @throws lmdb::error on failure
++   */
++  bool del(MDB_txn* const txn,
++           const val& key) {
++    return lmdb::dbi_del(txn, handle(), key);
++  }
++  
++  /**
++   * Removes a key/value pair from this database.
++   *
++   * @param txn a transaction handle
++   * @param key
++   * @throws lmdb::error on failure
++   */
++  bool del(MDB_txn* const txn,
++           const val& key,
++           const val& val) {
++    return lmdb::dbi_del(txn, handle(), key, val);
++  }
++
++  /**
++   * Removes a key/value pair from this database.
++   *
++   * @param txn a transaction handle
++   * @param key
++   * @throws lmdb::error on failure
++   */
++  template<typename K>
++  bool del(MDB_txn* const txn,
++           const K& key) {
++    const lmdb::val k{&key, sizeof(K)};
++    return lmdb::dbi_del(txn, handle(), k);
++  }
++};
++
++////////////////////////////////////////////////////////////////////////////////
++/* Resource Interface: Cursors */
++
++namespace lmdb {
++  class cursor;
++}
++
++/**
++ * Resource class for `MDB_cursor*` handles.
++ *
++ * @note Instances of this class are movable, but not copyable.
++ * @see http://symas.com/mdb/doc/group__internal.html#structMDB__cursor
++ */
++class lmdb::cursor {
++protected:
++  MDB_cursor* _handle{nullptr};
++
++public:
++  static constexpr unsigned int default_flags = 0;
++
++  /**
++   * Creates an LMDB cursor.
++   *
++   * @param txn the transaction handle
++   * @param dbi the database handle
++   * @throws lmdb::error on failure
++   */
++  static cursor
++  open(MDB_txn* const txn,
++       const MDB_dbi dbi) {
++    MDB_cursor* handle{};
++    lmdb::cursor_open(txn, dbi, &handle);
++#ifdef LMDBXX_DEBUG
++    assert(handle != nullptr);
++#endif
++    return cursor{handle};
++  }
++
++  /**
++   * Constructor.
++   *
++   * @param handle a valid `MDB_cursor*` handle
++   */
++  cursor(MDB_cursor* const handle) noexcept
++    : _handle{handle} {}
++
++  /**
++   * Move constructor.
++   */
++  cursor(cursor&& other) noexcept {
++    std::swap(_handle, other._handle);
++  }
++
++  /**
++   * Move assignment operator.
++   */
++  cursor& operator=(cursor&& other) noexcept {
++    if (this != &other) {
++      std::swap(_handle, other._handle);
++    }
++    return *this;
++  }
++
++  /**
++   * Destructor.
++   */
++  ~cursor() noexcept {
++    try { close(); } catch (...) {}
++  }
++
++  /**
++   * Returns the underlying `MDB_cursor*` handle.
++   */
++  operator MDB_cursor*() const noexcept {
++    return _handle;
++  }
++
++  /**
++   * Returns the underlying `MDB_cursor*` handle.
++   */
++  MDB_cursor* handle() const noexcept {
++    return _handle;
++  }
++
++  /**
++   * Closes this cursor.
++   *
++   * @note this method is idempotent
++   * @post `handle() == nullptr`
++   */
++  void close() noexcept {
++    if (_handle) {
++      lmdb::cursor_close(_handle);
++      _handle = nullptr;
++    }
++  }
++
++  /**
++   * Renews this cursor.
++   *
++   * @param txn the transaction scope
++   * @throws lmdb::error on failure
++   */
++  void renew(MDB_txn* const txn) {
++    lmdb::cursor_renew(txn, handle());
++  }
++
++  /**
++   * Returns the cursor's transaction handle.
++   */
++  MDB_txn* txn() const noexcept {
++    return lmdb::cursor_txn(handle());
++  }
++
++  /**
++   * Returns the cursor's database handle.
++   */
++  MDB_dbi dbi() const noexcept {
++    return lmdb::cursor_dbi(handle());
++  }
++
++  /**
++   * Retrieves a key from the database.
++   *
++   * @param key
++   * @param op
++   * @throws lmdb::error on failure
++   */
++  bool get(MDB_val* const key,
++           const MDB_cursor_op op) {
++    return get(key, nullptr, op);
++  }
++
++  /**
++   * Retrieves a key from the database.
++   *
++   * @param key
++   * @param op
++   * @throws lmdb::error on failure
++   */
++  bool get(lmdb::val& key,
++           const MDB_cursor_op op) {
++    return get(key, nullptr, op);
++  }
++
++  /**
++   * Retrieves a key/value pair from the database.
++   *
++   * @param key
++   * @param val (may be `nullptr`)
++   * @param op
++   * @throws lmdb::error on failure
++   */
++  bool get(MDB_val* const key,
++           MDB_val* const val,
++           const MDB_cursor_op op) {
++    return lmdb::cursor_get(handle(), key, val, op);
++  }
++
++  /**
++   * Retrieves a key/value pair from the database.
++   *
++   * @param key
++   * @param val
++   * @param op
++   * @throws lmdb::error on failure
++   */
++  bool get(lmdb::val& key,
++           lmdb::val& val,
++           const MDB_cursor_op op) {
++    return lmdb::cursor_get(handle(), key, val, op);
++  }
++
++  /**
++   * Retrieves a key/value pair from the database.
++   *
++   * @param key
++   * @param val
++   * @param op
++   * @throws lmdb::error on failure
++   */
++  bool get(std::string& key,
++           std::string& val,
++           const MDB_cursor_op op) {
++    lmdb::val k{}, v{};
++    const bool found = get(k, v, op);
++    if (found) {
++      key.assign(k.data(), k.size());
++      val.assign(v.data(), v.size());
++    }
++    return found;
++  }
++
++  /**
++   * Positions this cursor at the given key.
++   *
++   * @param key
++   * @param op
++   * @throws lmdb::error on failure
++   */
++  template<typename K>
++  bool find(const K& key,
++            const MDB_cursor_op op = MDB_SET) {
++    lmdb::val k{&key, sizeof(K)};
++    return get(k, nullptr, op);
++  }
++};
++
++////////////////////////////////////////////////////////////////////////////////
++
++#endif /* LMDBXX_H */
+diff --git a/src/webalizer.cpp b/src/webalizer.cpp
+index 143514f..ad2e511 100644
+--- a/src/webalizer.cpp
++++ b/src/webalizer.cpp
+@@ -1212,7 +1212,7 @@ int webalizer_t::proc_logfile(proc_times_t& ptms, logrec_counts_t& lrcnt)
+          /* GOOD RECORD, CHECK INCREMENTAL/TIMESTAMPS */
+          /*********************************************/
+ 
+-        /* get current records timestamp (seconds since epoch) */
++         /* get current records timestamp (seconds since epoch) */
+          tstamp_t& rec_tstamp = log_rec.tstamp;
+ 
+          /* Do we need to check for duplicate records? (incremental mode)   */
+@@ -1262,11 +1262,11 @@ int webalizer_t::proc_logfile(proc_times_t& ptms, logrec_counts_t& lrcnt)
+          // check if need to convert log time stamp to local time
+          if(config.local_time)
+             log_rec.tstamp.tolocal(config.get_utc_offset(log_rec.tstamp, dst_iter));
+- 
++
+          // check for out of sequence records
+          if (rec_tstamp < state.totals.cur_tstamp) {
+             lrcnt.total_ignore++; 
+-            continue; 
++            continue;
+          }
+ 
+          total_good++;
+@@ -3057,10 +3057,12 @@ int main(int argc, char *argv[])
+          if(config.verbose)
+             fprintf(stderr, "%s\n", err.desc().c_str());
+        }
++/*
+       catch (const DbException &err) {
+          if(config.verbose)
+             fprintf(stderr, "[%d] %s\n", err.get_errno(), err.what());
+       }
++*/
+       catch (const exception_t &err) {
+          if(config.verbose)
+             fprintf(stderr, "%s\n", err.desc().c_str());
+@@ -3081,10 +3083,12 @@ int main(int argc, char *argv[])
+       if(config.verbose)
+          fprintf(stderr, "%s\n", err.desc().c_str());
+    }
++/*
+    catch (const DbException &err) {
+       if(config.verbose)
+          fprintf(stderr, "[%d] %s\n", err.get_errno(), err.what());
+    }
++*/
+    catch (const exception_t &err) {
+       if(config.verbose)
+          fprintf(stderr, "%s\n", err.desc().c_str());

@@ -1,5 +1,5 @@
 /dev/root       /           auto      defaults				    0   1
-LABEL="DATAFS"	/data	    auto      defaults,noatime			    0   0
+LABEL=DATAFS	/data	    auto      defaults,noatime,noauto		    0   0
 proc            /proc       proc      defaults				    0   0
 devtmpfs        /dev        devtmpfs  defaults				    0   0
 devpts          /dev/pts    devpts    defaults,nosuid,noexec,gid=5,mode=620 0   0
@@ -7,3 +7,4 @@ tmpfs           /dev/shm    tmpfs     defaults,nodev,nosuid		    0   0
 sysfs           /sys        sysfs     defaults				    0   0
 tmpfs           /tmp        tmpfs     defaults,nosuid,mode=1777		    0   0
 tmpfs           /run        tmpfs     defaults,nosuid,mode=755		    0   0
+debugfs		/sys/kernel/debug debugfs defaults                          0   0

@@ -22,5 +22,5 @@ S = "${WORKDIR}/${PN}-${PN}-v${PV}"
 
 inherit cmake
 
-FILES_${PN} = "/usr/libexec/squid/ecap_adapter_av.so"
-FILES_${PN}-dbg += "/usr/libexec/squid/.debug/ecap_adapter_av.so"
+FILES:${PN} = "/usr/libexec/squid/ecap_adapter_av.so"
+FILES:${PN}-dbg += "/usr/libexec/squid/.debug/ecap_adapter_av.so"

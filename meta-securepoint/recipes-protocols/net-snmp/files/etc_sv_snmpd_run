@@ -1,4 +1,4 @@
 #!/bin/sh
+sv start syslog || exit 1
 exec 2>&1
-exec /usr/sbin/snmpd udp:161,udp6:161 -LSid -f -c /etc/snmpd.conf
-
+exec /usr/sbin/snmpd udp:161,udp6:161 -LSid -f -C -c /etc/snmp/snmpd.conf

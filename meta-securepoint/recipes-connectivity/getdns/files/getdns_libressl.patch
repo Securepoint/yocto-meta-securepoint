@@ -1,0 +1,21 @@
+diff -up getdns-1.5.1/src/pubkey-pinning.c.libre getdns-1.5.1/src/pubkey-pinning.c
+--- getdns-1.5.1/src/pubkey-pinning.c.libre	2019-09-20 15:22:00.841823306 +0200
++++ getdns-1.5.1/src/pubkey-pinning.c	2019-09-20 15:23:40.487161414 +0200
+@@ -322,7 +322,7 @@ _get_ssl_getdns_upstream_idx(X509_STORE
+ {
+ 	static volatile int idx = -1;
+ 	if (idx < 0) {
+-#if OPENSSL_VERSION_NUMBER < 0x10100000 || defined(HAVE_LIBRESSL)
++#if OPENSSL_VERSION_NUMBER < 0x10100000 || defined(LIBRESSL_VERSION_NUMBER)
+ 		CRYPTO_w_lock(CRYPTO_LOCK_X509_STORE);
+ #else
+ 		X509_STORE_lock(store);
+@@ -330,7 +330,7 @@ _get_ssl_getdns_upstream_idx(X509_STORE
+ 		if (idx < 0)
+ 			idx = SSL_get_ex_new_index(0, "associated getdns upstream",
+ 						   NULL,NULL,NULL);
+-#if OPENSSL_VERSION_NUMBER < 0x10100000 || defined(HAVE_LIBRESSL)
++#if OPENSSL_VERSION_NUMBER < 0x10100000 || defined(LIBRESSL_VERSION_NUMBER)
+ 		CRYPTO_w_unlock(CRYPTO_LOCK_X509_STORE);
+ #else
+ 		X509_STORE_unlock(store);

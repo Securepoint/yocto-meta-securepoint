@@ -1,9 +1,10 @@
 #!/bin/sh
-exec chpst -u daemon \
+exec chpst -u daemon:daemon:oauth \
   nice -n 15 /usr/bin/fetchmail \
   --pidfile /var/run/fetchmail/fetchmail.pid \
   --idfile /data/fetchmail/idfile \
   -N \
   --syslog \
   --smtphost 127.0.0.2 \
+  --nosslcertck \
   -f /etc/fetchmail.conf

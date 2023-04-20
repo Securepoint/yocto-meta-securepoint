@@ -1,0 +1,50 @@
+diff -up ./tools/hv/hv_vss_daemon.c.orig ./tools/hv/hv_vss_daemon.c
+--- ./tools/hv/hv_vss_daemon.c.orig	2017-03-08 17:53:19.588021428 +0100
++++ ./tools/hv/hv_vss_daemon.c	2017-03-09 12:04:03.890965105 +0100
+@@ -34,6 +34,8 @@
+ #include <syslog.h>
+ #include <getopt.h>
+ 
++int exclude_loop;
++/* #8236 */
+ /* Don't use syslog() in the function since that can cause write to disk */
+ static int vss_do_freeze(char *dir, unsigned int cmd)
+ {
+@@ -90,6 +92,9 @@ static int vss_operate(int operation)
+ 		return -1;
+ 
+ 	while ((ent = getmntent(mounts))) {
++		if ((exclude_loop) && 
++            (!strncmp(ent->mnt_fsname, "/dev/loop", 9)))
++			continue;
+ 		if (strncmp(ent->mnt_fsname, match, strlen(match)))
+ 			continue;
+ 		if (hasmntopt(ent, MNTOPT_RO) != NULL)
+@@ -137,6 +142,7 @@ void print_usage(char *argv[])
+ 	fprintf(stderr, "Usage: %s [options]\n"
+ 		"Options are:\n"
+ 		"  -n, --no-daemon        stay in foreground, don't daemonize\n"
++		"  -e, --exclude-loop     exclude loop devices from freezing\n"
+ 		"  -h, --help             print this help\n", argv[0]);
+ }
+ 
+@@ -154,12 +160,17 @@ int main(int argc, char *argv[])
+ 	static struct option long_options[] = {
+ 		{"help",	no_argument,	   0,  'h' },
+ 		{"no-daemon",	no_argument,	   0,  'n' },
++		{"exclude-loop",	no_argument,	   0,  'e' },
+ 		{0,		0,		   0,  0   }
+ 	};
++    exclude_loop = 0;
+ 
+-	while ((opt = getopt_long(argc, argv, "hn", long_options,
++	while ((opt = getopt_long(argc, argv, "hne", long_options,
+ 				  &long_index)) != -1) {
+ 		switch (opt) {
++		case 'e':
++            exclude_loop = 1;
++            break;
+ 		case 'n':
+ 			daemonize = 0;
+ 			break;
+

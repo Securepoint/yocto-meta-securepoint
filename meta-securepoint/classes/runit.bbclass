@@ -47,36 +47,59 @@ install_or_check_runit_files() {
             fi
 
             if [ "$1" = "install_runit_file" ]; then
-                ln -sf /etc/sv/${each} ${D}/var/service
+                ln -sf /etc/sv/${each} ${D}/var/service/
             fi
         done
     fi
 }
 
-addtask add_runitfiles after do_fetch before do_unpack
-python do_add_runitfiles(){
-    svfiles = 'file://etc_sv_* file://etc_runit_1.d_*'
+addtask fetch_runitfiles after do_fetch before do_unpack
+python do_fetch_runitfiles() {
+    import glob
+    svfiles = 'etc_sv_* etc_runit_1.d_*'
+    filespath = (d.getVar("FILESPATH") or "")
     localdata = bb.data.createCopy(d)
     bb.data.update_data(localdata)
     rootdir = localdata.getVar('WORKDIR', True)
+    srcuri = ''
+
+    for path in filespath.split(':'):
+        for each in svfiles.split():
+            fullpath = path + '/' + each
+            for match in (glob.glob(fullpath)):
+                srcfile = os.path.basename(match)
+                srcurientry = 'file://%s' % srcfile
+                # Double-check it's not there already
+                if not srcurientry in srcuri.split():
+                    bb.note("srcuri: appending '%s'" % srcurientry)
+                    srcuri = '%s %s' % (srcuri, srcurientry)
+
+    bb.note("srcuri: '%s'" % srcuri)
 
     try:
-        fetcher = bb.fetch2.Fetch(svfiles.split(), localdata)
+        fetcher = bb.fetch2.Fetch(srcuri.split(), localdata)
         fetcher.unpack(rootdir)
         fetcher.download()
     except bb.fetch2.BBFetchException as e:
-        raise bb.build.FuncFailed(e)
+        bb.fatal(str(e))
 }
 
+# https://docs.yoctoproject.org/ref-manual/tasks.html#do-install
+#
+# > The do_install task, as well as other tasks that either directly or
+# > indirectly depend on the installed files (e.g. do_package,
+# > do_package_write_*, and do_rootfs), run under fakeroot.
+#
+# seems to be a goot idea, to run our tasks under fakeroot too.
 addtask move_runitfiles after do_install before do_populate_sysroot do_package
-do_move_runitfiles() {
+fakeroot do_move_runitfiles() {
     echo "Entering move_runitfiles"
-    install -d ${D}/var/service
+    install -m 0700 -d ${D}/var/service
     install_or_check_runit_files install_runit_file
 }
 
 addtask check_runitfiles after do_move_runitfiles before do_package
-do_check_runitfiles() {
+fakeroot do_check_runitfiles() {
     echo "Entering check_runitfiles()"
     install_or_check_runit_files check_runit_file
 }

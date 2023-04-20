@@ -1,0 +1,24 @@
+diff -up collectd-5.6.3/src/collectdmon.c.no_log_cons collectd-5.6.3/src/collectdmon.c
+--- collectd-5.6.3/src/collectdmon.c.no_log_cons	2019-03-19 21:48:18.085144299 +0100
++++ collectd-5.6.3/src/collectdmon.c	2019-03-19 21:48:35.474730643 +0100
+@@ -321,7 +321,7 @@ int main(int argc, char **argv) {
+ 
+   collectd_argv[collectd_argc] = NULL;
+ 
+-  openlog("collectdmon", LOG_CONS | LOG_PID, LOG_DAEMON);
++  openlog("collectdmon", LOG_PID, LOG_DAEMON);
+ 
+   if (-1 == daemonize()) {
+     free(collectd_argv);
+diff -up collectd-5.6.3/src/syslog.c.no_log_cons collectd-5.6.3/src/syslog.c
+--- collectd-5.6.3/src/syslog.c.no_log_cons	2019-03-19 21:47:53.481674615 +0100
++++ collectd-5.6.3/src/syslog.c	2019-03-19 21:49:37.311111681 +0100
+@@ -141,7 +141,7 @@ static int sl_notification(const notific
+ } /* int sl_notification */
+ 
+ void module_register(void) {
+-  openlog("collectd", LOG_CONS | LOG_PID, LOG_DAEMON);
++  openlog("collectd", LOG_PID, LOG_DAEMON);
+ 
+   plugin_register_config("syslog", sl_config, config_keys, config_keys_num);
+   plugin_register_log("syslog", sl_log, /* user_data = */ NULL);

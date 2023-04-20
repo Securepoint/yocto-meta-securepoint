@@ -1,0 +1,67 @@
+diff --git a/src/openvpn/options.c b/src/openvpn/options.c
+index 2ddf30d8..9dd8c179 100644
+--- a/src/openvpn/options.c
++++ b/src/openvpn/options.c
+@@ -258,6 +258,7 @@ static const char usage_message[] =
+     "--ping n        : Ping remote once every n seconds over TCP/UDP port.\n"
+ #if ENABLE_IP_PKTINFO
+     "--multihome     : Configure a multi-homed UDP server.\n"
++    "--multihome-noif: Configure a multi-homed UDP server (dont bind to interface).\n"
+ #endif
+     "--fast-io       : (experimental) Optimize TUN/TAP/UDP writes.\n"
+     "--remap-usr1 s  : On SIGUSR1 signals, remap signal (s='SIGHUP' or 'SIGTERM').\n"
+@@ -6059,6 +6060,12 @@ add_option(struct options *options,
+         VERIFY_PERMISSION(OPT_P_GENERAL);
+         options->sockflags |= SF_USE_IP_PKTINFO;
+     }
++    else if (streq(p[0], "multihome-noif") && !p[1])
++    {
++        VERIFY_PERMISSION(OPT_P_GENERAL);
++        options->sockflags |= SF_USE_IP_PKTINFO;
++        options->sockflags |= SF_USE_IP_PKTINFO_NOIFINDEX;
++    }
+ #endif
+     else if (streq(p[0], "verb") && p[1] && !p[2])
+     {
+diff --git a/src/openvpn/socket.c b/src/openvpn/socket.c
+index 28fabe76..9498b776 100644
+--- a/src/openvpn/socket.c
++++ b/src/openvpn/socket.c
+@@ -3555,7 +3555,11 @@ link_socket_write_udp_posix_sendmsg(struct link_socket *sock,
+             {
+                 struct in_pktinfo *pkti;
+                 pkti = (struct in_pktinfo *) CMSG_DATA(cmsg);
+-                pkti->ipi_ifindex = to->pi.in4.ipi_ifindex;
++                if (sock->sockflags & SF_USE_IP_PKTINFO_NOIFINDEX) {
++                  pkti->ipi_ifindex = 0;
++                } else {
++                  pkti->ipi_ifindex = to->pi.in4.ipi_ifindex;
++                }
+                 pkti->ipi_spec_dst = to->pi.in4.ipi_spec_dst;
+                 pkti->ipi_addr.s_addr = 0;
+             }
+@@ -3589,7 +3593,11 @@ link_socket_write_udp_posix_sendmsg(struct link_socket *sock,
+             cmsg->cmsg_type = IPV6_PKTINFO;
+ 
+             pkti6 = (struct in6_pktinfo *) CMSG_DATA(cmsg);
+-            pkti6->ipi6_ifindex = to->pi.in6.ipi6_ifindex;
++            if (sock->sockflags & SF_USE_IP_PKTINFO_NOIFINDEX) {
++              pkti6->ipi6_ifindex = 0;
++            } else {
++              pkti6->ipi6_ifindex = to->pi.in6.ipi6_ifindex;
++            }
+             pkti6->ipi6_addr = to->pi.in6.ipi6_addr;
+             break;
+         }
+diff --git a/src/openvpn/socket.h b/src/openvpn/socket.h
+index 2ad6155f..a25303e5 100644
+--- a/src/openvpn/socket.h
++++ b/src/openvpn/socket.h
+@@ -210,6 +210,7 @@ struct link_socket
+ #define SF_PORT_SHARE (1<<2)
+ #define SF_HOST_RANDOMIZE (1<<3)
+ #define SF_GETADDRINFO_DGRAM (1<<4)
++#define SF_USE_IP_PKTINFO_NOIFINDEX (1<<5)
+     unsigned int sockflags;
+     int mark;
+     const char *bind_dev;

@@ -1,0 +1,22 @@
+diff --git a/snmplib/snmp_logging.c b/snmplib/snmp_logging.c
+index 9b658fb..769008c 100644
+--- a/snmplib/snmp_logging.c
++++ b/snmplib/snmp_logging.c
+@@ -810,7 +810,7 @@ snmp_enable_syslog_ident(const char *ident, const int facility)
+         enable = 0;
+     }
+ #else
+-    openlog(snmp_log_syslogname(ident), LOG_CONS | LOG_PID, facility);
++    openlog(snmp_log_syslogname(ident), LOG_PID, facility);
+ #endif
+
+     for (logh = logh_head; logh; logh = logh->next)
+@@ -1238,7 +1238,7 @@ log_handler_syslog(  netsnmp_log_handler* logh, int pri, const char *str)
+         if (!ident)
+             ident = netsnmp_ds_get_string(NETSNMP_DS_LIBRARY_ID,
+                                           NETSNMP_DS_LIB_APPTYPE);
+-        openlog(ident, LOG_CONS | LOG_PID, facility);
++        openlog(ident, LOG_PID, facility);
+         logh->imagic = 1;
+     }
+     syslog( pri, "%s", str );

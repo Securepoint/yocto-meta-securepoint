@@ -1,0 +1,11 @@
+diff --git a/leapsecs_read.c b/leapsecs_read.c
+index 62c8712..248f519 100644
+--- a/leapsecs_read.c
++++ b/leapsecs_read.c
+@@ -47,4 +47,5 @@ int leapsecs_read()
+ 
+   leapsecs = t;
+   leapsecs_num = n;
++  return 0;
+ }
+

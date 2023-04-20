@@ -5,7 +5,7 @@ DESCRIPTION = "Active Directory Keytab Management"
 HOMEPAGE = "http://sourceforge.net/projects/msktutil/"
 LICENSE = "GPLv2"
 SECTION = "base"
-DEPENDS = "krb5"
+DEPENDS = "krb5 openldap cyrus-sasl"
 PR = "r0"
 
 SRC_URI = "git://github.com/3van/msktutil.git;protocol=http"
@@ -18,6 +18,6 @@ inherit autotools-brokensep
 
 EXTRA_OECONF = "--cache-file=config.cache"
 
-do_configure_prepend(){
+do_configure:prepend(){
     echo "ac_cv_header_et_com_err_h=no" >> config.cache
 }

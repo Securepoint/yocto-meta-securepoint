@@ -4,12 +4,16 @@ HOMEPAGE = "http://smarden.org/runit"
 LICENSE = "BSD-3-Clause"
 LIC_FILES_CHKSUM = "file://package/COPYING;md5=c9e8a560732fc8b860b6a91341cc603b"
 
+# needed to include this recipe from runit-docker.bb
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+
 PR = "r1"
 
 SRC_URI = "http://smarden.org/runit/runit-${PV}.tar.gz \
            file://cross-compile.patch;patch=1;pnum=1 \
            file://build-svwait.patch;patch=1;pnum=1 \
            file://forced_reboot.patch;patch=1;pnum=1 \
+           file://docker.patch;patch=1;pnum=1 \
            file://sbin \
            file://etc"
 
@@ -42,10 +46,11 @@ do_install() {
         install -m 0755 ${S}/compile/${p} ${D}/${sbindir}/${p}
     done
     mkdir -p ${D}/etc/runit/{1.d,3.d}
-    mkdir -p ${D}/var/service
+    install -m 0700 -d ${D}/var/service
     cp -rf ${WORKDIR}/etc ${D}/
     cp -rf ${WORKDIR}/sbin ${D}/
     ln -sf shutdown.sh ${D}/sbin/reboot
     ln -sf shutdown.sh ${D}/sbin/halt
     ln -sf shutdown.sh ${D}/sbin/shutdown
+    ln -sf shutdown.sh ${D}/sbin/poweroff
 }

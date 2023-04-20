@@ -1,2 +1,2 @@
 #!/bin/sh
-exec logger -t "sshd" -p "daemon.info"
+exec logger -t "sshd" -p "authpriv.info"

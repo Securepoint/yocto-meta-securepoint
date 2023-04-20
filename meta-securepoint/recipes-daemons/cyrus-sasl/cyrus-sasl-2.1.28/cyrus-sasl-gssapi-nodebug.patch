@@ -1,0 +1,24 @@
+diff --git a/plugins/gssapi.c b/plugins/gssapi.c
+index 0230785e..fabb590c 100644
+--- a/plugins/gssapi.c
++++ b/plugins/gssapi.c
+@@ -1485,9 +1485,6 @@ gssapi_server_mech_step(void *conn_context,
+ 	}
+ 
+ 	oparams->doneflag = 1;
+-    } else {
+-        params->utils->log(params->utils->conn, SASL_LOG_DEBUG,
+-		           "GSSAPI server step failed: %d\n", text->state);
+     }
+     
+     return ret;
+@@ -1668,9 +1665,6 @@ static int gssapi_client_mech_step(void *conn_context,
+     if (clientoutlen)
+         *clientoutlen = 0;
+     
+-    params->utils->log(params->utils->conn, SASL_LOG_DEBUG,
+-		       "GSSAPI client step %d", text->state);
+-
+     switch (text->state) {
+ 
+     case SASL_GSSAPI_STATE_AUTHNEG:

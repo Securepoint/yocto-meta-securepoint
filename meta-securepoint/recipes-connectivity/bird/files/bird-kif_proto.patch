@@ -1,0 +1,12 @@
+diff -up bird-1.6.8/sysdep/unix/krt.h.kif_proto bird-1.6.8/sysdep/unix/krt.h
+--- bird-1.6.8/sysdep/unix/krt.h.kif_proto	2022-04-21 10:23:46.931710953 +0200
++++ bird-1.6.8/sysdep/unix/krt.h	2022-04-21 10:23:11.540581533 +0200
+@@ -112,7 +112,7 @@ struct kif_proto {
+   struct kif_state sys;		/* Sysdep state */
+ };
+ 
+-struct kif_proto *kif_proto;
++extern struct kif_proto *kif_proto;
+ 
+ #define KIF_CF ((struct kif_config *)p->p.cf)
+ 

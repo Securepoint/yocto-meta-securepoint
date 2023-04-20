@@ -1,0 +1,12 @@
+diff --git a/uacme.c b/uacme.c
+index 6db9fa9..0c77bda 100644
+--- a/uacme.c
++++ b/uacme.c
+@@ -1105,6 +1105,7 @@ bool cert_revoke(acme_t *a, const char *certfile, int reason_code)
+         goto out;
+     }
+     msg(1, "renaming %s to %s", certfile, revokedfile);
++    msg(0, "%s", basename(revokedfile));
+     if (rename(certfile, revokedfile) < 0)
+         warn("failed to rename %s to %s", certfile, revokedfile);
+ 

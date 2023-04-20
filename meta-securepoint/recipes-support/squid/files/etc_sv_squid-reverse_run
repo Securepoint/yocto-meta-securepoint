@@ -1,5 +1,29 @@
 #!/bin/sh
 exec 2>&1
-test -f /rootdisk/config/dhparams.pem || openssl dhparam -out /rootdisk/config/dhparams.pem 1024
-exec /usr/sbin/squid -N -s -f /etc/squid/squid-reverse.conf
 
+user=$(awk '$1 ~ /cache_effective_user/ { print $2 }' < /etc/squid/squid.conf)
+mkdir -p /var/run/squid
+chown -R $user:nobody /var/run/squid
+chmod 770 /var/run/squid
+
+read ULIMITN < /etc/squid/ULIMITN
+# prevent ULIMITN causing segmentation faults in combination with a 
+# SQUID_MAXFD that is set to low, see #7749
+if [ $ULIMITN -lt 4096 ]; then
+  ULIMITN=4096
+fi
+if [ $ULIMITN -gt 8192 ]; then
+  ULIMITN=8192
+fi
+
+# See #11988
+ARGS=""
+# security_file_certgen comes only with squid 4
+if [ -x /usr/libexec/squid/security_file_certgen ]; then
+  ARGS="--foreground"
+else
+  ARGS="-N"
+fi
+
+ulimit -HS -n $ULIMITN
+exec /usr/sbin/squid -n rproxy -s ${ARGS} -f /etc/squid/squid-reverse.conf

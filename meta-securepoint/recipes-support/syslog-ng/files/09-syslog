@@ -1,0 +1,60 @@
+#!/bin/sh
+# Check if database exists and if not, create it
+# Also check if existing database uses journal mode and if so, set to
+# use WAL mode. Moved here from run script to accelerate syslog-ng
+# bootup.
+. /etc/functions.sh
+
+SP_SYSLOG_DIR=/data/syslog
+[ -r /etc/syslog-ng/LOGPATH ] && SP_SYSLOG_DIR=$(cat /etc/syslog-ng/LOGPATH)
+SP_SYSLOG_DB=${SP_SYSLOG_DIR}/messages.db
+SP_SYSLOG_DB_SCHEMA=/etc/syslog-ng/messages.sql
+[ -r /etc/syslog-ng/DBSCHEMAPATH ] && SP_SYSLOG_DB_SCHEMA=$(cat /etc/syslog-ng/DBSCHEMAPATH)
+mkdir -p /run/syslog-ng ${SP_SYSLOG_DIR}
+
+syslog_check () {
+  sqlite3 ${SP_SYSLOG_DB} 'SELECT level FROM cloud' &>/dev/null
+  return $?
+}
+
+syslog_db_create () {
+  sqlite3 ${SP_SYSLOG_DB} < ${SP_SYSLOG_DB_SCHEMA} >/dev/null
+  return $?
+}
+
+# update old database
+syslog_check
+
+if [ $? -ne 0 ]; then
+  if [ -f "${SP_SYSLOG_DB}" ]; then
+    mv "${SP_SYSLOG_DB}" "${SP_SYSLOG_DB}.old"
+    sqlite3 "${SP_SYSLOG_DB}" < "${SP_SYSLOG_DB_SCHEMA}" > /dev/null
+    sqlite3 "${SP_SYSLOG_DB}.old" ".dump config" | sqlite3 "${SP_SYSLOG_DB}"
+  fi
+fi
+
+# (re)validate database
+syslog_check
+
+if [ $? -ne 0 ]; then
+  test -f ${SP_SYSLOG_DB} && mv ${SP_SYSLOG_DB} ${SP_SYSLOG_DB}.bad 2>/dev/null
+  title "Creating initial syslog database"
+  syslog_db_create
+  status
+elif [ "wal" != `sqlite3 ${SP_SYSLOG_DB} 'PRAGMA journal_mode'` ]; then
+  test -f ${SP_SYSLOG_DB} && mv ${SP_SYSLOG_DB} ${SP_SYSLOG_DB}.old 2>/dev/null
+  title "Creating initial syslog database"
+  syslog_db_create
+  status
+fi
+
+for db_file in ${SP_SYSLOG_DB} ${SP_SYSLOG_DB}-shm ${SP_SYSLOG_DB}-wal ; do
+  if [ -f $db_file ]; then
+    chown -c :syslog $db_file
+    chmod 660 $db_file
+  fi
+done
+
+title "Checking for valid syslog DB"
+syslog_check
+status $?

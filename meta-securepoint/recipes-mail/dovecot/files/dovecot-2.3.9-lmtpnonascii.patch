@@ -1,0 +1,27 @@
+diff --git a/src/lib-smtp/smtp-address.c b/src/lib-smtp/smtp-address.c
+index bb31d34a6..a80393457 100644
+--- a/src/lib-smtp/smtp-address.c
++++ b/src/lib-smtp/smtp-address.c
+@@ -530,7 +530,7 @@ void smtp_address_write(string_t *out,
+ 		if (!quoted) {
+ 			str_append_c(out, '.');
+ 		} else {
+-			i_assert(smtp_char_is_qpair(*p));
++			//i_assert(smtp_char_is_qpair(*p));
+ 			if (!smtp_char_is_qtext(*p))
+ 				str_append_c(out, '\\');
+ 			str_append_c(out, *p);
+diff --git a/src/lib-smtp/smtp-parser.h b/src/lib-smtp/smtp-parser.h
+index 9b76d2c50..455e682cb 100644
+--- a/src/lib-smtp/smtp-parser.h
++++ b/src/lib-smtp/smtp-parser.h
+@@ -31,6 +31,9 @@ smtp_char_is_dcontent(unsigned char ch) {
+ }
+ static inline bool
+ smtp_char_is_qtext(unsigned char ch) {
++    if('\\' == ch || '"' == ch || '\r' == ch || '\n' == ch )
++        return 0;
++    return 1;
+ 	return (smtp_char_lookup[ch] & smtp_qtext_char_mask) != 0;
+ }
+ static inline bool

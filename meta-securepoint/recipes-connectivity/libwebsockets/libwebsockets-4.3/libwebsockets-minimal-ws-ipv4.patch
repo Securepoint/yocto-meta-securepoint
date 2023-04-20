@@ -1,0 +1,13 @@
+diff -up libwebsockets/minimal-examples/ws-client/minimal-ws-client/minimal-ws-client.c.ipv4 libwebsockets/minimal-examples/ws-client/minimal-ws-client/minimal-ws-client.c
+--- libwebsockets/minimal-examples/ws-client/minimal-ws-client/minimal-ws-client.c.ipv4	2022-11-25 10:33:27.357340322 +0100
++++ libwebsockets/minimal-examples/ws-client/minimal-ws-client/minimal-ws-client.c	2022-11-25 10:38:29.232107634 +0100
+@@ -195,6 +195,9 @@ int main(int argc, const char **argv)
+ 	if (lws_cmdline_option(argc, argv, "-e"))
+ 		ssl_connection |= LCCSCF_ALLOW_EXPIRED;
+ 
++	if (lws_cmdline_option(argc, argv, "-4"))
++		info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
++
+ 	info.fd_limit_per_thread = 1 + 1 + 1;
+ 
+ 	context = lws_create_context(&info);

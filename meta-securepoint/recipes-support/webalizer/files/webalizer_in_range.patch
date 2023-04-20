@@ -1,0 +1,34 @@
+diff --git a/src/unicode.h b/src/unicode.h
+index 81c0423..ae6f8e8 100644
+--- a/src/unicode.h
++++ b/src/unicode.h
+@@ -82,14 +82,21 @@ inline size_t ucs2utf8size(wchar_t wchar)
+    return (wchar <= L'\x7F') ? 1 : (wchar <= L'\x7FF') ? 2 : (wchar <= L'\xFFFF') ? 3 : 4;
+ }
+ 
+-//
+-// Converts char to unsigned char and checks if the argument is within the range
+-// defined by the template arguments.
+-//
+-template <unsigned char lo, unsigned char hi>
+-inline bool in_range(unsigned char ch) 
+-{
+-   return ch >= lo && ch <= hi;
++///
++/// @brief  Returns `true` if the argument is  within the range defined by
++///         the template arguments and `false` otherwise.
++///
++/// This funciton used to have `unsigned char` template and function parameters,
++/// but GCC v9.2 converts `char` template arguments to a sign-extended `int`
++/// and only then checks against `unsigned char` template parameter type, which
++/// causes value narrowing errors. Use `char` types for parameters and convert
++/// to `unsigned char` when comparing instead.
++///
++template <char lo, char hi>
++inline bool in_range(char ch)
++{
++   return static_cast<unsigned char>(ch) >= static_cast<unsigned char>(lo) &&
++            static_cast<unsigned char>(ch) <= static_cast<unsigned char>(hi);
+ }
+ 
+ //

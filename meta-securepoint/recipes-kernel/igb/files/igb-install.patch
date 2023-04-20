@@ -1,0 +1,14 @@
+diff -up src/Makefile.install src/Makefile
+--- src/Makefile.install	2022-04-22 11:50:25.014207952 +0200
++++ src/Makefile	2022-04-22 11:51:16.748942373 +0200
+@@ -115,6 +115,10 @@ clean:
+ 	@+$(call devkernelbuild,clean)
+ 	@-rm -rf *.${MANSECTION}.gz *.ko
+ 
++modules_install: default
++	@echo "Installing modules..."
++	@+$(call devkernelbuild,modules_install)
++
+ # Install the modules and manpage
+ install: default manfile
+ 	@echo "Copying manpages..."

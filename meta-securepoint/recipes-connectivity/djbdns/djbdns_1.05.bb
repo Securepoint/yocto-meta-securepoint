@@ -13,7 +13,7 @@ SRC_URI = "http://cr.yp.to/djbdns/${PN}-${PV}.tar.gz \
 SRC_URI[md5sum] = "3147c5cd56832aa3b41955c7a51cbeb2"
 SRC_URI[sha256sum] = "3ccd826a02f3cde39be088e1fc6aed9fd57756b8f970de5dc99fcd2d92536b48"
 
-do_configure_append(){
+do_configure:append(){
     echo ${CC} > conf-cc
     echo ${CC} > conf-ld
     echo /${D} > conf-home

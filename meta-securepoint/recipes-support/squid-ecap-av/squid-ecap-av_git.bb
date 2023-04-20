@@ -10,16 +10,20 @@ LIC_FILES_CHKSUM = "\
 "
 SECTION = "net"
 DEPENDS = "file libecap"
-PR = "r0"
 
-SRC_URI = "git://github.com/Securepoint/squid-ecap-av.git;protocol=https \
+SQUIDECAPAV_BRANCH ?= "master"
+SQUIDECAPAV_SRCREV ?= "${AUTOREV}"
+
+SRC_URI = "git://github.com/Securepoint/squid-ecap-av.git;protocol=https;branch=${SQUIDECAPAV_BRANCH} \
            file://custom-style.patch \
+           file://001-dont_block_on_init_failure.patch \
 "
 S = "${WORKDIR}/git"
-SRCREV = "${AUTOREV}"
-PV = "git${SRCPV}"
+SRCREV = "${SQUIDECAPAV_SRCREV}"
+PV = "${SRCREV}+git${SRCPV}"
+PR = "r1"
 
-inherit cmake
+inherit cmake pkgconfig
 
-FILES_${PN} = "/usr/libexec/squid/ecap_adapter_av.so"
-FILES_${PN}-dbg += "/usr/libexec/squid/.debug/ecap_adapter_av.so"
+FILES:${PN} = "/usr/libexec/squid/ecap_adapter_av.so"
+FILES:${PN}-dbg += "/usr/libexec/squid/.debug/ecap_adapter_av.so"
